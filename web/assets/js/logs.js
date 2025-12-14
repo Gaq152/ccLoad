@@ -464,7 +464,27 @@
         if (isNaN(date.getTime()) || date.getFullYear() < 2020) {
           return '-';
         }
-        return date.toLocaleString('zh-CN', {
+
+        // 计算相对时间
+        const now = Date.now();
+        const diffMs = now - date.getTime();
+        const diffMinutes = Math.floor(diffMs / 60000);
+        const diffHours = Math.floor(diffMs / 3600000);
+
+        // 相对时间显示
+        let relativeTime = '';
+        if (diffMs < 0) {
+          relativeTime = ''; // 未来时间不显示相对时间
+        } else if (diffMinutes < 1) {
+          relativeTime = '刚刚';
+        } else if (diffMinutes < 60) {
+          relativeTime = `${diffMinutes}分钟前`;
+        } else if (diffHours < 24) {
+          relativeTime = `${diffHours}小时前`;
+        }
+
+        // 绝对时间
+        const absoluteTime = date.toLocaleString('zh-CN', {
           year: 'numeric',
           month: '2-digit',
           day: '2-digit',
@@ -472,6 +492,12 @@
           minute: '2-digit',
           second: '2-digit'
         });
+
+        // 返回格式：相对时间存在时显示 "相对时间 · 绝对时间"
+        if (relativeTime) {
+          return `<span style="color: var(--primary-600); font-weight: 500;">${relativeTime}</span> <span style="color: var(--neutral-400); font-size: 0.85em;">· ${absoluteTime}</span>`;
+        }
+        return absoluteTime;
       } catch (e) {
         return '-';
       }
