@@ -101,14 +101,32 @@
       return;
     }
 
+    // 按延迟排序（有延迟数据的排前面，延迟小的排前面）
+    const sortedData = [...endpointsData].sort((a, b) => {
+      const aLatency = a.latency_ms;
+      const bLatency = b.latency_ms;
+      // 无延迟数据的排后面
+      if (aLatency === null || aLatency === undefined) return 1;
+      if (bLatency === null || bLatency === undefined) return -1;
+      // 失败的排后面
+      if (aLatency < 0) return 1;
+      if (bLatency < 0) return -1;
+      // 按延迟升序
+      return aLatency - bLatency;
+    });
+
     // 使用 DocumentFragment 优化批量 DOM 操作
     container.innerHTML = '';
     const fragment = document.createDocumentFragment();
 
-    endpointsData.forEach((ep, index) => {
+    sortedData.forEach((ep, sortIndex) => {
+      // 找到原始索引（用于操作）
+      const originalIndex = endpointsData.findIndex(e => e.url === ep.url);
       const isActive = ep.is_active;
       const latencyMs = ep.latency_ms;
+      const statusCode = ep.status_code;
 
+      // 延迟显示
       let latencyText = '';
       let latencyClass = '';
       if (latencyMs === null || latencyMs === undefined) {
@@ -127,15 +145,31 @@
         }
       }
 
+      // 状态码显示
+      let statusText = '';
+      if (statusCode) {
+        const statusClass = statusCode >= 200 && statusCode < 300 ? 'status-ok' : 'status-error';
+        statusText = `<span class="${statusClass}">${statusCode}</span>`;
+      }
+
+      // 合并延迟和状态码
+      let testResultText = '';
+      if (latencyText || statusText) {
+        const parts = [];
+        if (latencyText) parts.push(`<span class="${latencyClass}">${latencyText}</span>`);
+        if (statusText) parts.push(statusText);
+        testResultText = parts.join('<br>');
+      }
+
       // 修复：传入模板 ID 字符串，而非 DOM 元素
       const item = TemplateEngine.render('tpl-endpoint-item', {
         id: ep.id || 0,
-        index: index,
+        index: originalIndex,
         url: ep.url,
         activeClass: isActive ? 'active' : '',
         indicatorTitle: isActive ? '当前激活' : '点击选择',
-        latencyText: latencyText,
-        latencyClass: latencyClass
+        latencyText: testResultText,
+        latencyClass: '' // 已在 testResultText 中包含样式
       });
       if (item) fragment.appendChild(item);
     });
@@ -301,6 +335,15 @@
 
       // 更新端点数据（优先用 endpoints，包含完整信息）
       if (data.endpoints && data.endpoints.length > 0) {
+        // 合并测速结果的状态码到端点数据
+        const results = data.data || [];
+        data.endpoints.forEach(ep => {
+          const result = results.find(r => r.id === ep.id || r.url === ep.url);
+          if (result) {
+            ep.status_code = result.status_code;
+            ep.test_count = result.test_count;
+          }
+        });
         endpointsData = data.endpoints;
       } else if (data.data && data.data.length > 0) {
         // 合并测速结果到现有数据
@@ -308,6 +351,8 @@
           const ep = endpointsData.find(e => e.id === result.id || e.url === result.url);
           if (ep) {
             ep.latency_ms = result.latency_ms;
+            ep.status_code = result.status_code;
+            ep.test_count = result.test_count;
           }
         });
       }
@@ -323,7 +368,7 @@
       const failCount = results.filter(r => r.latency_ms < 0).length;
       const fastestResult = results.filter(r => r.latency_ms >= 0).sort((a, b) => a.latency_ms - b.latency_ms)[0];
 
-      let msg = `测速完成：${successCount} 成功`;
+      let msg = `测速完成（每端点测试3次取平均）：${successCount} 成功`;
       if (failCount > 0) msg += `，${failCount} 失败`;
       if (fastestResult) msg += `，最快 ${fastestResult.latency_ms}ms`;
       showSuccess(msg);

@@ -33,10 +33,12 @@ type SetActiveEndpointRequest struct {
 
 // EndpointTestResult 端点测速结果
 type EndpointTestResult struct {
-	ID        int64  `json:"id"`
-	URL       string `json:"url"`
-	LatencyMs int    `json:"latency_ms"` // -1 表示超时或失败
-	Error     string `json:"error,omitempty"`
+	ID         int64  `json:"id"`
+	URL        string `json:"url"`
+	LatencyMs  int    `json:"latency_ms"`  // -1 表示超时或失败
+	StatusCode int    `json:"status_code"` // HTTP 状态码
+	TestCount  int    `json:"test_count"`  // 实际测试次数
+	Error      string `json:"error,omitempty"`
 }
 
 // HandleChannelEndpoints 处理端点的 GET/PUT 请求
@@ -159,7 +161,7 @@ func (s *Server) HandleTestEndpoints(c *gin.Context) {
 		return
 	}
 
-	// 并发测速
+	// 并发测速（每个端点测试3次取平均值）
 	results := make([]EndpointTestResult, len(endpoints))
 	latencyResults := make(map[int64]int)
 	var wg sync.WaitGroup
@@ -175,14 +177,16 @@ func (s *Server) HandleTestEndpoints(c *gin.Context) {
 				URL: endpoint.URL,
 			}
 
-			latency, err := s.testEndpointLatency(endpoint.URL)
-			if err != nil {
-				result.LatencyMs = -1
-				result.Error = err.Error()
+			info, _ := s.testEndpointLatencyMulti(endpoint.URL, 3)
+			result.LatencyMs = info.LatencyMs
+			result.StatusCode = info.StatusCode
+			result.TestCount = info.TestCount
+
+			if info.LatencyMs < 0 {
+				result.Error = "连接失败"
 			} else {
-				result.LatencyMs = latency
 				mu.Lock()
-				latencyResults[endpoint.ID] = latency
+				latencyResults[endpoint.ID] = info.LatencyMs
 				mu.Unlock()
 			}
 
@@ -234,29 +238,64 @@ func (s *Server) HandleSetActiveEndpoint(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "ok"})
 }
 
-// testEndpointLatency 测试端点延迟（只关注延迟，不关心响应状态码）
-func (s *Server) testEndpointLatency(url string) (int, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+// endpointTestInfo 端点测试详细结果
+type endpointTestInfo struct {
+	LatencyMs  int // 平均延迟（毫秒）
+	StatusCode int // 最后一次响应状态码
+	TestCount  int // 实际测试次数
+}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodHead, url, nil)
-	if err != nil {
-		// HEAD 可能不支持，尝试 GET
-		req, err = http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+// testEndpointLatencyMulti 测试端点延迟（多次测试取平均值）
+func (s *Server) testEndpointLatencyMulti(url string, testCount int) (endpointTestInfo, error) {
+	if testCount < 1 {
+		testCount = 3 // 默认测试3次
+	}
+
+	var totalLatency int64
+	var successCount int
+	var lastStatusCode int
+
+	for i := 0; i < testCount; i++ {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+
+		req, err := http.NewRequestWithContext(ctx, http.MethodHead, url, nil)
 		if err != nil {
-			return 0, err
+			// HEAD 可能不支持，尝试 GET
+			req, err = http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+			if err != nil {
+				cancel()
+				continue
+			}
+		}
+
+		start := time.Now()
+		resp, err := s.client.Do(req)
+		latency := time.Since(start).Milliseconds()
+		cancel()
+
+		if err != nil {
+			continue
+		}
+		resp.Body.Close()
+
+		lastStatusCode = resp.StatusCode
+		totalLatency += latency
+		successCount++
+
+		// 测试间隔 100ms，避免过快请求
+		if i < testCount-1 {
+			time.Sleep(100 * time.Millisecond)
 		}
 	}
 
-	start := time.Now()
-	resp, err := s.client.Do(req)
-	latency := int(time.Since(start).Milliseconds())
-
-	if err != nil {
-		return 0, err
+	if successCount == 0 {
+		return endpointTestInfo{LatencyMs: -1, StatusCode: 0, TestCount: 0}, nil
 	}
-	resp.Body.Close()
 
-	// 只关注延迟，不关心响应状态码
-	return latency, nil
+	avgLatency := int(totalLatency / int64(successCount))
+	return endpointTestInfo{
+		LatencyMs:  avgLatency,
+		StatusCode: lastStatusCode,
+		TestCount:  successCount,
+	}, nil
 }

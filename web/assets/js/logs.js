@@ -70,6 +70,9 @@
           }
         }
 
+        // 从日志列表初始化 lastReceivedLogTimeMs，确保 SSE 重连时能正确恢复
+        syncLastReceivedFromList(data);
+
         updatePagination();
         renderLogs(data);
         updateStats(data);
@@ -611,7 +614,6 @@
       await initChannelTypeFilter(currentChannelType);
 
       initFilters();
-      initRealtimeToggle(); // 初始化实时模式开关
       await loadDefaultTestContent();
 
       // ✅ 修复：如果没有 URL 参数但有保存的筛选条件，先同步 URL 再加载数据
@@ -632,7 +634,10 @@
         }
       }
 
-      load();
+      // ✅ 修复：先加载日志数据（会同步 lastReceivedLogTimeMs），再初始化实时模式
+      // 这样 SSE 启动时能正确获取 since_ms 参数，避免重连时丢失日志
+      await load();
+      initRealtimeToggle();
 
       // ESC键关闭测试模态框
       document.addEventListener('keydown', (e) => {
@@ -999,6 +1004,41 @@
     let realtimeLogCount = 0; // 实时接收的日志计数
     let lastReceivedLogTimeMs = 0; // 最后接收的日志时间戳（毫秒），用于重连恢复
     const displayedLogIds = new Set(); // 已显示的日志ID，用于去重
+
+    // 从日志条目中提取毫秒时间戳
+    function extractLogTimeMs(entry) {
+      if (!entry) return 0;
+      if (entry.time_ms !== undefined && entry.time_ms !== null) return Number(entry.time_ms);
+      const t = entry.time;
+      if (typeof t === 'number') {
+        return t > 1e12 ? t : t * 1000;
+      }
+      if (typeof t === 'string') {
+        if (/^\d+$/.test(t)) {
+          const raw = Number(t);
+          return raw > 1e12 ? raw : raw * 1000;
+        }
+        const parsed = Date.parse(t);
+        if (!Number.isNaN(parsed)) return parsed;
+      }
+      return 0;
+    }
+
+    // 从日志列表中同步 lastReceivedLogTimeMs（用于 SSE 重连恢复）
+    function syncLastReceivedFromList(logs) {
+      if (!Array.isArray(logs) || logs.length === 0) return;
+      let newest = lastReceivedLogTimeMs;
+      for (const entry of logs) {
+        const ts = extractLogTimeMs(entry);
+        if (ts > newest) {
+          newest = ts;
+        }
+      }
+      if (newest > lastReceivedLogTimeMs) {
+        lastReceivedLogTimeMs = newest;
+        console.log('[SSE DEBUG] 从日志列表同步 lastReceivedLogTimeMs:', newest);
+      }
+    }
 
     function updateRealtimeStatus(text, isConnected) {
       const statusEl = document.getElementById('realtimeStatus');
