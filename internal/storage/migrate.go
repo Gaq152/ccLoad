@@ -50,13 +50,22 @@ func migrate(ctx context.Context, db *sql.DB, dialect Dialect) error {
 			return fmt.Errorf("create %s table: %w", tb.Name(), err)
 		}
 
-		// 增量迁移：确保auth_token_id字段存在（2025-12新增）
-		if tb.Name() == "logs" && dialect == DialectMySQL {
-			if err := ensureLogsAuthTokenID(ctx, db); err != nil {
-				return fmt.Errorf("migrate logs.auth_token_id: %w", err)
-			}
-			if err := ensureLogsClientIP(ctx, db); err != nil {
-				return fmt.Errorf("migrate logs.client_ip: %w", err)
+		// 增量迁移：确保logs新增字段存在（2025-12新增）
+		if tb.Name() == "logs" {
+			if dialect == DialectMySQL {
+				if err := ensureLogsAuthTokenID(ctx, db); err != nil {
+					return fmt.Errorf("migrate logs.auth_token_id: %w", err)
+				}
+				if err := ensureLogsClientIP(ctx, db); err != nil {
+					return fmt.Errorf("migrate logs.client_ip: %w", err)
+				}
+				if err := ensureLogsAPIBaseURL(ctx, db); err != nil {
+					return fmt.Errorf("migrate logs.api_base_url: %w", err)
+				}
+			} else {
+				if err := ensureLogsAPIBaseURLSQLite(ctx, db); err != nil {
+					return fmt.Errorf("migrate logs.api_base_url: %w", err)
+				}
 			}
 		}
 
@@ -142,6 +151,67 @@ func ensureLogsClientIP(ctx context.Context, db *sql.DB) error {
 	)
 	if err != nil {
 		return fmt.Errorf("add client_ip column: %w", err)
+	}
+
+	return nil
+}
+
+// ensureLogsAPIBaseURL 确保logs表有api_base_url字段(MySQL增量迁移,2025-12新增)
+func ensureLogsAPIBaseURL(ctx context.Context, db *sql.DB) error {
+	var count int
+	err := db.QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='logs' AND COLUMN_NAME='api_base_url'",
+	).Scan(&count)
+	if err != nil {
+		return fmt.Errorf("check column existence: %w", err)
+	}
+
+	if count > 0 {
+		return nil
+	}
+
+	_, err = db.ExecContext(ctx,
+		"ALTER TABLE logs ADD COLUMN api_base_url VARCHAR(512) NOT NULL DEFAULT '' COMMENT '使用的API端点URL(新增2025-12)'",
+	)
+	if err != nil {
+		return fmt.Errorf("add api_base_url column: %w", err)
+	}
+
+	return nil
+}
+
+// ensureLogsAPIBaseURLSQLite 确保logs表有api_base_url字段(SQLite增量迁移,2025-12新增)
+func ensureLogsAPIBaseURLSQLite(ctx context.Context, db *sql.DB) error {
+	rows, err := db.QueryContext(ctx, "PRAGMA table_info(logs)")
+	if err != nil {
+		return fmt.Errorf("check table info: %w", err)
+	}
+	defer rows.Close()
+
+	hasColumn := false
+	for rows.Next() {
+		var cid int
+		var name, typ string
+		var notNull, pk int
+		var dfltValue any
+		if err := rows.Scan(&cid, &name, &typ, &notNull, &dfltValue, &pk); err != nil {
+			return fmt.Errorf("scan column info: %w", err)
+		}
+		if name == "api_base_url" {
+			hasColumn = true
+			break
+		}
+	}
+
+	if hasColumn {
+		return nil
+	}
+
+	_, err = db.ExecContext(ctx,
+		"ALTER TABLE logs ADD COLUMN api_base_url TEXT NOT NULL DEFAULT ''",
+	)
+	if err != nil {
+		return fmt.Errorf("add api_base_url column: %w", err)
 	}
 
 	return nil

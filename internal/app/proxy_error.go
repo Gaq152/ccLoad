@@ -84,7 +84,7 @@ func (s *Server) handleNetworkError(
 	statusCode, _, _ := util.ClassifyError(err)
 	// [INFO] 修复：使用 actualModel 而非 reqCtx.originalModel
 	s.AddLogAsync(buildLogEntry(actualModel, cfg.ID, cfg.Name, statusCode,
-		duration, false, selectedKey, authTokenID, clientIP, nil, err.Error()))
+		duration, false, selectedKey, cfg.URL, authTokenID, clientIP, nil, err.Error()))
 
 	action, _ := s.handleProxyError(ctx, cfg, keyIndex, nil, err)
 	if action == cooldown.ActionReturnClient {
@@ -275,7 +275,7 @@ func (s *Server) handleProxySuccess(
 
 	// 记录成功日志
 	s.AddLogAsync(buildLogEntry(actualModel, cfg.ID, cfg.Name, res.Status,
-		duration, reqCtx.isStreaming, selectedKey, reqCtx.tokenID, reqCtx.clientIP, res, ""))
+		duration, reqCtx.isStreaming, selectedKey, cfg.URL, reqCtx.tokenID, reqCtx.clientIP, res, ""))
 
 	// 异步更新Token统计
 	s.updateTokenStatsAsync(reqCtx.tokenHash, true, duration, reqCtx.isStreaming, res, actualModel)
@@ -310,7 +310,7 @@ func (s *Server) handleProxyErrorResponse(
 	}
 
 	s.AddLogAsync(buildLogEntry(actualModel, cfg.ID, cfg.Name, res.Status,
-		duration, reqCtx.isStreaming, selectedKey, reqCtx.tokenID, reqCtx.clientIP, res, errMsg))
+		duration, reqCtx.isStreaming, selectedKey, cfg.URL, reqCtx.tokenID, reqCtx.clientIP, res, errMsg))
 
 	// 异步更新Token统计（失败请求不计费）
 	s.updateTokenStatsAsync(reqCtx.tokenHash, false, duration, reqCtx.isStreaming, res, actualModel)

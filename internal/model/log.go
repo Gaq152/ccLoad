@@ -46,6 +46,7 @@ type LogEntry struct {
 	IsStreaming   bool     `json:"is_streaming"`     // 是否为流式请求
 	FirstByteTime float64  `json:"first_byte_time"`  // 首字节响应时间（秒）
 	APIKeyUsed    string   `json:"api_key_used"`     // 使用的API Key（查询时自动脱敏为 abcd...klmn 格式）
+	APIBaseURL    string   `json:"api_base_url"`     // 使用的API端点URL（新增2025-12）
 	AuthTokenID   int64    `json:"auth_token_id"`    // 客户端使用的API令牌ID（新增2025-12，0表示未使用token）
 	ClientIP      string   `json:"client_ip"`        // 客户端IP地址（新增2025-12）
 
