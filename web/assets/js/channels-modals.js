@@ -1,12 +1,15 @@
 function showAddModal() {
   editingChannelId = null;
   currentChannelKeyCooldowns = [];
-  
+
   document.getElementById('modalTitle').textContent = '添加渠道';
   document.getElementById('channelForm').reset();
   document.getElementById('channelEnabled').checked = true;
   document.querySelector('input[name="channelType"][value="anthropic"]').checked = true;
   document.querySelector('input[name="keyStrategy"][value="sequential"]').checked = true;
+
+  // 新建模式隐藏"管理端点"按钮
+  document.getElementById('manageEndpointsBtn').style.display = 'none';
 
   redirectTableData = [];
   renderRedirectTable();
@@ -29,6 +32,9 @@ async function editChannel(id) {
   document.getElementById('modalTitle').textContent = '编辑渠道';
   document.getElementById('channelName').value = channel.name;
   document.getElementById('channelUrl').value = channel.url;
+
+  // 编辑模式显示"管理端点"按钮
+  document.getElementById('manageEndpointsBtn').style.display = 'inline-flex';
 
   let apiKeys = [];
   try {
@@ -214,6 +220,9 @@ function copyChannel(id, name) {
   document.getElementById('modalTitle').textContent = '复制渠道';
   document.getElementById('channelName').value = copiedName;
   document.getElementById('channelUrl').value = channel.url;
+
+  // 复制模式隐藏"管理端点"按钮（复制是新建操作）
+  document.getElementById('manageEndpointsBtn').style.display = 'none';
 
   inlineKeyTableData = parseKeys(channel.api_key);
   if (inlineKeyTableData.length === 0) {
@@ -513,5 +522,28 @@ function clearAllModels() {
     const modelsTextarea = document.getElementById('channelModels');
     modelsTextarea.value = '';
     modelsTextarea.focus();
+  }
+}
+
+/**
+ * 从编辑弹窗打开端点管理
+ * 使用当前正在编辑的渠道 ID
+ */
+function openEndpointModalFromEdit() {
+  if (!editingChannelId) {
+    if (window.showError) {
+      showError('请先保存渠道后再管理端点');
+    }
+    return;
+  }
+
+  // 调用端点管理模块的打开函数
+  if (typeof window.openEndpointModal === 'function') {
+    window.openEndpointModal(editingChannelId);
+  } else {
+    console.error('openEndpointModal 函数未定义');
+    if (window.showError) {
+      showError('端点管理功能未加载');
+    }
   }
 }

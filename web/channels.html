@@ -138,8 +138,11 @@
 
         <div class="form-group">
           <div style="display: flex; align-items: center; gap: 8px;">
-          <label class="form-label" for="channelUrl">API URL *</label>
-          <input type="url" id="channelUrl" class="form-input" placeholder="https://api.anthropic.com/v1/messages" required style="flex: 1;">
+            <label class="form-label" for="channelUrl">API URL *</label>
+            <input type="url" id="channelUrl" class="form-input" placeholder="https://api.anthropic.com/v1/messages" required style="flex: 1;">
+            <button type="button" id="manageEndpointsBtn" class="btn btn-secondary btn-sm" onclick="openEndpointModalFromEdit()" style="padding: 5px 10px; font-size: 12px; display: none; white-space: nowrap;" title="管理多个API端点并测速">
+              ⚡ 管理端点
+            </button>
           </div>
         </div>
 
