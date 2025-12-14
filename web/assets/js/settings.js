@@ -54,17 +54,40 @@ function initSettingsEventDelegation() {
     }
   });
 
-  // 输入变更
+  // 输入变更（支持 input 和 select）
   tbody.addEventListener('change', (e) => {
-    const input = e.target.closest('input');
+    const input = e.target.closest('input, select');
     if (input) markChanged(input);
   });
 }
+
+// 下拉选项配置（中文化）
+const selectOptions = {
+  'channel_stats_range': [
+    { value: 'today', label: '本日' },
+    { value: '7d', label: '近7天' },
+    { value: '30d', label: '近30天' },
+    { value: 'all', label: '全部' }
+  ],
+  'cooldown_mode': [
+    { value: 'exponential', label: '递增（指数退避）' },
+    { value: 'fixed', label: '固定（相同间隔）' }
+  ]
+};
 
 function renderInput(setting) {
   const safeKey = escapeHtml(setting.key);
   const safeValue = escapeHtml(setting.value);
   const baseStyle = 'padding: 6px 10px; border: 1px solid var(--color-border); border-radius: 6px; background: var(--color-bg-secondary); color: var(--color-text); font-size: 13px;';
+
+  // 特定字段使用下拉选择框
+  if (selectOptions[setting.key]) {
+    const options = selectOptions[setting.key];
+    const optionsHtml = options.map(opt =>
+      `<option value="${escapeHtml(opt.value)}" ${opt.value === setting.value ? 'selected' : ''}>${escapeHtml(opt.label)}</option>`
+    ).join('');
+    return `<select id="${safeKey}" style="${baseStyle} width: 180px; cursor: pointer;">${optionsHtml}</select>`;
+  }
 
   switch (setting.value_type) {
     case 'bool':
@@ -82,7 +105,14 @@ function markChanged(input) {
   const key = input.id;
   const row = input.closest('tr');
 
-  const currentValue = input.type === 'checkbox' ? (input.checked ? 'true' : 'false') : input.value;
+  // 支持 checkbox、select 和普通 input
+  let currentValue;
+  if (input.type === 'checkbox') {
+    currentValue = input.checked ? 'true' : 'false';
+  } else {
+    currentValue = input.value;
+  }
+
   if (currentValue !== originalSettings[key]) {
     row.style.background = 'rgba(59, 130, 246, 0.08)';
   } else {
