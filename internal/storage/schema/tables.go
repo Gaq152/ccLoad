@@ -14,7 +14,7 @@ func DefineChannelsTable() *TableBuilder {
 		Column("cooldown_until BIGINT NOT NULL DEFAULT 0").
 		Column("cooldown_duration_ms BIGINT NOT NULL DEFAULT 0").
 		Column("rr_key_index INT NOT NULL DEFAULT 0").
-		Column("auto_select_endpoint TINYINT NOT NULL DEFAULT 0"). // 自动选择最快端点
+		Column("auto_select_endpoint TINYINT NOT NULL DEFAULT 1"). // 自动选择最快端点（默认开启）
 		Column("created_at BIGINT NOT NULL").
 		Column("updated_at BIGINT NOT NULL").
 		Index("idx_channels_enabled", "enabled").

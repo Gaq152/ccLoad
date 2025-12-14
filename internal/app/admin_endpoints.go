@@ -161,7 +161,13 @@ func (s *Server) HandleTestEndpoints(c *gin.Context) {
 		return
 	}
 
-	// 并发测速（每个端点测试3次取平均值）
+	// 从配置读取测试次数（默认3次，最少1次，最多10次）
+	testCount := s.configService.GetIntMin("endpoint_test_count", 3, 1)
+	if testCount > 10 {
+		testCount = 10
+	}
+
+	// 并发测速（每个端点测试 N 次取平均值）
 	results := make([]EndpointTestResult, len(endpoints))
 	latencyResults := make(map[int64]int)
 	var wg sync.WaitGroup
@@ -177,7 +183,7 @@ func (s *Server) HandleTestEndpoints(c *gin.Context) {
 				URL: endpoint.URL,
 			}
 
-			info, _ := s.testEndpointLatencyMulti(endpoint.URL, 3)
+			info, _ := s.testEndpointLatencyMulti(endpoint.URL, testCount)
 			result.LatencyMs = info.LatencyMs
 			result.StatusCode = info.StatusCode
 			result.TestCount = info.TestCount

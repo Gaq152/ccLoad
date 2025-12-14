@@ -8,8 +8,8 @@
   let currentChannelId = null;
   // 端点数据
   let endpointsData = [];
-  // 自动选择开关
-  let autoSelectEnabled = false;
+  // 自动选择开关（默认开启）
+  let autoSelectEnabled = true;
   // 测速中状态
   let isTesting = false;
 
@@ -32,7 +32,8 @@
       }
       const data = await res.json();
       endpointsData = data.data || [];
-      autoSelectEnabled = data.auto_select_endpoint || false;
+      // 默认开启自动选择，除非明确设置为 false
+      autoSelectEnabled = data.auto_select_endpoint !== false;
 
       // 如果端点列表为空，用渠道的初始 URL 创建默认端点
       if (endpointsData.length === 0) {
@@ -61,7 +62,7 @@
       } else {
         endpointsData = [];
       }
-      autoSelectEnabled = false;
+      autoSelectEnabled = true; // 默认开启
     }
 
     // 更新UI
