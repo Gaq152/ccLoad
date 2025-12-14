@@ -84,6 +84,17 @@ document.addEventListener('DOMContentLoaded', async () => {
   await loadChannelStats();
   highlightFromHash();
   window.addEventListener('hashchange', highlightFromHash);
+
+  // 页面可见性监听（后台标签页暂停倒计时，节省CPU）
+  document.addEventListener('visibilitychange', function() {
+    if (document.hidden) {
+      stopCooldownCountdown();
+    } else {
+      // 页面重新可见时，重新加载数据并启动倒计时
+      clearChannelsCache();
+      loadChannels(filters.channelType);
+    }
+  });
 });
 
 // 初始化渠道类型筛选器

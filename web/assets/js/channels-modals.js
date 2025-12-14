@@ -78,6 +78,9 @@ async function editChannel(id) {
   renderRedirectTable();
 
   document.getElementById('channelModal').classList.add('show');
+
+  // 启动冷却倒计时（包括 Key 冷却）
+  checkAndStartCooldownCountdown();
 }
 
 function closeModal() {
