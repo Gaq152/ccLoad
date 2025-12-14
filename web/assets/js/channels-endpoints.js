@@ -317,6 +317,16 @@
       }
 
       showSuccess('端点配置已保存');
+
+      // 如果编辑弹窗打开且正在编辑同一渠道，更新 URL 输入框
+      const activeEndpoint = endpointsData.find(ep => ep.is_active);
+      if (activeEndpoint && typeof editingChannelId !== 'undefined' && editingChannelId === currentChannelId) {
+        const urlInput = document.getElementById('channelUrl');
+        if (urlInput) {
+          urlInput.value = activeEndpoint.url;
+        }
+      }
+
       closeEndpointModal();
 
       // 刷新渠道列表
