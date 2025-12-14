@@ -452,11 +452,12 @@
 
     function formatTime(timeStr) {
       try {
-        // 处理Unix timestamp（秒）或ISO字符串
+        // 处理Unix timestamp（秒或毫秒）或ISO字符串
         let timestamp = timeStr;
         if (typeof timeStr === 'number' || /^\d+$/.test(timeStr)) {
-          // Unix timestamp（秒）转换为毫秒
-          timestamp = parseInt(timeStr) * 1000;
+          const raw = Number(timeStr);
+          // 13位及以上视为毫秒，10位视为秒
+          timestamp = raw > 1e12 ? raw : raw * 1000;
         }
 
         const date = new Date(timestamp);
@@ -970,7 +971,7 @@
     let sseEventSource = null;
     let realtimeModeEnabled = false;
     let realtimeLogCount = 0; // 实时接收的日志计数
-    let lastReceivedLogTime = 0; // 最后接收的日志时间戳（秒），用于重连恢复
+    let lastReceivedLogTimeMs = 0; // 最后接收的日志时间戳（毫秒），用于重连恢复
     const displayedLogIds = new Set(); // 已显示的日志ID，用于去重
 
     function updateRealtimeStatus(text, isConnected) {
@@ -999,10 +1000,10 @@
       }
 
       // EventSource 不支持自定义头，使用 URL 参数传递 token
-      // 如果有上次接收时间，携带 since 参数用于重连恢复
+      // 如果有上次接收时间，携带 since_ms 参数用于重连恢复（毫秒精度）
       let url = `/admin/logs/stream?token=${encodeURIComponent(token)}`;
-      if (lastReceivedLogTime > 0) {
-        url += `&since=${lastReceivedLogTime}`;
+      if (lastReceivedLogTimeMs > 0) {
+        url += `&since_ms=${lastReceivedLogTimeMs}`;
       }
       sseEventSource = new EventSource(url);
       realtimeLogCount = 0;
@@ -1016,8 +1017,19 @@
         try {
           const entry = JSON.parse(e.data);
 
-          // 生成唯一标识用于去重（时间戳+渠道ID+状态码）
-          const logKey = `${entry.time}-${entry.channel_id || 0}-${entry.status_code || 0}`;
+          // 获取毫秒时间戳（优先 time_ms，兼容秒级 time）
+          const logTimeMs = (() => {
+            if (entry.time_ms !== undefined && entry.time_ms !== null) return Number(entry.time_ms);
+            if (typeof entry.time === 'number') {
+              // 13位视为毫秒，10位视为秒
+              return entry.time > 1e12 ? entry.time : entry.time * 1000;
+            }
+            const parsed = parseInt(entry.time) || 0;
+            return parsed > 1e12 ? parsed : parsed * 1000;
+          })();
+
+          // 生成更细粒度的唯一标识（毫秒时间戳+渠道ID+状态码+消息）
+          const logKey = `${entry.id || ''}-${logTimeMs}-${entry.channel_id || 0}-${entry.status_code || 0}`;
           if (displayedLogIds.has(logKey)) {
             // 重复日志，跳过（重连恢复时可能重复）
             return;
@@ -1032,10 +1044,9 @@
             }
           }
 
-          // 更新最后接收时间（用于重连恢复）
-          const logTime = typeof entry.time === 'number' ? entry.time : parseInt(entry.time) || 0;
-          if (logTime > lastReceivedLogTime) {
-            lastReceivedLogTime = logTime;
+          // 更新最后接收时间（毫秒，用于重连恢复）
+          if (logTimeMs > lastReceivedLogTimeMs) {
+            lastReceivedLogTimeMs = logTimeMs;
           }
 
           prependLogEntry(entry);
@@ -1073,7 +1084,7 @@
       }
       updateRealtimeStatus('', false);
       realtimeLogCount = 0;
-      // 注意：不重置 lastReceivedLogTime，以便重连时恢复错过的日志
+      // 注意：不重置 lastReceivedLogTimeMs，以便重连时恢复错过的日志
     }
 
     function toggleRealtimeMode(enabled) {
@@ -1084,7 +1095,7 @@
       } else {
         disconnectSSE();
         // 用户主动关闭时重置状态
-        lastReceivedLogTime = 0;
+        lastReceivedLogTimeMs = 0;
         displayedLogIds.clear();
       }
     }
@@ -1175,7 +1186,7 @@
         '';
 
       const rowEl = TemplateEngine.render('tpl-log-row', {
-        time: formatTime(entry.time),
+        time: formatTime(entry.time_ms || entry.time),
         clientIPDisplay,
         modelDisplay,
         configDisplay,

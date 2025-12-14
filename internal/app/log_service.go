@@ -212,11 +212,19 @@ func (s *LogService) broadcastToSSE(entry *model.LogEntry) {
 		case ch <- entry:
 			// 成功发送
 		default:
-			// 订阅者缓冲区满，跳过（避免阻塞主流程）
-			// 计数用于监控慢消费者
+			// 缓冲区满：挤掉最旧的一条，保留最新日志（实时性优先）
+			select {
+			case <-ch: // 丢弃最旧的
+			default:
+			}
+			// 再次尝试塞入最新日志
+			select {
+			case ch <- entry:
+			default:
+			}
 			count := s.sseDropCount.Add(1)
 			if count%100 == 1 {
-				log.Printf("[WARN]  SSE 订阅者缓冲区满，日志被跳过 (累计跳过: %d)", count)
+				log.Printf("[WARN]  SSE 缓冲区满，挤掉旧日志保持实时性 (累计: %d)", count)
 			}
 		}
 	}
