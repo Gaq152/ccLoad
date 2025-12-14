@@ -329,19 +329,34 @@ func prepareRequestBody(cfg *model.Config, reqCtx *proxyRequestContext) (actualM
 // 日志和字符串处理工具函数
 // ============================================================================
 
+// maskAPIKey 将API Key掩码为 "abcd...klmn" 格式（前4位 + ... + 后4位）
+func maskAPIKey(key string) string {
+	if key == "" {
+		return ""
+	}
+	if len(key) <= 8 {
+		return "****"
+	}
+	return key[:4] + "..." + key[len(key)-4:]
+}
+
 // buildLogEntry 构建日志条目（消除重复代码，遵循DRY原则）
-func buildLogEntry(originalModel string, channelID int64, statusCode int,
+func buildLogEntry(originalModel string, channelID int64, channelName string, statusCode int,
 	duration float64, isStreaming bool, apiKeyUsed string, authTokenID int64, clientIP string,
 	res *fwResult, errMsg string) *model.LogEntry {
+
+	// API Key 脱敏（SSE 推送和数据库写入都需要脱敏）
+	maskedKey := maskAPIKey(apiKeyUsed)
 
 	entry := &model.LogEntry{
 		Time:        model.JSONTime{Time: time.Now()},
 		Model:       originalModel,
 		ChannelID:   channelID,
+		ChannelName: channelName,
 		StatusCode:  statusCode,
 		Duration:    duration,
 		IsStreaming: isStreaming,
-		APIKeyUsed:  apiKeyUsed,
+		APIKeyUsed:  maskedKey,
 		AuthTokenID: authTokenID,
 		ClientIP:    clientIP,
 	}

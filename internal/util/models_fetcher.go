@@ -227,30 +227,22 @@ func (f *CodexModelsFetcher) FetchModels(ctx context.Context, baseURL string, ap
 
 var predefinedModelSets = map[string][]string{
 	ChannelTypeAnthropic: {
-		"claude-3-5-sonnet-20241022",
-		"claude-3-5-sonnet-latest",
-		"claude-3-5-haiku-20241022",
-		"claude-3-5-haiku-latest",
-		"claude-3-opus-20240229",
-		"claude-3-opus-latest",
-		"claude-3-sonnet-20240229",
-		"claude-3-sonnet-latest",
-		"claude-3-haiku-20240307",
-		"claude-3-haiku-latest",
-		"claude-2.1",
-		"claude-2.0",
-		"claude-instant-1.2",
+		// Claude 4.5 系列（2025年最新）
+		"claude-opus-4-5-20251101",
+		"claude-sonnet-4-5-20250929",
+		"claude-haiku-4-5-20251001",
+		// Claude 4.1 系列
+		"claude-opus-4-1-20250805",
+		// Claude 4.0 系列
+		"claude-sonnet-4-20250514",
+		"claude-opus-4-20250514",
 	},
 	ChannelTypeCodex: {
-		"gpt-4.1",
-		"gpt-4.1-mini",
-		"gpt-4.1-preview",
-		"gpt-4o",
-		"gpt-4o-mini",
-		"gpt-4o-mini-2024-07-18",
-		"gpt-4-turbo",
-		"gpt-4",
-		"gpt-3.5-turbo",
+		"gpt-5",
+		"gpt-5.1",
+		"gpt-5.1-codex",
+		"gpt-5.1-codex-max",
+		"gpt-5.2",
 	},
 }
 
