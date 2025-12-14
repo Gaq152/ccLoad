@@ -512,6 +512,7 @@
       await initChannelTypeFilter(currentChannelType);
 
       initFilters();
+      initAutoRefresh(); // 初始化自动刷新功能
 
       // ✅ 修复：如果没有 URL 参数但有保存的筛选条件，先同步 URL 再加载数据
       if (!hasUrlParams && savedFilters) {
@@ -559,3 +560,95 @@
         loadStats();
       });
     }
+
+    // ========== 自动刷新功能 ==========
+    const AUTO_REFRESH_INTERVAL = 30000; // 30秒
+    let autoRefreshEnabled = true;
+    let autoRefreshTimer = null;
+    let nextRefreshTime = null;
+    let countdownTimer = null;
+
+    function updateAutoRefreshStatus() {
+      const statusEl = document.getElementById('autoRefreshStatus');
+      if (!statusEl) return;
+
+      if (!autoRefreshEnabled) {
+        statusEl.textContent = '';
+        return;
+      }
+
+      if (nextRefreshTime) {
+        const remaining = Math.max(0, Math.ceil((nextRefreshTime - Date.now()) / 1000));
+        statusEl.textContent = `(${remaining}s 后刷新)`;
+      }
+    }
+
+    function startAutoRefresh() {
+      stopAutoRefresh();
+      if (!autoRefreshEnabled) return;
+
+      nextRefreshTime = Date.now() + AUTO_REFRESH_INTERVAL;
+
+      // 启动定时刷新
+      autoRefreshTimer = setTimeout(() => {
+        loadStats();
+        startAutoRefresh(); // 重新启动下一轮
+      }, AUTO_REFRESH_INTERVAL);
+
+      // 启动倒计时显示更新
+      countdownTimer = setInterval(updateAutoRefreshStatus, 1000);
+      updateAutoRefreshStatus();
+    }
+
+    function stopAutoRefresh() {
+      if (autoRefreshTimer) {
+        clearTimeout(autoRefreshTimer);
+        autoRefreshTimer = null;
+      }
+      if (countdownTimer) {
+        clearInterval(countdownTimer);
+        countdownTimer = null;
+      }
+      nextRefreshTime = null;
+      updateAutoRefreshStatus();
+    }
+
+    function toggleAutoRefresh(enabled) {
+      autoRefreshEnabled = enabled;
+      if (enabled) {
+        startAutoRefresh();
+      } else {
+        stopAutoRefresh();
+      }
+    }
+
+    function manualRefresh() {
+      // 手动刷新时重置定时器
+      loadStats();
+      if (autoRefreshEnabled) {
+        startAutoRefresh();
+      }
+    }
+
+    function initAutoRefresh() {
+      const toggle = document.getElementById('autoRefreshToggle');
+      if (toggle) {
+        toggle.addEventListener('change', (e) => {
+          toggleAutoRefresh(e.target.checked);
+        });
+      }
+      // 页面加载后启动自动刷新
+      startAutoRefresh();
+    }
+
+    // 页面可见性监听（后台标签页暂停自动刷新，节省资源）
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        stopAutoRefresh();
+      } else {
+        if (autoRefreshEnabled) {
+          loadStats(); // 重新可见时立即刷新一次
+          startAutoRefresh();
+        }
+      }
+    });

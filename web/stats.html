@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="/web/assets/css/styles.css">
   <link href="/web/assets/css/inter.css" rel="stylesheet">
   <link rel="stylesheet" href="/web/assets/css/channels.css">
+  <link rel="stylesheet" href="/web/assets/css/logs.css">
 </head>
 <body>
   <div class="app-container">
@@ -72,6 +73,21 @@
             <!-- 统计信息 -->
             <div class="filter-info">
               共 <span id="statsCount">0</span> 条记录
+              <span id="autoRefreshStatus" style="margin-left: 8px; font-size: 12px; color: var(--neutral-500);"></span>
+            </div>
+
+            <!-- 刷新按钮 -->
+            <div style="flex: none; display: flex; align-items: center; gap: 8px;">
+              <button id="btn_refresh" type="button" class="btn btn-secondary" style="padding: 8px 12px; font-size: 14px;" onclick="manualRefresh()" title="手动刷新统计数据">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="display: inline-block; vertical-align: middle;">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                </svg>
+              </button>
+              <label class="toggle-switch" title="开启后每30秒自动刷新">
+                <input type="checkbox" id="autoRefreshToggle" checked>
+                <span class="toggle-slider"></span>
+              </label>
+              <span style="font-size: 13px; color: var(--neutral-600);">自动</span>
             </div>
 
             <!-- 操作按钮组 -->
