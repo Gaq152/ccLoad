@@ -584,6 +584,7 @@
       await initChannelTypeFilter(currentChannelType);
 
       initFilters();
+      initRealtimeToggle(); // 初始化实时模式开关
       await loadDefaultTestContent();
 
       // ✅ 修复：如果没有 URL 参数但有保存的筛选条件，先同步 URL 再加载数据
@@ -961,5 +962,233 @@
       } catch (e) {
         console.error('删除Key失败', e);
         alert(e.message || '删除Key失败');
+      }
+    }
+
+    // ========== SSE 实时日志推送 ==========
+    let sseEventSource = null;
+    let realtimeModeEnabled = false;
+    let realtimeLogCount = 0; // 实时接收的日志计数
+
+    function updateRealtimeStatus(text, isConnected) {
+      const statusEl = document.getElementById('realtimeStatus');
+      const labelEl = document.getElementById('realtimeLabel');
+      if (statusEl) {
+        statusEl.textContent = text;
+        statusEl.style.display = text ? 'inline' : 'none';
+        statusEl.style.color = isConnected ? 'var(--success-600)' : 'var(--neutral-500)';
+      }
+      if (labelEl) {
+        labelEl.style.color = isConnected ? 'var(--success-600)' : 'var(--neutral-600)';
+      }
+    }
+
+    function connectSSE() {
+      if (sseEventSource) {
+        sseEventSource.close();
+      }
+
+      // 获取当前的认证 token
+      const token = localStorage.getItem('auth_token');
+      if (!token) {
+        updateRealtimeStatus('未登录', false);
+        return;
+      }
+
+      // EventSource 不支持自定义头，使用 URL 参数传递 token
+      const url = `/admin/logs/stream?token=${encodeURIComponent(token)}`;
+      sseEventSource = new EventSource(url);
+      realtimeLogCount = 0;
+
+      sseEventSource.addEventListener('connected', (e) => {
+        console.log('[SSE] 连接成功');
+        updateRealtimeStatus('已连接', true);
+      });
+
+      sseEventSource.addEventListener('log', (e) => {
+        try {
+          const entry = JSON.parse(e.data);
+          prependLogEntry(entry);
+          realtimeLogCount++;
+          updateRealtimeStatus(`+${realtimeLogCount}`, true);
+        } catch (err) {
+          console.error('[SSE] 解析日志失败:', err);
+        }
+      });
+
+      sseEventSource.addEventListener('close', (e) => {
+        console.log('[SSE] 服务器关闭连接');
+        updateRealtimeStatus('已断开', false);
+        sseEventSource = null;
+      });
+
+      sseEventSource.onerror = (e) => {
+        console.error('[SSE] 连接错误:', e);
+        updateRealtimeStatus('连接失败', false);
+        // 5秒后尝试重连
+        if (realtimeModeEnabled) {
+          setTimeout(() => {
+            if (realtimeModeEnabled && !sseEventSource) {
+              connectSSE();
+            }
+          }, 5000);
+        }
+      };
+    }
+
+    function disconnectSSE() {
+      if (sseEventSource) {
+        sseEventSource.close();
+        sseEventSource = null;
+      }
+      updateRealtimeStatus('', false);
+      realtimeLogCount = 0;
+    }
+
+    function toggleRealtimeMode(enabled) {
+      realtimeModeEnabled = enabled;
+      if (enabled) {
+        connectSSE();
+      } else {
+        disconnectSSE();
+      }
+    }
+
+    // 在表格顶部插入新日志条目
+    function prependLogEntry(entry) {
+      const tbody = document.getElementById('tbody');
+      if (!tbody) return;
+
+      // 检查是否有空状态/加载状态行，如果有则清除
+      const firstRow = tbody.querySelector('tr');
+      if (firstRow && (firstRow.querySelector('.empty-state') || firstRow.querySelector('.loading-state'))) {
+        tbody.innerHTML = '';
+      }
+
+      // 构建日志行数据（与 renderLogs 中的逻辑一致）
+      const clientIPDisplay = entry.client_ip ?
+        escapeHtml(entry.client_ip) :
+        '<span style="color: var(--neutral-400);">-</span>';
+
+      const configInfo = entry.channel_name ||
+        (entry.channel_id ? `渠道 #${entry.channel_id}` :
+         (entry.message === 'exhausted backends' ? '系统（所有渠道失败）' :
+          entry.message === 'no available upstream (all cooled or none)' ? '系统（无可用渠道）' : '系统'));
+      const configDisplay = entry.channel_id ?
+        `<a class="channel-link" href="/web/channels.html?id=${entry.channel_id}#channel-${entry.channel_id}">${escapeHtml(entry.channel_name||'')} <small>(#${entry.channel_id})</small></a>` :
+        `<span style="color: var(--neutral-500);">${escapeHtml(configInfo)}</span>`;
+
+      const statusClass = (entry.status_code >= 200 && entry.status_code < 300) ?
+        'status-success' : 'status-error';
+
+      const modelDisplay = entry.model ?
+        `<span class="model-tag">${escapeHtml(entry.model)}</span>` :
+        '<span style="color: var(--neutral-500);">-</span>';
+
+      const hasDuration = entry.duration !== undefined && entry.duration !== null;
+      const durationDisplay = hasDuration ?
+        `<span style="color: var(--neutral-700);">${entry.duration.toFixed(3)}</span>` :
+        '<span style="color: var(--neutral-500);">-</span>';
+
+      const streamFlag = entry.is_streaming ?
+        '<span class="stream-flag">流</span>' :
+        '<span class="stream-flag placeholder">流</span>';
+
+      let responseTimingDisplay;
+      if (entry.is_streaming) {
+        const hasFirstByte = entry.first_byte_time !== undefined && entry.first_byte_time !== null;
+        const firstByteDisplay = hasFirstByte ?
+          `<span style="color: var(--success-600);">${entry.first_byte_time.toFixed(3)}</span>` :
+          '<span style="color: var(--neutral-500);">-</span>';
+        responseTimingDisplay = `
+          <span style="display: inline-flex; align-items: center; justify-content: flex-end; gap: 4px; white-space: nowrap;">
+            ${firstByteDisplay}
+            <span style="color: var(--neutral-400);">/</span>
+            ${durationDisplay}
+          </span>
+          ${streamFlag}
+        `;
+      } else {
+        responseTimingDisplay = `
+          <span style="display: inline-flex; align-items: center; justify-content: flex-end; gap: 4px; white-space: nowrap;">
+            ${durationDisplay}
+          </span>
+          ${streamFlag}
+        `;
+      }
+
+      let apiKeyDisplay = '';
+      if (entry.api_key_used) {
+        apiKeyDisplay = `<code style="font-size: 0.9em; color: var(--neutral-600);">${escapeHtml(entry.api_key_used)}</code>`;
+      } else {
+        apiKeyDisplay = '<span style="color: var(--neutral-500);">-</span>';
+      }
+
+      const tokenValue = (value, color) => {
+        if (value === undefined || value === null || value === 0) {
+          return '';
+        }
+        return `<span class="token-metric-value" style="color: ${color};">${value.toLocaleString()}</span>`;
+      };
+      const inputTokensDisplay = tokenValue(entry.input_tokens, 'var(--neutral-700)');
+      const outputTokensDisplay = tokenValue(entry.output_tokens, 'var(--neutral-700)');
+      const cacheReadDisplay = tokenValue(entry.cache_read_input_tokens, 'var(--success-600)');
+      const cacheCreationDisplay = tokenValue(entry.cache_creation_input_tokens, 'var(--primary-600)');
+
+      const costDisplay = entry.cost ?
+        `<span style="color: var(--warning-600); font-weight: 500;">${formatCost(entry.cost)}</span>` :
+        '';
+
+      const rowEl = TemplateEngine.render('tpl-log-row', {
+        time: formatTime(entry.time),
+        clientIPDisplay,
+        modelDisplay,
+        configDisplay,
+        apiKeyDisplay,
+        statusClass,
+        statusCode: entry.status_code,
+        responseTimingDisplay,
+        inputTokensDisplay,
+        outputTokensDisplay,
+        cacheReadDisplay,
+        cacheCreationDisplay,
+        costDisplay,
+        message: entry.message || ''
+      });
+
+      if (rowEl) {
+        // 添加高亮动画类
+        rowEl.classList.add('realtime-new');
+        // 插入到表格顶部
+        tbody.insertBefore(rowEl, tbody.firstChild);
+        // 更新统计
+        totalLogs++;
+        const displayedCountEl = document.getElementById('displayedCount');
+        const totalCountEl = document.getElementById('totalCount');
+        if (displayedCountEl) displayedCountEl.textContent = parseInt(displayedCountEl.textContent || '0') + 1;
+        if (totalCountEl) totalCountEl.textContent = totalLogs;
+      }
+    }
+
+    // 页面可见性监听（后台标签页断开 SSE，节省资源）
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        if (realtimeModeEnabled && sseEventSource) {
+          disconnectSSE();
+        }
+      } else {
+        if (realtimeModeEnabled && !sseEventSource) {
+          connectSSE();
+        }
+      }
+    });
+
+    // 初始化实时模式开关
+    function initRealtimeToggle() {
+      const toggle = document.getElementById('realtimeToggle');
+      if (toggle) {
+        toggle.addEventListener('change', (e) => {
+          toggleRealtimeMode(e.target.checked);
+        });
       }
     }

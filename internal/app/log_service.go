@@ -18,6 +18,7 @@ import (
 // - 异步日志记录（批量写入）
 // - 日志 Worker 管理
 // - 日志清理（定时任务）
+// - SSE 实时推送
 // - 优雅关闭
 //
 // 遵循 SRP 原则：仅负责日志管理，不涉及代理、认证、管理 API
@@ -31,6 +32,11 @@ type LogService struct {
 
 	// 日志保留天数（启动时确定，修改后重启生效）
 	retentionDays int
+
+	// SSE 订阅者管理
+	sseSubscribers      map[chan *model.LogEntry]struct{}
+	sseSubscribersMu    sync.RWMutex
+	sseDropCount        atomic.Uint64 // SSE 慢消费者丢弃计数（监控用）
 
 	// 优雅关闭
 	shutdownCh     chan struct{}
@@ -53,6 +59,7 @@ func NewLogService(
 		logChan:        make(chan *model.LogEntry, logBufferSize),
 		logWorkers:     logWorkers,
 		retentionDays:  retentionDays,
+		sseSubscribers: make(map[chan *model.LogEntry]struct{}),
 		shutdownCh:     shutdownCh,
 		isShuttingDown: isShuttingDown,
 		wg:             wg,
@@ -155,6 +162,9 @@ func (s *LogService) AddLogAsync(entry *model.LogEntry) {
 		return
 	}
 
+	// SSE 广播：实时推送给所有订阅者
+	s.broadcastToSSE(entry)
+
 	select {
 	case s.logChan <- entry:
 		// 成功放入队列
@@ -164,6 +174,48 @@ func (s *LogService) AddLogAsync(entry *model.LogEntry) {
 		// 采样告警：每100次丢弃打印一次，避免日志洪水
 		if count%100 == 1 {
 			log.Printf("[WARN]  日志队列已满，日志被丢弃 (累计丢弃: %d)", count)
+		}
+	}
+}
+
+// ============================================================================
+// SSE 实时推送
+// ============================================================================
+
+// Subscribe 订阅日志 SSE 推送，返回一个接收日志的 channel
+// 调用方需要在使用完毕后调用 Unsubscribe 取消订阅
+func (s *LogService) Subscribe() chan *model.LogEntry {
+	ch := make(chan *model.LogEntry, 64) // 缓冲区避免慢消费者阻塞
+	s.sseSubscribersMu.Lock()
+	s.sseSubscribers[ch] = struct{}{}
+	s.sseSubscribersMu.Unlock()
+	return ch
+}
+
+// Unsubscribe 取消订阅日志 SSE 推送
+func (s *LogService) Unsubscribe(ch chan *model.LogEntry) {
+	s.sseSubscribersMu.Lock()
+	delete(s.sseSubscribers, ch)
+	s.sseSubscribersMu.Unlock()
+	close(ch)
+}
+
+// broadcastToSSE 向所有 SSE 订阅者广播日志
+func (s *LogService) broadcastToSSE(entry *model.LogEntry) {
+	s.sseSubscribersMu.RLock()
+	defer s.sseSubscribersMu.RUnlock()
+
+	for ch := range s.sseSubscribers {
+		select {
+		case ch <- entry:
+			// 成功发送
+		default:
+			// 订阅者缓冲区满，跳过（避免阻塞主流程）
+			// 计数用于监控慢消费者
+			count := s.sseDropCount.Add(1)
+			if count%100 == 1 {
+				log.Printf("[WARN]  SSE 订阅者缓冲区满，日志被跳过 (累计跳过: %d)", count)
+			}
 		}
 	}
 }
@@ -216,6 +268,14 @@ func (s *LogService) cleanupOldLogsLoop() {
 // Shutdown 优雅关闭日志服务
 // 注意：不需要等待 Workers，因为 Server 会通过 wg.Wait() 等待
 func (s *LogService) Shutdown(ctx context.Context) error {
+	// 关闭所有 SSE 订阅者
+	s.sseSubscribersMu.Lock()
+	for ch := range s.sseSubscribers {
+		delete(s.sseSubscribers, ch)
+		close(ch)
+	}
+	s.sseSubscribersMu.Unlock()
+
 	// 不关闭logChan：channel关闭与并发send存在天然竞态，panic只会把进程炸掉。
 	// Worker通过shutdownCh退出；shutdown时的日志flush由logWorker负责。
 	return nil
