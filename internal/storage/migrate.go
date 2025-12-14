@@ -287,6 +287,8 @@ func initDefaultSettings(ctx context.Context, db *sql.DB, dialect Dialect) error
 		{"channel_test_content", "sonnet 4.0的发布日期是什么", "string", "渠道测试默认内容", "sonnet 4.0的发布日期是什么"},
 		{"channel_stats_range", "today", "string", "渠道管理费用统计范围", "today"},
 		{"endpoint_test_count", "3", "int", "端点测速次数(1-10次,取平均值)", "3"},
+		{"cooldown_mode", "exponential", "string", "冷却时间模式(exponential=递增,fixed=固定)", "exponential"},
+		{"cooldown_fixed_interval", "30", "int", "固定冷却时间间隔(秒,仅fixed模式生效)", "30"},
 	}
 
 	var query string
