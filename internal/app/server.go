@@ -57,6 +57,9 @@ type Server struct {
 	concurrencySem chan struct{} // 信号量：限制最大并发请求数（防止goroutine爆炸）
 	maxConcurrency int           // 最大并发数（默认1000）
 
+	// 后台服务
+	endpointTester *EndpointTester // 后台端点测速服务
+
 	// 优雅关闭机制
 	shutdownCh     chan struct{}  // 关闭信号channel
 	shutdownDone   chan struct{}  // Shutdown完成信号（幂等）
@@ -200,6 +203,11 @@ func NewServer(store storage.Store) *Server {
 	// 启动后台清理协程（Token 认证）
 	s.wg.Add(1)
 	go s.tokenCleanupLoop() // 定期清理过期Token
+
+	// 启动后台端点测速服务（0=禁用）
+	autoTestInterval := configService.GetInt("auto_test_endpoints_interval", 30)
+	s.endpointTester = NewEndpointTester(s, autoTestInterval)
+	s.endpointTester.Start()
 
 	return s
 
@@ -525,6 +533,11 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	defer close(s.shutdownDone)
 
 	log.Print("🛑 正在关闭Server，等待后台任务完成...")
+
+	// 停止后台端点测速服务
+	if s.endpointTester != nil {
+		s.endpointTester.Stop()
+	}
 
 	// 关闭shutdownCh，通知所有goroutine退出（幂等：由isShuttingDown守护）
 	close(s.shutdownCh)

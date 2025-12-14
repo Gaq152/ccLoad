@@ -359,6 +359,7 @@ func initDefaultSettings(ctx context.Context, db *sql.DB, dialect Dialect) error
 		{"endpoint_test_count", "3", "int", "端点测速次数(1-10次,取平均值)", "3"},
 		{"cooldown_mode", "exponential", "string", "冷却时间模式(exponential=递增,fixed=固定)", "exponential"},
 		{"cooldown_fixed_interval", "30", "int", "固定冷却时间间隔(秒,仅fixed模式生效)", "30"},
+		{"auto_test_endpoints_interval", "30", "int", "后台自动测速端点间隔(秒,0=禁用)", "30"},
 	}
 
 	var query string
