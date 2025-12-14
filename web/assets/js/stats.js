@@ -562,6 +562,7 @@
     }
 
     // ========== 自动刷新功能 ==========
+    const AUTO_REFRESH_KEY = 'stats.auto_refresh_enabled';
     const AUTO_REFRESH_INTERVAL = 30000; // 30秒
     let autoRefreshEnabled = true;
     let autoRefreshTimer = null;
@@ -615,6 +616,7 @@
 
     function toggleAutoRefresh(enabled) {
       autoRefreshEnabled = enabled;
+      localStorage.setItem(AUTO_REFRESH_KEY, enabled ? 'true' : 'false');
       if (enabled) {
         startAutoRefresh();
       } else {
@@ -632,13 +634,22 @@
 
     function initAutoRefresh() {
       const toggle = document.getElementById('autoRefreshToggle');
+      const saved = localStorage.getItem(AUTO_REFRESH_KEY);
+      // 默认开启
+      const enabled = saved !== 'false';
+      autoRefreshEnabled = enabled;
+
       if (toggle) {
+        toggle.checked = enabled;
         toggle.addEventListener('change', (e) => {
           toggleAutoRefresh(e.target.checked);
         });
       }
-      // 页面加载后启动自动刷新
-      startAutoRefresh();
+
+      // 根据保存的状态启动
+      if (enabled) {
+        startAutoRefresh();
+      }
     }
 
     // 页面可见性监听（后台标签页暂停自动刷新，节省资源）

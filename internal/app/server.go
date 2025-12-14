@@ -378,6 +378,10 @@ func (s *Server) SetupRoutes(r *gin.Engine) {
 	// 需要身份验证的admin APIs（使用Token认证）
 	admin := r.Group("/admin")
 	admin.Use(s.authService.RequireTokenAuth())
+	admin.Use(func(c *gin.Context) {
+		c.Header("Cache-Control", "no-store, no-cache, must-revalidate")
+		c.Next()
+	})
 	{
 		// 渠道管理
 		admin.GET("/channels", s.HandleChannels)
