@@ -61,9 +61,15 @@ func migrate(ctx context.Context, db *sql.DB, dialect Dialect) error {
 		}
 
 		// 增量迁移：确保channels表有auto_select_endpoint字段（2025-12新增）
-		if tb.Name() == "channels" && dialect == DialectMySQL {
-			if err := ensureChannelsAutoSelectEndpoint(ctx, db); err != nil {
-				return fmt.Errorf("migrate channels.auto_select_endpoint: %w", err)
+		if tb.Name() == "channels" {
+			if dialect == DialectMySQL {
+				if err := ensureChannelsAutoSelectEndpoint(ctx, db); err != nil {
+					return fmt.Errorf("migrate channels.auto_select_endpoint: %w", err)
+				}
+			} else {
+				if err := ensureChannelsAutoSelectEndpointSQLite(ctx, db); err != nil {
+					return fmt.Errorf("migrate channels.auto_select_endpoint: %w", err)
+				}
 			}
 		}
 
@@ -157,6 +163,45 @@ func ensureChannelsAutoSelectEndpoint(ctx context.Context, db *sql.DB) error {
 
 	_, err = db.ExecContext(ctx,
 		"ALTER TABLE channels ADD COLUMN auto_select_endpoint TINYINT NOT NULL DEFAULT 0 COMMENT '自动选择最快端点(新增2025-12)'",
+	)
+	if err != nil {
+		return fmt.Errorf("add auto_select_endpoint column: %w", err)
+	}
+
+	return nil
+}
+
+// ensureChannelsAutoSelectEndpointSQLite 确保channels表有auto_select_endpoint字段(SQLite增量迁移,2025-12新增)
+func ensureChannelsAutoSelectEndpointSQLite(ctx context.Context, db *sql.DB) error {
+	// SQLite 用 PRAGMA table_info 检查字段是否存在
+	rows, err := db.QueryContext(ctx, "PRAGMA table_info(channels)")
+	if err != nil {
+		return fmt.Errorf("check table info: %w", err)
+	}
+	defer rows.Close()
+
+	hasColumn := false
+	for rows.Next() {
+		var cid int
+		var name, typ string
+		var notNull, pk int
+		var dfltValue any
+		if err := rows.Scan(&cid, &name, &typ, &notNull, &dfltValue, &pk); err != nil {
+			return fmt.Errorf("scan column info: %w", err)
+		}
+		if name == "auto_select_endpoint" {
+			hasColumn = true
+			break
+		}
+	}
+
+	if hasColumn {
+		return nil
+	}
+
+	// 添加字段
+	_, err = db.ExecContext(ctx,
+		"ALTER TABLE channels ADD COLUMN auto_select_endpoint INTEGER NOT NULL DEFAULT 0",
 	)
 	if err != nil {
 		return fmt.Errorf("add auto_select_endpoint column: %w", err)

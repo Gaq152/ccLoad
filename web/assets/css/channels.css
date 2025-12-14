@@ -178,6 +178,17 @@
       color: var(--error-600);
     }
 
+    /* 状态码样式 */
+    .endpoint-latency .status-ok {
+      color: var(--success-600);
+      font-size: 0.85em;
+    }
+
+    .endpoint-latency .status-error {
+      color: var(--error-600);
+      font-size: 0.85em;
+    }
+
     .endpoint-delete-btn {
       width: 24px;
       height: 24px;
