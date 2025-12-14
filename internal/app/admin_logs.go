@@ -44,7 +44,13 @@ func (s *Server) HandleLogSSE(c *gin.Context) {
 		cancel()
 
 		if err == nil && len(missedLogs) > 0 {
-			// 推送历史日志
+			// 反转顺序：数据库返回 DESC（新→旧），改为 ASC（旧→新）
+			// 前端 prepend 时，旧的先插入，新的后插入到顶部，最终新的在最上面
+			for i, j := 0, len(missedLogs)-1; i < j; i, j = i+1, j-1 {
+				missedLogs[i], missedLogs[j] = missedLogs[j], missedLogs[i]
+			}
+
+			// 推送历史日志（从旧到新）
 			for _, entry := range missedLogs {
 				if err := writeSSELog(w, entry); err != nil {
 					return
