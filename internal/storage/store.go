@@ -114,6 +114,7 @@ type EndpointStore interface {
 	GetChannelAutoSelectEndpoint(ctx context.Context, channelID int64) (bool, error)
 	SetChannelAutoSelectEndpoint(ctx context.Context, channelID int64, autoSelect bool) error
 	SelectFastestEndpoint(ctx context.Context, channelID int64) error
+	GetChannelsWithAutoSelect(ctx context.Context) ([]*model.Config, error) // 获取所有开启自动选择的渠道
 }
 
 // ============================================================================

@@ -240,3 +240,32 @@ func (s *SQLStore) SelectFastestEndpoint(ctx context.Context, channelID int64) e
 	// 设置为激活端点
 	return s.SetActiveEndpoint(ctx, channelID, fastestID)
 }
+
+// GetChannelsWithAutoSelect 获取所有开启自动选择且有端点的渠道ID列表
+func (s *SQLStore) GetChannelsWithAutoSelect(ctx context.Context) ([]*model.Config, error) {
+	// 只查询已启用、开启自动选择、且有多个端点的渠道
+	query := `
+		SELECT DISTINCT c.id, c.name
+		FROM channels c
+		INNER JOIN channel_endpoints e ON c.id = e.channel_id
+		WHERE c.enabled = 1 AND c.auto_select_endpoint = 1
+		GROUP BY c.id
+		HAVING COUNT(e.id) > 1
+	`
+	rows, err := s.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var channels []*model.Config
+	for rows.Next() {
+		var ch model.Config
+		if err := rows.Scan(&ch.ID, &ch.Name); err != nil {
+			return nil, err
+		}
+		channels = append(channels, &ch)
+	}
+
+	return channels, rows.Err()
+}
