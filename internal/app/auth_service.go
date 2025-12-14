@@ -220,21 +220,31 @@ func (s *AuthService) CleanExpiredTokens() {
 // ============================================================================
 
 // RequireTokenAuth Token 认证中间件（管理界面使用）
+// 支持两种认证方式：
+// 1. Authorization 头：Bearer <token>
+// 2. URL 参数：?token=<token>（用于 SSE 等不支持自定义头的场景）
 func (s *AuthService) RequireTokenAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// 从 Authorization 头获取Token
+		var token string
+
+		// 优先从 Authorization 头获取 Token
 		authHeader := c.GetHeader("Authorization")
 		if authHeader != "" {
 			const prefix = "Bearer "
 			if strings.HasPrefix(authHeader, prefix) {
-				token := strings.TrimPrefix(authHeader, prefix)
-
-				// 检查动态Token（登录生成的24小时Token）
-				if s.isValidToken(token) {
-					c.Next()
-					return
-				}
+				token = strings.TrimPrefix(authHeader, prefix)
 			}
+		}
+
+		// 如果头部没有，尝试从 URL 参数获取（用于 SSE）
+		if token == "" {
+			token = c.Query("token")
+		}
+
+		// 验证 Token
+		if token != "" && s.isValidToken(token) {
+			c.Next()
+			return
 		}
 
 		// 未授权

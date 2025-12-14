@@ -81,6 +81,16 @@
               显示 <span id="displayedCount">0</span> / <span id="totalCount">0</span> 条
             </div>
 
+            <!-- 实时模式开关 -->
+            <div class="filter-group" style="display: flex; align-items: center; gap: 8px;">
+              <label class="toggle-switch" title="开启后实时接收新日志">
+                <input type="checkbox" id="realtimeToggle">
+                <span class="toggle-slider"></span>
+              </label>
+              <span id="realtimeLabel" style="font-size: 13px; color: var(--neutral-600);">实时</span>
+              <span id="realtimeStatus" style="font-size: 12px; color: var(--neutral-500); display: none;"></span>
+            </div>
+
             <!-- 操作按钮组 -->
             <div style="flex: none;">
               <button id="btn_filter" type="button" class="btn btn-primary" style="padding: 8px 16px; font-size: 14px;">筛选</button>

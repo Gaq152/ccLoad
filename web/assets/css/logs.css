@@ -132,3 +132,60 @@
     .logs-table th {
       text-align: center;
     }
+
+    /* Toggle Switch 样式 */
+    .toggle-switch {
+      position: relative;
+      display: inline-block;
+      width: 40px;
+      height: 22px;
+      cursor: pointer;
+    }
+
+    .toggle-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .toggle-slider {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: var(--neutral-300);
+      border-radius: 22px;
+      transition: background-color 0.2s ease;
+    }
+
+    .toggle-slider::before {
+      content: "";
+      position: absolute;
+      width: 18px;
+      height: 18px;
+      left: 2px;
+      bottom: 2px;
+      background-color: white;
+      border-radius: 50%;
+      transition: transform 0.2s ease;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+
+    .toggle-switch input:checked + .toggle-slider {
+      background-color: var(--success-500);
+    }
+
+    .toggle-switch input:checked + .toggle-slider::before {
+      transform: translateX(18px);
+    }
+
+    /* 实时日志新行高亮动画 */
+    @keyframes highlight-fade {
+      0% { background-color: var(--success-100); }
+      100% { background-color: transparent; }
+    }
+
+    .logs-table tr.realtime-new {
+      animation: highlight-fade 2s ease-out;
+    }
