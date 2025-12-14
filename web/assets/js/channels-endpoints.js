@@ -77,7 +77,6 @@
    */
   function renderEndpointList() {
     const container = document.getElementById('endpointList');
-    const template = document.getElementById('tpl-endpoint-item');
 
     if (endpointsData.length === 0) {
       container.innerHTML = `
@@ -88,7 +87,11 @@
       return;
     }
 
-    container.innerHTML = endpointsData.map((ep, index) => {
+    // 使用 DocumentFragment 优化批量 DOM 操作
+    container.innerHTML = '';
+    const fragment = document.createDocumentFragment();
+
+    endpointsData.forEach((ep, index) => {
       const isActive = ep.is_active;
       const latencyMs = ep.latency_ms;
 
@@ -110,7 +113,8 @@
         }
       }
 
-      return TemplateEngine.render(template, {
+      // 修复：传入模板 ID 字符串，而非 DOM 元素
+      const item = TemplateEngine.render('tpl-endpoint-item', {
         id: ep.id || 0,
         index: index,
         url: ep.url,
@@ -119,7 +123,10 @@
         latencyText: latencyText,
         latencyClass: latencyClass
       });
-    }).join('');
+      if (item) fragment.appendChild(item);
+    });
+
+    container.appendChild(fragment);
 
     // 绑定点击事件
     bindEndpointEvents();

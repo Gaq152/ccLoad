@@ -1091,6 +1091,11 @@
 
       sseEventSource.onerror = (e) => {
         console.error('[SSE] 连接错误:', e);
+        // 主动清理实例，避免 readyState=CLOSED 却不重连
+        if (sseEventSource) {
+          try { sseEventSource.close(); } catch (_) {}
+          sseEventSource = null;
+        }
         updateRealtimeStatus('连接失败', false);
         // 5秒后尝试重连
         if (realtimeModeEnabled) {
@@ -1249,8 +1254,19 @@
           disconnectSSE();
         }
       } else {
-        if (realtimeModeEnabled && !sseEventSource) {
-          connectSSE();
+        // 页面重新可见时，检查是否需要重连
+        // 除了 sseEventSource 为 null，还需检查 readyState === CLOSED 的情况
+        if (realtimeModeEnabled) {
+          const needReconnect = !sseEventSource ||
+            (sseEventSource.readyState === EventSource.CLOSED);
+          if (needReconnect) {
+            // 丢弃已关闭的实例
+            if (sseEventSource && sseEventSource.readyState === EventSource.CLOSED) {
+              try { sseEventSource.close(); } catch (_) {}
+              sseEventSource = null;
+            }
+            connectSSE();
+          }
         }
       }
     });
