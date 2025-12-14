@@ -26,7 +26,7 @@
       'Authorization': `Bearer ${token}`,
     };
 
-    const response = await fetch(url, { ...options, headers });
+    const response = await fetch(url, { ...options, cache: 'no-store', headers });
 
     // 处理401未授权（静默跳转，不显示错误提示）
     if (response.status === 401) {

@@ -966,6 +966,7 @@
     }
 
     // ========== SSE 实时日志推送 ==========
+    const REALTIME_MODE_KEY = 'logs.realtime_enabled';
     let sseEventSource = null;
     let realtimeModeEnabled = false;
     let realtimeLogCount = 0; // 实时接收的日志计数
@@ -989,7 +990,7 @@
       }
 
       // 获取当前的认证 token
-      const token = localStorage.getItem('auth_token');
+      const token = localStorage.getItem('ccload_token');
       if (!token) {
         updateRealtimeStatus('未登录', false);
         return;
@@ -1047,6 +1048,7 @@
 
     function toggleRealtimeMode(enabled) {
       realtimeModeEnabled = enabled;
+      localStorage.setItem(REALTIME_MODE_KEY, enabled ? 'true' : 'false');
       if (enabled) {
         connectSSE();
       } else {
@@ -1186,9 +1188,19 @@
     // 初始化实时模式开关
     function initRealtimeToggle() {
       const toggle = document.getElementById('realtimeToggle');
+      const saved = localStorage.getItem(REALTIME_MODE_KEY);
+      // 默认关闭
+      const enabled = saved === 'true';
+
       if (toggle) {
+        toggle.checked = enabled;
         toggle.addEventListener('change', (e) => {
           toggleRealtimeMode(e.target.checked);
         });
+      }
+
+      // 根据保存的状态启动
+      if (enabled) {
+        toggleRealtimeMode(true);
       }
     }
