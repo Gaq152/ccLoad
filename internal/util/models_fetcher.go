@@ -244,6 +244,14 @@ var predefinedModelSets = map[string][]string{
 		"gpt-5.1-codex-max",
 		"gpt-5.2",
 	},
+	ChannelTypeGemini: {
+		// Gemini 3 系列（2025年11月最新）
+		"gemini-3-pro",
+		"gemini-3-deep-think",
+		// Gemini 2.5 系列
+		"gemini-2.5-pro",
+		"gemini-2.5-flash",
+	},
 }
 
 // PredefinedModels 返回给定渠道类型的预设模型列表

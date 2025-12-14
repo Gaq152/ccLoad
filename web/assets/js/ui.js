@@ -301,6 +301,71 @@
     return channelTypesCache;
   }
 
+  // 各渠道类型的示例模型（用于 placeholder 显示）
+  const modelPlaceholders = {
+    'anthropic': 'claude-sonnet-4-5-20250929,claude-opus-4-5-20251101',
+    'codex': 'gpt-5,gpt-5.1-codex',
+    'openai': 'gpt-4o,gpt-4-turbo',
+    'gemini': 'gemini-3-pro,gemini-2.5-flash'
+  };
+
+  // 各渠道类型的官方 API URL（用于 placeholder 显示）
+  const urlPlaceholders = {
+    'anthropic': 'https://api.anthropic.com',
+    'codex': 'https://api.openai.com',
+    'openai': 'https://api.openai.com',
+    'gemini': 'https://generativelanguage.googleapis.com'
+  };
+
+  /**
+   * 获取渠道类型对应的模型 placeholder
+   * @param {string} channelType - 渠道类型
+   * @returns {string} placeholder 文本
+   */
+  function getModelPlaceholder(channelType) {
+    return modelPlaceholders[channelType] || modelPlaceholders['anthropic'];
+  }
+
+  /**
+   * 获取渠道类型对应的 URL placeholder
+   * @param {string} channelType - 渠道类型
+   * @returns {string} placeholder 文本
+   */
+  function getURLPlaceholder(channelType) {
+    return urlPlaceholders[channelType] || urlPlaceholders['anthropic'];
+  }
+
+  /**
+   * 更新模型输入框的 placeholder
+   * @param {string} channelType - 渠道类型
+   */
+  function updateModelPlaceholder(channelType) {
+    const modelsInput = document.getElementById('channelModels');
+    if (modelsInput) {
+      modelsInput.placeholder = getModelPlaceholder(channelType);
+    }
+  }
+
+  /**
+   * 更新 URL 输入框的 placeholder
+   * @param {string} channelType - 渠道类型
+   */
+  function updateURLPlaceholder(channelType) {
+    const urlInput = document.getElementById('channelUrl');
+    if (urlInput) {
+      urlInput.placeholder = getURLPlaceholder(channelType);
+    }
+  }
+
+  /**
+   * 更新所有动态 placeholder（模型和URL）
+   * @param {string} channelType - 渠道类型
+   */
+  function updateAllPlaceholders(channelType) {
+    updateModelPlaceholder(channelType);
+    updateURLPlaceholder(channelType);
+  }
+
   /**
    * 渲染渠道类型单选按钮组（用于编辑渠道界面）
    * @param {string} containerId - 容器元素ID
@@ -325,6 +390,16 @@
         <span title="${escapeHtml(type.description)}">${escapeHtml(type.display_name)}</span>
       </label>
     `).join('');
+
+    // 绑定 change 事件，动态更新所有 placeholder（模型和URL）
+    container.querySelectorAll('input[name="channelType"]').forEach(radio => {
+      radio.addEventListener('change', (e) => {
+        updateAllPlaceholders(e.target.value);
+      });
+    });
+
+    // 初始化时设置所有 placeholder
+    updateAllPlaceholders(selectedValue);
   }
 
   /**
@@ -430,7 +505,10 @@
     renderChannelTypeSelect,
     renderChannelTypeFilter,
     renderChannelTypeTabs,
-    getChannelTypeDisplayName
+    getChannelTypeDisplayName,
+    updateAllPlaceholders,
+    getURLPlaceholder,
+    getModelPlaceholder
   };
 })();
 
