@@ -342,7 +342,7 @@ func maskAPIKey(key string) string {
 
 // buildLogEntry 构建日志条目（消除重复代码，遵循DRY原则）
 func buildLogEntry(originalModel string, channelID int64, channelName string, statusCode int,
-	duration float64, isStreaming bool, apiKeyUsed string, authTokenID int64, clientIP string,
+	duration float64, isStreaming bool, apiKeyUsed string, apiBaseURL string, authTokenID int64, clientIP string,
 	res *fwResult, errMsg string) *model.LogEntry {
 
 	// API Key 脱敏（SSE 推送和数据库写入都需要脱敏）
@@ -357,6 +357,7 @@ func buildLogEntry(originalModel string, channelID int64, channelName string, st
 		Duration:    duration,
 		IsStreaming: isStreaming,
 		APIKeyUsed:  maskedKey,
+		APIBaseURL:  apiBaseURL,
 		AuthTokenID: authTokenID,
 		ClientIP:    clientIP,
 	}

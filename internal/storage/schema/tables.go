@@ -126,6 +126,7 @@ func DefineLogsTable() *TableBuilder {
 		Column("is_streaming TINYINT NOT NULL DEFAULT 0").
 		Column("first_byte_time DOUBLE NOT NULL DEFAULT 0.0").
 		Column("api_key_used VARCHAR(191) NOT NULL DEFAULT ''").
+		Column("api_base_url VARCHAR(512) NOT NULL DEFAULT ''"). // 使用的API端点URL（新增2025-12）
 		Column("auth_token_id BIGINT NOT NULL DEFAULT 0"). // 客户端使用的API令牌ID（新增2025-12）
 		Column("client_ip VARCHAR(45) NOT NULL DEFAULT ''"). // 客户端IP地址（新增2025-12）
 		Column("input_tokens INT NOT NULL DEFAULT 0").

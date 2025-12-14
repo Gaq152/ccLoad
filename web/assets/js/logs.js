@@ -6,6 +6,17 @@
     let authTokens = []; // 令牌列表
     let defaultTestContent = 'sonnet 4.0的发布日期是什么'; // 默认测试内容（从设置加载）
 
+    // 从 URL 提取域名部分（用于日志显示）
+    function extractUrlHost(url) {
+      if (!url) return '';
+      try {
+        const u = new URL(url);
+        return u.host;
+      } catch {
+        return url.slice(0, 30) + (url.length > 30 ? '...' : '');
+      }
+    }
+
     // 加载默认测试内容（从系统设置）
     async function loadDefaultTestContent() {
       try {
@@ -127,13 +138,15 @@
           escapeHtml(entry.client_ip) :
           '<span style="color: var(--neutral-400);">-</span>';
 
-        // 1. 渠道信息显示
+        // 1. 渠道信息显示（含 API URL）
         const configInfo = entry.channel_name ||
           (entry.channel_id ? `渠道 #${entry.channel_id}` :
            (entry.message === 'exhausted backends' ? '系统（所有渠道失败）' :
             entry.message === 'no available upstream (all cooled or none)' ? '系统（无可用渠道）' : '系统'));
+        const apiUrlDisplay = entry.api_base_url ?
+          `<div style="font-size: 0.8em; color: var(--neutral-500); margin-top: 2px;" title="${escapeHtml(entry.api_base_url)}">${escapeHtml(extractUrlHost(entry.api_base_url))}</div>` : '';
         const configDisplay = entry.channel_id ?
-          `<a class="channel-link" href="/web/channels.html?id=${entry.channel_id}#channel-${entry.channel_id}">${escapeHtml(entry.channel_name||'')} <small>(#${entry.channel_id})</small></a>` :
+          `<a class="channel-link" href="/web/channels.html?id=${entry.channel_id}#channel-${entry.channel_id}">${escapeHtml(entry.channel_name||'')} <small>(#${entry.channel_id})</small></a>${apiUrlDisplay}` :
           `<span style="color: var(--neutral-500);">${escapeHtml(configInfo)}</span>`;
 
         // 2. 状态码样式
@@ -1193,8 +1206,10 @@
         (entry.channel_id ? `渠道 #${entry.channel_id}` :
          (entry.message === 'exhausted backends' ? '系统（所有渠道失败）' :
           entry.message === 'no available upstream (all cooled or none)' ? '系统（无可用渠道）' : '系统'));
+      const apiUrlDisplay = entry.api_base_url ?
+        `<div style="font-size: 0.8em; color: var(--neutral-500); margin-top: 2px;" title="${escapeHtml(entry.api_base_url)}">${escapeHtml(extractUrlHost(entry.api_base_url))}</div>` : '';
       const configDisplay = entry.channel_id ?
-        `<a class="channel-link" href="/web/channels.html?id=${entry.channel_id}#channel-${entry.channel_id}">${escapeHtml(entry.channel_name||'')} <small>(#${entry.channel_id})</small></a>` :
+        `<a class="channel-link" href="/web/channels.html?id=${entry.channel_id}#channel-${entry.channel_id}">${escapeHtml(entry.channel_name||'')} <small>(#${entry.channel_id})</small></a>${apiUrlDisplay}` :
         `<span style="color: var(--neutral-500);">${escapeHtml(configInfo)}</span>`;
 
       const statusClass = (entry.status_code >= 200 && entry.status_code < 300) ?
