@@ -49,6 +49,9 @@ function filterChannels() {
 
   renderChannels(filtered);
   updateFilterInfo(filtered.length, channels.length);
+
+  // 渲染完成后，检查并启动冷却倒计时
+  checkAndStartCooldownCountdown();
 }
 
 // Update filter info display

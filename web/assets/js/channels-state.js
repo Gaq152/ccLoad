@@ -47,6 +47,107 @@ function clearChannelsCache() {
   channelsCache = {};
 }
 
+// ========== 冷却时间本地倒计时 ==========
+let cooldownCountdownInterval = null;
+
+/**
+ * 启动冷却时间倒计时
+ * 每秒更新所有渠道和 Key 的冷却剩余时间
+ */
+function startCooldownCountdown() {
+  if (cooldownCountdownInterval) return;
+
+  cooldownCountdownInterval = setInterval(() => {
+    let hasActiveCooldown = false;
+
+    // 更新渠道冷却时间
+    channels.forEach(c => {
+      if (c.cooldown_remaining_ms > 0) {
+        c.cooldown_remaining_ms = Math.max(0, c.cooldown_remaining_ms - 1000);
+        hasActiveCooldown = true;
+        // 更新 DOM 中的冷却徽章
+        updateChannelCooldownBadge(c.id, c.cooldown_remaining_ms);
+      }
+    });
+
+    // 更新 Key 冷却时间（编辑模态框中的 Key 列表）
+    currentChannelKeyCooldowns.forEach(kc => {
+      if (kc.cooldown_remaining_ms > 0) {
+        kc.cooldown_remaining_ms = Math.max(0, kc.cooldown_remaining_ms - 1000);
+        hasActiveCooldown = true;
+      }
+    });
+
+    // 如果有 Key 冷却在变化且模态框打开，更新 Key 表格显示
+    if (editingChannelId && currentChannelKeyCooldowns.some(kc => kc.cooldown_remaining_ms >= 0)) {
+      updateKeyTableCooldownDisplay();
+    }
+
+    // 如果没有任何活跃的冷却，停止倒计时以节省资源
+    if (!hasActiveCooldown) {
+      stopCooldownCountdown();
+    }
+  }, 1000);
+}
+
+/**
+ * 停止冷却时间倒计时
+ */
+function stopCooldownCountdown() {
+  if (cooldownCountdownInterval) {
+    clearInterval(cooldownCountdownInterval);
+    cooldownCountdownInterval = null;
+  }
+}
+
+/**
+ * 更新单个渠道的冷却徽章显示
+ */
+function updateChannelCooldownBadge(channelId, remainingMs) {
+  const container = document.querySelector(`.cooldown-badge-container[data-channel-id="${channelId}"]`);
+  if (!container) return;
+
+  if (remainingMs <= 0) {
+    container.innerHTML = '';
+    // 移除卡片的冷却样式
+    const card = document.getElementById(`channel-${channelId}`);
+    if (card) card.classList.remove('channel-card-cooldown');
+  } else {
+    const text = humanizeMS(remainingMs);
+    container.innerHTML = ` <span style="color: #dc2626; font-size: 0.875rem; font-weight: 500; background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%); padding: 2px 8px; border-radius: 4px; border: 1px solid #fca5a5;">⚠️ 冷却中·${text}</span>`;
+  }
+}
+
+/**
+ * 更新 Key 表格中的冷却显示（编辑模态框中）
+ */
+function updateKeyTableCooldownDisplay() {
+  // 只更新冷却状态，不重新渲染整个表格
+  currentChannelKeyCooldowns.forEach(kc => {
+    const statusCell = document.querySelector(`#inlineKeyTableBody tr[data-key-index="${kc.key_index}"] .key-cooldown-status`);
+    if (statusCell) {
+      if (kc.cooldown_remaining_ms > 0) {
+        const text = humanizeMS(kc.cooldown_remaining_ms);
+        statusCell.innerHTML = `<span style="color: #dc2626; font-size: 11px; background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%); padding: 2px 6px; border-radius: 4px; border: 1px solid #fca5a5;">⚠️ 冷却中·${text}</span>`;
+      } else {
+        statusCell.innerHTML = '<span style="color: var(--success-600); font-size: 12px;">✓ 正常</span>';
+      }
+    }
+  });
+}
+
+/**
+ * 检查是否有活跃的冷却，如果有则启动倒计时
+ */
+function checkAndStartCooldownCountdown() {
+  const hasChannelCooldown = channels.some(c => c.cooldown_remaining_ms > 0);
+  const hasKeyCooldown = currentChannelKeyCooldowns.some(kc => kc.cooldown_remaining_ms > 0);
+
+  if (hasChannelCooldown || hasKeyCooldown) {
+    startCooldownCountdown();
+  }
+}
+
 function humanizeMS(ms) {
   let s = Math.ceil(ms / 1000);
   const h = Math.floor(s / 3600);

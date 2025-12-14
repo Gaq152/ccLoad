@@ -452,7 +452,7 @@
 
   <!-- HTML模板定义 (分离HTML与JS) -->
   <template id="tpl-key-row">
-    <tr style="border-bottom: 1px solid var(--neutral-200); height: 42px;">
+    <tr style="border-bottom: 1px solid var(--neutral-200); height: 42px;" data-key-index="{{index}}">
       <td style="padding: 6px 10px;">
         <div style="display: flex; align-items: center; gap: 8px;">
           <input
@@ -473,7 +473,7 @@
           style="width: 100%; padding: 5px 8px; border: 1px solid var(--neutral-300); border-radius: 6px; font-family: 'Monaco', 'Menlo', 'Courier New', monospace; font-size: 13px; transition: all 0.2s;"
         >
       </td>
-      <td style="padding: 6px 10px;">{{{cooldownHtml}}}</td>
+      <td style="padding: 6px 10px;" class="key-cooldown-status">{{{cooldownHtml}}}</td>
       <td style="padding: 6px 10px; text-align: center;">{{{actionsHtml}}}</td>
     </tr>
   </template>
@@ -535,7 +535,7 @@
           </div>
           <div class="text-sm" style="color: var(--neutral-600); margin-top: 4px;">
             <div class="channel-meta-line">
-              <span>URL: {{url}} | 优先级: {{priority}} | {{statusText}}{{{cooldownBadge}}}</span>
+              <span>URL: {{url}} | 优先级: {{priority}} | {{statusText}}<span class="cooldown-badge-container" data-channel-id="{{id}}">{{{cooldownBadge}}}</span></span>
               {{{statsHtml}}}
             </div>
           </div>
