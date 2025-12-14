@@ -19,11 +19,27 @@ type Config struct {
 	CooldownUntil      int64 `json:"cooldown_until"`       // Unix秒时间戳，0表示无冷却
 	CooldownDurationMs int64 `json:"cooldown_duration_ms"` // 冷却持续时间（毫秒）
 
+	// 多端点管理（2025-12新增）
+	AutoSelectEndpoint bool              `json:"auto_select_endpoint"` // 自动选择最快端点
+	Endpoints          []ChannelEndpoint `json:"endpoints,omitempty"`  // 端点列表（查询时填充）
+
 	CreatedAt JSONTime `json:"created_at"` // 使用JSONTime确保序列化格式一致（RFC3339）
 	UpdatedAt JSONTime `json:"updated_at"` // 使用JSONTime确保序列化格式一致（RFC3339）
 
 	// 缓存Key数量，避免冷却判断时的N+1查询
 	KeyCount int `json:"key_count"` // API Key数量（查询时JOIN计算）
+}
+
+// ChannelEndpoint 渠道端点（多URL支持）
+type ChannelEndpoint struct {
+	ID         int64  `json:"id"`
+	ChannelID  int64  `json:"channel_id"`
+	URL        string `json:"url"`
+	IsActive   bool   `json:"is_active"`    // 当前选中的端点
+	LatencyMs  *int   `json:"latency_ms"`   // 最近测速延迟(ms)，nil表示未测试
+	LastTestAt int64  `json:"last_test_at"` // 最后测速时间戳
+	SortOrder  int    `json:"sort_order"`   // 排序顺序
+	CreatedAt  int64  `json:"created_at"`
 }
 
 // GetChannelType 默认返回"anthropic"（Claude API）

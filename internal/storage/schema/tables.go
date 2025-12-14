@@ -14,6 +14,7 @@ func DefineChannelsTable() *TableBuilder {
 		Column("cooldown_until BIGINT NOT NULL DEFAULT 0").
 		Column("cooldown_duration_ms BIGINT NOT NULL DEFAULT 0").
 		Column("rr_key_index INT NOT NULL DEFAULT 0").
+		Column("auto_select_endpoint TINYINT NOT NULL DEFAULT 0"). // 自动选择最快端点
 		Column("created_at BIGINT NOT NULL").
 		Column("updated_at BIGINT NOT NULL").
 		Index("idx_channels_enabled", "enabled").
@@ -94,6 +95,22 @@ func DefineAdminSessionsTable() *TableBuilder {
 		Column("expires_at BIGINT NOT NULL").
 		Column("created_at BIGINT NOT NULL").
 		Index("idx_admin_sessions_expires", "expires_at")
+}
+
+// DefineChannelEndpointsTable 定义channel_endpoints表结构（多端点管理）
+func DefineChannelEndpointsTable() *TableBuilder {
+	return NewTable("channel_endpoints").
+		Column("id INT PRIMARY KEY AUTO_INCREMENT").
+		Column("channel_id INT NOT NULL").
+		Column("url VARCHAR(512) NOT NULL").
+		Column("is_active TINYINT NOT NULL DEFAULT 0").       // 当前选中的端点
+		Column("latency_ms INT DEFAULT NULL").                // 最近测速延迟(ms)，NULL表示未测试
+		Column("last_test_at BIGINT NOT NULL DEFAULT 0").     // 最后测速时间戳
+		Column("sort_order INT NOT NULL DEFAULT 0").          // 排序顺序
+		Column("created_at BIGINT NOT NULL").
+		Column("FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE").
+		Index("idx_channel_endpoints_channel", "channel_id").
+		Index("idx_channel_endpoints_active", "channel_id, is_active")
 }
 
 // DefineLogsTable 定义logs表结构

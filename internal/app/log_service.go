@@ -185,7 +185,9 @@ func (s *LogService) AddLogAsync(entry *model.LogEntry) {
 // Subscribe 订阅日志 SSE 推送，返回一个接收日志的 channel
 // 调用方需要在使用完毕后调用 Unsubscribe 取消订阅
 func (s *LogService) Subscribe() chan *model.LogEntry {
-	ch := make(chan *model.LogEntry, 64) // 缓冲区避免慢消费者阻塞
+	// 缓冲区设为256：平衡内存占用与日志丢失风险
+	// 原64在高并发时容易溢出导致日志丢失
+	ch := make(chan *model.LogEntry, 256)
 	s.sseSubscribersMu.Lock()
 	s.sseSubscribers[ch] = struct{}{}
 	s.sseSubscribersMu.Unlock()
