@@ -36,7 +36,8 @@
 
       // 如果端点列表为空，用渠道的初始 URL 创建默认端点
       if (endpointsData.length === 0) {
-        const channel = window.channelsCache?.find(c => c.id === channelId);
+        // channels 是全局变量（定义在 channels-state.js）
+        const channel = window.channels?.find(c => c.id === channelId);
         if (channel && channel.url) {
           endpointsData = [{
             id: 0,
@@ -49,7 +50,7 @@
     } catch (err) {
       console.error('获取端点失败:', err);
       // API 请求失败时，从渠道 URL 创建默认端点
-      const channel = window.channelsCache?.find(c => c.id === channelId);
+      const channel = window.channels?.find(c => c.id === channelId);
       if (channel && channel.url) {
         endpointsData = [{
           id: 0,
@@ -268,6 +269,26 @@
     btnText.innerHTML = '<span class="spinner-small"></span> 测速中';
 
     try {
+      // 如果端点还没保存到数据库（id=0），先保存
+      const needSave = endpointsData.some(ep => !ep.id || ep.id === 0);
+      if (needSave) {
+        const autoSelect = document.getElementById('autoSelectEndpoint').checked;
+        const saveRes = await fetchWithAuth(`/admin/channels/${currentChannelId}/endpoints`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            endpoints: endpointsData.map(ep => ({
+              url: ep.url,
+              is_active: ep.is_active
+            })),
+            auto_select_endpoint: autoSelect
+          })
+        });
+        if (!saveRes.ok) {
+          throw new Error('保存端点失败');
+        }
+      }
+
       const res = await fetchWithAuth(`/admin/channels/${currentChannelId}/endpoints/test`, {
         method: 'POST'
       });
@@ -278,10 +299,10 @@
 
       const data = await res.json();
 
-      // 更新端点数据
-      if (data.endpoints) {
+      // 更新端点数据（优先用 endpoints，包含完整信息）
+      if (data.endpoints && data.endpoints.length > 0) {
         endpointsData = data.endpoints;
-      } else if (data.data) {
+      } else if (data.data && data.data.length > 0) {
         // 合并测速结果到现有数据
         data.data.forEach(result => {
           const ep = endpointsData.find(e => e.id === result.id || e.url === result.url);
@@ -295,7 +316,17 @@
       autoSelectEnabled = document.getElementById('autoSelectEndpoint').checked;
 
       renderEndpointList();
-      showSuccess('测速完成');
+
+      // 显示测速结果摘要
+      const results = data.data || [];
+      const successCount = results.filter(r => r.latency_ms >= 0).length;
+      const failCount = results.filter(r => r.latency_ms < 0).length;
+      const fastestResult = results.filter(r => r.latency_ms >= 0).sort((a, b) => a.latency_ms - b.latency_ms)[0];
+
+      let msg = `测速完成：${successCount} 成功`;
+      if (failCount > 0) msg += `，${failCount} 失败`;
+      if (fastestResult) msg += `，最快 ${fastestResult.latency_ms}ms`;
+      showSuccess(msg);
 
     } catch (err) {
       console.error('测速失败:', err);
