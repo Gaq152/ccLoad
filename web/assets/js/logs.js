@@ -970,6 +970,8 @@
     let sseEventSource = null;
     let realtimeModeEnabled = false;
     let realtimeLogCount = 0; // 实时接收的日志计数
+    let lastReceivedLogTime = 0; // 最后接收的日志时间戳（秒），用于重连恢复
+    const displayedLogIds = new Set(); // 已显示的日志ID，用于去重
 
     function updateRealtimeStatus(text, isConnected) {
       const statusEl = document.getElementById('realtimeStatus');
@@ -997,7 +999,11 @@
       }
 
       // EventSource 不支持自定义头，使用 URL 参数传递 token
-      const url = `/admin/logs/stream?token=${encodeURIComponent(token)}`;
+      // 如果有上次接收时间，携带 since 参数用于重连恢复
+      let url = `/admin/logs/stream?token=${encodeURIComponent(token)}`;
+      if (lastReceivedLogTime > 0) {
+        url += `&since=${lastReceivedLogTime}`;
+      }
       sseEventSource = new EventSource(url);
       realtimeLogCount = 0;
 
@@ -1009,6 +1015,29 @@
       sseEventSource.addEventListener('log', (e) => {
         try {
           const entry = JSON.parse(e.data);
+
+          // 生成唯一标识用于去重（时间戳+渠道ID+状态码）
+          const logKey = `${entry.time}-${entry.channel_id || 0}-${entry.status_code || 0}`;
+          if (displayedLogIds.has(logKey)) {
+            // 重复日志，跳过（重连恢复时可能重复）
+            return;
+          }
+          displayedLogIds.add(logKey);
+
+          // 限制去重集合大小，防止内存泄漏
+          if (displayedLogIds.size > 500) {
+            const iterator = displayedLogIds.values();
+            for (let i = 0; i < 100; i++) {
+              displayedLogIds.delete(iterator.next().value);
+            }
+          }
+
+          // 更新最后接收时间（用于重连恢复）
+          const logTime = typeof entry.time === 'number' ? entry.time : parseInt(entry.time) || 0;
+          if (logTime > lastReceivedLogTime) {
+            lastReceivedLogTime = logTime;
+          }
+
           prependLogEntry(entry);
           realtimeLogCount++;
           updateRealtimeStatus(`+${realtimeLogCount}`, true);
@@ -1044,6 +1073,7 @@
       }
       updateRealtimeStatus('', false);
       realtimeLogCount = 0;
+      // 注意：不重置 lastReceivedLogTime，以便重连时恢复错过的日志
     }
 
     function toggleRealtimeMode(enabled) {
@@ -1053,6 +1083,9 @@
         connectSSE();
       } else {
         disconnectSSE();
+        // 用户主动关闭时重置状态
+        lastReceivedLogTime = 0;
+        displayedLogIds.clear();
       }
     }
 

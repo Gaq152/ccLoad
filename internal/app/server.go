@@ -401,6 +401,12 @@ func (s *Server) SetupRoutes(r *gin.Engine) {
 		admin.POST("/channels/:id/keys/:keyIndex/cooldown", s.HandleSetKeyCooldown)
 		admin.DELETE("/channels/:id/keys/:keyIndex", s.HandleDeleteAPIKey)
 
+		// 端点管理（多URL支持）
+		admin.GET("/channels/:id/endpoints", s.HandleChannelEndpoints)
+		admin.PUT("/channels/:id/endpoints", s.HandleChannelEndpoints)
+		admin.POST("/channels/:id/endpoints/test", s.HandleTestEndpoints)
+		admin.PUT("/channels/:id/endpoints/active", s.HandleSetActiveEndpoint)
+
 		// 统计分析
 		admin.GET("/errors", s.HandleErrors)
 		admin.GET("/metrics", s.HandleMetrics)

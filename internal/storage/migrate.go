@@ -34,6 +34,7 @@ func migrate(ctx context.Context, db *sql.DB, dialect Dialect) error {
 		schema.DefineChannelsTable,
 		schema.DefineAPIKeysTable,
 		schema.DefineChannelModelsTable,
+		schema.DefineChannelEndpointsTable, // 多端点管理表
 		schema.DefineAuthTokensTable,
 		schema.DefineSystemSettingsTable,
 		schema.DefineAdminSessionsTable,
@@ -56,6 +57,13 @@ func migrate(ctx context.Context, db *sql.DB, dialect Dialect) error {
 			}
 			if err := ensureLogsClientIP(ctx, db); err != nil {
 				return fmt.Errorf("migrate logs.client_ip: %w", err)
+			}
+		}
+
+		// 增量迁移：确保channels表有auto_select_endpoint字段（2025-12新增）
+		if tb.Name() == "channels" && dialect == DialectMySQL {
+			if err := ensureChannelsAutoSelectEndpoint(ctx, db); err != nil {
+				return fmt.Errorf("migrate channels.auto_select_endpoint: %w", err)
 			}
 		}
 
@@ -128,6 +136,30 @@ func ensureLogsClientIP(ctx context.Context, db *sql.DB) error {
 	)
 	if err != nil {
 		return fmt.Errorf("add client_ip column: %w", err)
+	}
+
+	return nil
+}
+
+// ensureChannelsAutoSelectEndpoint 确保channels表有auto_select_endpoint字段(MySQL增量迁移,2025-12新增)
+func ensureChannelsAutoSelectEndpoint(ctx context.Context, db *sql.DB) error {
+	var count int
+	err := db.QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='channels' AND COLUMN_NAME='auto_select_endpoint'",
+	).Scan(&count)
+	if err != nil {
+		return fmt.Errorf("check column existence: %w", err)
+	}
+
+	if count > 0 {
+		return nil
+	}
+
+	_, err = db.ExecContext(ctx,
+		"ALTER TABLE channels ADD COLUMN auto_select_endpoint TINYINT NOT NULL DEFAULT 0 COMMENT '自动选择最快端点(新增2025-12)'",
+	)
+	if err != nil {
+		return fmt.Errorf("add auto_select_endpoint column: %w", err)
 	}
 
 	return nil

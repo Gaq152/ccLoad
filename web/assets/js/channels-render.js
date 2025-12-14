@@ -162,6 +162,16 @@ function initChannelEventDelegation() {
 
   // 事件委托：处理所有渠道操作按钮
   container.addEventListener('click', (e) => {
+    // 端点管理按钮
+    const endpointBtn = e.target.closest('.endpoint-manage-btn');
+    if (endpointBtn) {
+      const channelId = parseInt(endpointBtn.dataset.channelId);
+      if (typeof openEndpointModal === 'function') {
+        openEndpointModal(channelId);
+      }
+      return;
+    }
+
     const btn = e.target.closest('.channel-action-btn');
     if (!btn) return;
 

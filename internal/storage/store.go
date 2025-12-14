@@ -103,6 +103,19 @@ type SessionStore interface {
 	LoadAllSessions(ctx context.Context) (map[string]time.Time, error)
 }
 
+// EndpointStore 渠道端点管理接口（多URL支持）
+type EndpointStore interface {
+	ListEndpoints(ctx context.Context, channelID int64) ([]model.ChannelEndpoint, error)
+	GetActiveEndpoint(ctx context.Context, channelID int64) (*model.ChannelEndpoint, error)
+	SaveEndpoints(ctx context.Context, channelID int64, endpoints []model.ChannelEndpoint) error
+	SetActiveEndpoint(ctx context.Context, channelID int64, endpointID int64) error
+	UpdateEndpointLatency(ctx context.Context, endpointID int64, latencyMs int) error
+	UpdateEndpointsLatency(ctx context.Context, results map[int64]int) error
+	GetChannelAutoSelectEndpoint(ctx context.Context, channelID int64) (bool, error)
+	SetChannelAutoSelectEndpoint(ctx context.Context, channelID int64, autoSelect bool) error
+	SelectFastestEndpoint(ctx context.Context, channelID int64) error
+}
+
 // ============================================================================
 // 组合接口（向后兼容）
 // ============================================================================
@@ -121,6 +134,7 @@ type Store interface {
 	AuthTokenStore
 	SettingsStore
 	SessionStore
+	EndpointStore
 
 	// Batch Import - 批量导入（CSV导入优化）
 	ImportChannelBatch(ctx context.Context, channels []*model.ChannelWithKeys) (created, updated int, err error)

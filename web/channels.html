@@ -535,7 +535,7 @@
           </div>
           <div class="text-sm" style="color: var(--neutral-600); margin-top: 4px;">
             <div class="channel-meta-line">
-              <span>URL: {{url}} | 优先级: {{priority}} | {{statusText}}<span class="cooldown-badge-container" data-channel-id="{{id}}">{{{cooldownBadge}}}</span></span>
+              <span>URL: {{url}}<button type="button" class="endpoint-manage-btn" data-action="endpoints" data-channel-id="{{id}}" title="管理与测速">⚡ 管理</button> | 优先级: {{priority}} | {{statusText}}<span class="cooldown-badge-container" data-channel-id="{{id}}">{{{cooldownBadge}}}</span></span>
               {{{statsHtml}}}
             </div>
           </div>
@@ -619,6 +619,51 @@
     <li style="margin: 4px 0;"><strong>Key #{{keyNum}}</strong> ({{keyMask}}): {{error}}</li>
   </template>
 
+  <!-- 端点管理弹窗 -->
+  <div id="endpointModal" class="modal">
+    <div class="modal-content" style="max-width: 600px;">
+      <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <h3 style="margin: 0; font-size: 1.1rem;"><span id="endpointCount">0</span> 个端点</h3>
+          <label style="display: flex; align-items: center; gap: 6px; font-size: 0.875rem; cursor: pointer;">
+            <input type="checkbox" id="autoSelectEndpoint" style="width: 16px; height: 16px;">
+            <span>自动选择</span>
+          </label>
+        </div>
+        <button type="button" id="testEndpointsBtn" class="btn btn-primary btn-sm" style="min-width: 80px;">
+          <span id="testEndpointsBtnText">测速</span>
+        </button>
+      </div>
+
+      <!-- 添加端点输入 -->
+      <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+        <input type="url" id="newEndpointUrl" class="form-input" placeholder="https://api.example.com" style="flex: 1;">
+        <button type="button" id="addEndpointBtn" class="btn btn-secondary" style="padding: 8px 16px;">+</button>
+      </div>
+
+      <!-- 端点列表 -->
+      <div id="endpointList" style="max-height: 300px; overflow-y: auto; border: 1px solid var(--neutral-200); border-radius: 8px;">
+        <!-- 端点项将动态插入 -->
+      </div>
+
+      <!-- 底部按钮 -->
+      <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 16px;">
+        <button type="button" id="closeEndpointModalBtn" class="btn btn-secondary">关闭</button>
+        <button type="button" id="saveEndpointsBtn" class="btn btn-primary">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 端点项模板 -->
+  <template id="tpl-endpoint-item">
+    <div class="endpoint-item {{activeClass}}" data-endpoint-id="{{id}}" data-endpoint-index="{{index}}">
+      <span class="endpoint-indicator" title="{{indicatorTitle}}">●</span>
+      <span class="endpoint-url" title="{{url}}">{{url}}</span>
+      <span class="endpoint-latency {{latencyClass}}">{{latencyText}}</span>
+      <button type="button" class="endpoint-delete-btn" data-index="{{index}}" title="删除">×</button>
+    </div>
+  </template>
+
   <script src="/web/assets/js/template-engine.js"></script>
   <script src="/web/assets/js/channels-state.js"></script>
   <script src="/web/assets/js/channels-render.js"></script>
@@ -627,6 +672,7 @@
   <script src="/web/assets/js/channels-import-export.js"></script>
   <script src="/web/assets/js/channels-keys.js"></script>
   <script src="/web/assets/js/channels-modals.js"></script>
+  <script src="/web/assets/js/channels-endpoints.js"></script>
   <script src="/web/assets/js/channels-test.js"></script>
   <script src="/web/assets/js/channels-init.js"></script>
   <script src="/web/assets/js/ui.js"></script>
