@@ -33,9 +33,22 @@
       const data = await res.json();
       endpointsData = data.data || [];
       autoSelectEnabled = data.auto_select_endpoint || false;
+
+      // 如果端点列表为空，用渠道的初始 URL 创建默认端点
+      if (endpointsData.length === 0) {
+        const channel = window.channelsCache?.find(c => c.id === channelId);
+        if (channel && channel.url) {
+          endpointsData = [{
+            id: 0,
+            url: channel.url,
+            is_active: true,
+            latency_ms: null
+          }];
+        }
+      }
     } catch (err) {
       console.error('获取端点失败:', err);
-      // 如果没有端点，从渠道URL创建默认端点
+      // API 请求失败时，从渠道 URL 创建默认端点
       const channel = window.channelsCache?.find(c => c.id === channelId);
       if (channel && channel.url) {
         endpointsData = [{
