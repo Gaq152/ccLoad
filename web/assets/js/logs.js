@@ -1031,6 +1031,7 @@
       if (lastReceivedLogTimeMs > 0) {
         url += `&since_ms=${lastReceivedLogTimeMs}`;
       }
+      console.log('[SSE DEBUG] connectSSE URL:', url);
       sseEventSource = new EventSource(url);
       realtimeLogCount = 0;
 
@@ -1042,6 +1043,7 @@
       sseEventSource.addEventListener('log', (e) => {
         try {
           const entry = JSON.parse(e.data);
+          console.log('[SSE DEBUG] 收到日志:', { id: entry.id, time_ms: entry.time_ms, channel_id: entry.channel_id });
 
           // 获取毫秒时间戳（优先 time_ms，兼容秒级 time）
           const logTimeMs = (() => {
@@ -1249,8 +1251,16 @@
 
     // 页面可见性监听（后台标签页断开 SSE，节省资源）
     document.addEventListener('visibilitychange', () => {
+      console.log('[SSE DEBUG] visibilitychange:', {
+        hidden: document.hidden,
+        realtimeModeEnabled,
+        sseEventSource: sseEventSource ? `readyState=${sseEventSource.readyState}` : 'null',
+        lastReceivedLogTimeMs
+      });
+
       if (document.hidden) {
         if (realtimeModeEnabled && sseEventSource) {
+          console.log('[SSE DEBUG] 页面隐藏，断开 SSE');
           disconnectSSE();
         }
       } else {
@@ -1259,12 +1269,14 @@
         if (realtimeModeEnabled) {
           const needReconnect = !sseEventSource ||
             (sseEventSource.readyState === EventSource.CLOSED);
+          console.log('[SSE DEBUG] 页面可见，needReconnect:', needReconnect);
           if (needReconnect) {
             // 丢弃已关闭的实例
             if (sseEventSource && sseEventSource.readyState === EventSource.CLOSED) {
               try { sseEventSource.close(); } catch (_) {}
               sseEventSource = null;
             }
+            console.log('[SSE DEBUG] 重新连接 SSE，since_ms:', lastReceivedLogTimeMs);
             connectSSE();
           }
         }
