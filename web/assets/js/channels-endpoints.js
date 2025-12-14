@@ -426,9 +426,14 @@
 
       closeEndpointModal();
 
-      // 刷新渠道列表
+      // 刷新渠道列表（强制刷新，清除缓存）
+      if (typeof invalidateChannelsCache === 'function') {
+        invalidateChannelsCache();
+      }
       if (typeof loadChannels === 'function') {
-        loadChannels();
+        // filters 是全局变量（定义在 channels-state.js）
+        const channelType = (typeof filters !== 'undefined' && filters.channelType) || 'all';
+        loadChannels(channelType, true);
       }
 
     } catch (err) {

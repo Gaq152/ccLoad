@@ -1,6 +1,7 @@
-async function loadChannels(type = 'all') {
+async function loadChannels(type = 'all', forceRefresh = false) {
   try {
-    if (channelsCache[type]) {
+    // 如果不是强制刷新且有缓存，使用缓存
+    if (!forceRefresh && channelsCache[type]) {
       channels = channelsCache[type];
       updateModelOptions();
       filterChannels();
@@ -21,6 +22,13 @@ async function loadChannels(type = 'all') {
   } catch (e) {
     console.error('加载渠道失败', e);
     if (window.showError) showError('加载渠道失败');
+  }
+}
+
+// 清除渠道缓存（端点修改等操作后调用）
+function invalidateChannelsCache() {
+  for (const key in channelsCache) {
+    delete channelsCache[key];
   }
 }
 
