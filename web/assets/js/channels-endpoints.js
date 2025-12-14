@@ -55,15 +55,15 @@
     renderEndpointList();
     updateEndpointCount();
 
-    // 显示弹窗
-    document.getElementById('endpointModal').classList.add('active');
+    // 显示弹窗（CSS 使用 .show 类）
+    document.getElementById('endpointModal').classList.add('show');
   }
 
   /**
    * 关闭端点管理弹窗
    */
   function closeEndpointModal() {
-    document.getElementById('endpointModal').classList.remove('active');
+    document.getElementById('endpointModal').classList.remove('show');
     currentChannelId = null;
     endpointsData = [];
   }
@@ -364,7 +364,7 @@
 
     // ESC 关闭
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && document.getElementById('endpointModal').classList.contains('active')) {
+      if (e.key === 'Escape' && document.getElementById('endpointModal').classList.contains('show')) {
         closeEndpointModal();
       }
     });
