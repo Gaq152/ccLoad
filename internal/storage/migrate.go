@@ -162,7 +162,7 @@ func ensureChannelsAutoSelectEndpoint(ctx context.Context, db *sql.DB) error {
 	}
 
 	_, err = db.ExecContext(ctx,
-		"ALTER TABLE channels ADD COLUMN auto_select_endpoint TINYINT NOT NULL DEFAULT 0 COMMENT '自动选择最快端点(新增2025-12)'",
+		"ALTER TABLE channels ADD COLUMN auto_select_endpoint TINYINT NOT NULL DEFAULT 1 COMMENT '自动选择最快端点(默认开启,新增2025-12)'",
 	)
 	if err != nil {
 		return fmt.Errorf("add auto_select_endpoint column: %w", err)
@@ -199,9 +199,9 @@ func ensureChannelsAutoSelectEndpointSQLite(ctx context.Context, db *sql.DB) err
 		return nil
 	}
 
-	// 添加字段
+	// 添加字段（默认开启）
 	_, err = db.ExecContext(ctx,
-		"ALTER TABLE channels ADD COLUMN auto_select_endpoint INTEGER NOT NULL DEFAULT 0",
+		"ALTER TABLE channels ADD COLUMN auto_select_endpoint INTEGER NOT NULL DEFAULT 1",
 	)
 	if err != nil {
 		return fmt.Errorf("add auto_select_endpoint column: %w", err)
@@ -286,6 +286,7 @@ func initDefaultSettings(ctx context.Context, db *sql.DB, dialect Dialect) error
 		{"skip_tls_verify", "false", "bool", "跳过TLS证书验证", "false"},
 		{"channel_test_content", "sonnet 4.0的发布日期是什么", "string", "渠道测试默认内容", "sonnet 4.0的发布日期是什么"},
 		{"channel_stats_range", "today", "string", "渠道管理费用统计范围", "today"},
+		{"endpoint_test_count", "3", "int", "端点测速次数(1-10次,取平均值)", "3"},
 	}
 
 	var query string
