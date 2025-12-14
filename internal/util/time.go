@@ -1,8 +1,42 @@
 package util
 
 import (
+	"sync"
 	"time"
 )
+
+// CooldownConfig 冷却配置
+type CooldownConfig struct {
+	Mode          string        // "exponential" 或 "fixed"
+	FixedInterval time.Duration // 固定模式下的时间间隔
+}
+
+var (
+	cooldownConfig = CooldownConfig{
+		Mode:          "exponential",
+		FixedInterval: 30 * time.Second,
+	}
+	cooldownConfigMu sync.RWMutex
+)
+
+// SetCooldownConfig 设置冷却配置
+func SetCooldownConfig(mode string, fixedIntervalSeconds int) {
+	cooldownConfigMu.Lock()
+	defer cooldownConfigMu.Unlock()
+	if mode == "fixed" || mode == "exponential" {
+		cooldownConfig.Mode = mode
+	}
+	if fixedIntervalSeconds > 0 {
+		cooldownConfig.FixedInterval = time.Duration(fixedIntervalSeconds) * time.Second
+	}
+}
+
+// GetCooldownConfig 获取冷却配置
+func GetCooldownConfig() CooldownConfig {
+	cooldownConfigMu.RLock()
+	defer cooldownConfigMu.RUnlock()
+	return cooldownConfig
+}
 
 // 冷却时间常量定义
 const (
@@ -42,8 +76,18 @@ const (
 //   - statusCode: HTTP状态码（可选，用于首次错误时确定初始冷却时间）
 //
 // 返回: 新的冷却持续时间
-// CalculateBackoffDuration 计算指数退避冷却时间
+// CalculateBackoffDuration 计算冷却时间（支持指数退避和固定模式）
 func CalculateBackoffDuration(prevMs int64, until time.Time, now time.Time, statusCode *int) time.Duration {
+	// 获取冷却配置
+	cfg := GetCooldownConfig()
+
+	// 固定模式：直接返回固定间隔
+	if cfg.Mode == "fixed" {
+		return cfg.FixedInterval
+	}
+
+	// 以下为指数退避模式（exponential）
+
 	// 特殊处理：超时错误（状态码598）直接冷却1分钟，不使用指数退避
 	// 设计原则：上游服务响应超时或完全无响应时，应立即停止请求避免资源浪费和级联故障
 	if statusCode != nil && *statusCode == 598 {
@@ -73,8 +117,7 @@ func CalculateBackoffDuration(prevMs int64, until time.Time, now time.Time, stat
 		}
 	}
 
-	// 后续错误：指数退避翻倍	// 边界限制（使用常量）
-
+	// 后续错误：指数退避翻倍，边界限制（使用常量）
 	next := min(max(prev*2, MinCooldownDuration), MaxCooldownDuration)
 
 	return next

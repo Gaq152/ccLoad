@@ -91,6 +91,11 @@ func NewServer(store storage.Store) *Server {
 	logRetentionDays := configService.GetInt("log_retention_days", 7)
 	enable88codeFreeOnly := configService.GetBool("88code_free_only", false)
 
+	// 冷却时间配置
+	cooldownMode := configService.GetString("cooldown_mode", "exponential")
+	cooldownFixedInterval := configService.GetIntMin("cooldown_fixed_interval", 30, 1)
+	util.SetCooldownConfig(cooldownMode, cooldownFixedInterval)
+
 	// 最大并发数保留环境变量读取（启动参数，不支持Web管理）
 	maxConcurrency := config.DefaultMaxConcurrency
 	if concEnv := os.Getenv("CCLOAD_MAX_CONCURRENCY"); concEnv != "" {
