@@ -141,7 +141,10 @@ func (s *Server) tokenStatsWorker() {
 }
 
 func (s *Server) drainTokenStats() {
-	for {
+	// 限制 drain 时间为3秒，避免阻塞关闭流程
+	// 关闭时丢失部分统计数据是可接受的
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
 		select {
 		case upd := <-s.tokenStatsCh:
 			s.applyTokenStatsUpdate(upd)
