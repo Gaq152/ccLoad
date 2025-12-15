@@ -379,6 +379,9 @@
       if (fastestResult) msg += `，最快 ${fastestResult.latency_ms}ms`;
       showSuccess(msg);
 
+      // 更新渠道卡片上的延迟勋章
+      updateChannelLatencyBadge(currentChannelId, endpointsData);
+
     } catch (err) {
       console.error('测速失败:', err);
       showError('测速失败: ' + err.message);

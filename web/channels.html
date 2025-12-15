@@ -547,7 +547,7 @@
           </div>
           <div class="text-sm" style="color: var(--neutral-600); margin-top: 4px;">
             <div class="channel-meta-line">
-              <span>URL: {{url}}{{{latencyBadge}}}<button type="button" class="endpoint-manage-btn" data-action="endpoints" data-channel-id="{{id}}" title="管理与测速">⚡ 管理</button> | 优先级: {{priority}} | {{statusText}}<span class="cooldown-badge-container" data-channel-id="{{id}}">{{{cooldownBadge}}}</span></span>
+              <span>URL: {{url}}<span class="latency-badge-container">{{{latencyBadge}}}</span><button type="button" class="endpoint-manage-btn" data-action="endpoints" data-channel-id="{{id}}" title="管理与测速">⚡ 管理</button> | 优先级: {{priority}} | {{statusText}}<span class="cooldown-badge-container" data-channel-id="{{id}}">{{{cooldownBadge}}}</span></span>
               {{{statsHtml}}}
             </div>
           </div>

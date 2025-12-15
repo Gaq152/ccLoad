@@ -35,6 +35,35 @@ function buildLatencyBadge(latencyMs, statusCode) {
   return ` <span style="color: ${color}; font-size: 0.75rem; font-weight: 500; background: ${bgColor}; padding: 1px 6px; border-radius: 4px; border: 1px solid ${borderColor}; margin-left: 4px;">${text}</span>`;
 }
 
+/**
+ * 更新渠道卡片上的延迟勋章（测速完成后调用）
+ * @param {number} channelId - 渠道ID
+ * @param {Array} endpoints - 端点列表（包含测速结果）
+ */
+function updateChannelLatencyBadge(channelId, endpoints) {
+  if (!channelId || !endpoints || endpoints.length === 0) return;
+
+  // 找到激活的端点
+  const activeEndpoint = endpoints.find(ep => ep.is_active);
+  if (!activeEndpoint) return;
+
+  const latencyMs = activeEndpoint.latency_ms;
+  const statusCode = activeEndpoint.status_code;
+
+  // 更新 channels 数组中的数据
+  const channel = channels.find(c => c.id === channelId);
+  if (channel) {
+    channel.active_endpoint_latency = latencyMs;
+    channel.active_endpoint_status = statusCode;
+  }
+
+  // 更新 DOM 中的延迟勋章
+  const badgeContainer = document.querySelector(`#channel-${channelId} .latency-badge-container`);
+  if (badgeContainer) {
+    badgeContainer.innerHTML = buildLatencyBadge(latencyMs, statusCode);
+  }
+}
+
 function renderChannelStatsInline(stats, cache, channelType) {
   if (!stats) {
     return `<span class="channel-stat-badge" style="margin-left: 6px; color: var(--neutral-500);">统计: --</span>`;

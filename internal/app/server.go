@@ -475,7 +475,10 @@ func (s *Server) SetupRoutes(r *gin.Engine) {
 // Token清理循环（定期清理过期Token）
 // 支持优雅关闭
 func (s *Server) tokenCleanupLoop() {
-	defer s.wg.Done()
+	defer func() {
+		log.Print("[DEBUG] tokenCleanupLoop 退出")
+		s.wg.Done()
+	}()
 
 	ticker := time.NewTicker(config.TokenCleanupInterval)
 	defer ticker.Stop()
@@ -546,16 +549,15 @@ func (s *Server) PrepareShutdown() {
 // 参数ctx用于控制最大等待时间，超时后强制退出
 // 返回值：nil表示成功，context.DeadlineExceeded表示超时
 func (s *Server) Shutdown(ctx context.Context) error {
-	// 如果 PrepareShutdown 没被调用，这里也要关闭 shutdownCh
-	if s.isShuttingDown.Swap(true) {
-		select {
-		case <-s.shutdownDone:
-			return nil
-		case <-ctx.Done():
-			return ctx.Err()
-		}
-	} else {
-		// PrepareShutdown 没被调用，这里关闭 shutdownCh
+	// 检查是否已经完成关闭（幂等）
+	select {
+	case <-s.shutdownDone:
+		return nil
+	default:
+	}
+
+	// 如果 PrepareShutdown 没被调用，这里关闭 shutdownCh
+	if !s.isShuttingDown.Swap(true) {
 		close(s.shutdownCh)
 	}
 	defer close(s.shutdownDone)
