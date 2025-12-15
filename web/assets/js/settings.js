@@ -57,8 +57,34 @@ function initSettingsEventDelegation() {
   // 输入变更（支持 input 和 select）
   tbody.addEventListener('change', (e) => {
     const input = e.target.closest('input, select');
-    if (input) markChanged(input);
+    if (input) {
+      // 多选组件特殊处理
+      if (input.dataset.multiselect) {
+        markMultiselectChanged(input.dataset.multiselect);
+      } else {
+        markChanged(input);
+      }
+    }
   });
+}
+
+// 标记多选组件变更
+function markMultiselectChanged(key) {
+  const container = document.getElementById(key);
+  if (!container) return;
+  const row = container.closest('tr');
+  const currentValue = getMultiselectValue(key);
+  if (currentValue !== originalSettings[key]) {
+    row.style.background = 'rgba(59, 130, 246, 0.08)';
+  } else {
+    row.style.background = '';
+  }
+}
+
+// 获取多选组件的值（逗号分隔）
+function getMultiselectValue(key) {
+  const checkboxes = document.querySelectorAll(`input[data-multiselect="${key}"]:checked`);
+  return Array.from(checkboxes).map(cb => cb.value).join(',');
 }
 
 // 下拉选项配置（中文化）
@@ -75,10 +101,38 @@ const selectOptions = {
   ]
 };
 
+// 多选下拉配置（逗号分隔的字符串值）
+const multiSelectOptions = {
+  'channel_stats_fields': [
+    { value: 'calls', label: '调用数' },
+    { value: 'rate', label: '成功率' },
+    { value: 'first_byte', label: '首字节' },
+    { value: 'input', label: '输入Token' },
+    { value: 'output', label: '输出Token' },
+    { value: 'cache_read', label: '缓存读' },
+    { value: 'cache_creation', label: '缓存建' },
+    { value: 'cost', label: '成本' }
+  ]
+};
+
 function renderInput(setting) {
   const safeKey = escapeHtml(setting.key);
   const safeValue = escapeHtml(setting.value);
   const baseStyle = 'padding: 6px 10px; border: 1px solid var(--color-border); border-radius: 6px; background: var(--color-bg-secondary); color: var(--color-text); font-size: 13px;';
+
+  // 多选下拉（逗号分隔值）
+  if (multiSelectOptions[setting.key]) {
+    const options = multiSelectOptions[setting.key];
+    const selectedValues = setting.value.split(',').map(v => v.trim()).filter(Boolean);
+    const checkboxes = options.map(opt => {
+      const checked = selectedValues.includes(opt.value) ? 'checked' : '';
+      return `<label style="display: inline-flex; align-items: center; margin-right: 12px; cursor: pointer;">
+        <input type="checkbox" data-multiselect="${safeKey}" value="${escapeHtml(opt.value)}" ${checked} style="margin-right: 4px;">
+        ${escapeHtml(opt.label)}
+      </label>`;
+    }).join('');
+    return `<div id="${safeKey}" class="multiselect-group" style="display: flex; flex-wrap: wrap; gap: 4px;">${checkboxes}</div>`;
+  }
 
   // 特定字段使用下拉选择框
   if (selectOptions[setting.key]) {
@@ -129,7 +183,16 @@ async function saveAllSettings() {
     const input = document.getElementById(key);
     if (!input) continue;
 
-    const currentValue = input.type === 'checkbox' ? (input.checked ? 'true' : 'false') : input.value;
+    let currentValue;
+    // 多选组件
+    if (input.classList.contains('multiselect-group')) {
+      currentValue = getMultiselectValue(key);
+    } else if (input.type === 'checkbox') {
+      currentValue = input.checked ? 'true' : 'false';
+    } else {
+      currentValue = input.value;
+    }
+
     if (currentValue !== originalSettings[key]) {
       updates[key] = currentValue;
       // 检查是否需要重启（从 DOM 中读取 description）

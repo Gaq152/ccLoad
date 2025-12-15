@@ -69,6 +69,11 @@ function renderChannelStatsInline(stats, cache, channelType) {
     return `<span class="channel-stat-badge" style="margin-left: 6px; color: var(--neutral-500);">统计: --</span>`;
   }
 
+  // 如果没有配置任何字段，返回空
+  if (!channelStatsFields || channelStatsFields.length === 0) {
+    return '';
+  }
+
   const successRateText = cache?.successRateText || formatSuccessRate(stats.success, stats.total);
   const avgFirstByteText = cache?.avgFirstByteText || formatAvgFirstByte(stats.avgFirstByteTimeSeconds);
   const inputTokensText = cache?.inputTokensText || formatMetricNumber(stats.totalInputTokens);
@@ -87,26 +92,35 @@ function renderChannelStatsInline(stats, cache, channelType) {
 
   const callText = `${formatMetricNumber(stats.success)}/${formatMetricNumber(stats.error)}`;
   const rangeLabel = getStatsRangeLabel(channelStatsRange);
-
-  const parts = [
-    `<span class="channel-stat-badge" style="color: var(--neutral-800);"><strong>${rangeLabel}调用</strong> ${callText}</span>`,
-    `<span class="channel-stat-badge" style="color: ${successRateColor};"><strong>率</strong> ${successRateText}</span>`,
-    `<span class="channel-stat-badge" style="color: var(--primary-700);"><strong>首字</strong> ${avgFirstByteText}</span>`,
-    `<span class="channel-stat-badge" style="color: var(--neutral-800);"><strong>In</strong> ${inputTokensText}</span>`,
-    `<span class="channel-stat-badge" style="color: var(--neutral-800);"><strong>Out</strong> ${outputTokensText}</span>`
-  ];
-
   const supportsCaching = channelType === 'anthropic' || channelType === 'codex';
-  if (supportsCaching) {
-    parts.push(
-      `<span class="channel-stat-badge" style="color: var(--success-600); background: var(--success-50); border-color: var(--success-100);"><strong>缓存读</strong> ${cacheReadText}</span>`,
-      `<span class="channel-stat-badge" style="color: var(--primary-700); background: var(--primary-50); border-color: var(--primary-100);"><strong>缓存建</strong> ${cacheCreationText}</span>`
-    );
-  }
 
-  parts.push(
-    `<span class="channel-stat-badge" style="color: var(--warning-700); background: var(--warning-50); border-color: var(--warning-100);"><strong>成本</strong> ${costDisplay}</span>`
-  );
+  // 根据配置构建显示字段
+  const parts = [];
+
+  if (channelStatsFields.includes('calls')) {
+    parts.push(`<span class="channel-stat-badge" style="color: var(--neutral-800);"><strong>${rangeLabel}调用</strong> ${callText}</span>`);
+  }
+  if (channelStatsFields.includes('rate')) {
+    parts.push(`<span class="channel-stat-badge" style="color: ${successRateColor};"><strong>率</strong> ${successRateText}</span>`);
+  }
+  if (channelStatsFields.includes('first_byte')) {
+    parts.push(`<span class="channel-stat-badge" style="color: var(--primary-700);"><strong>首字</strong> ${avgFirstByteText}</span>`);
+  }
+  if (channelStatsFields.includes('input')) {
+    parts.push(`<span class="channel-stat-badge" style="color: var(--neutral-800);"><strong>In</strong> ${inputTokensText}</span>`);
+  }
+  if (channelStatsFields.includes('output')) {
+    parts.push(`<span class="channel-stat-badge" style="color: var(--neutral-800);"><strong>Out</strong> ${outputTokensText}</span>`);
+  }
+  if (channelStatsFields.includes('cache_read') && supportsCaching) {
+    parts.push(`<span class="channel-stat-badge" style="color: var(--success-600); background: var(--success-50); border-color: var(--success-100);"><strong>缓存读</strong> ${cacheReadText}</span>`);
+  }
+  if (channelStatsFields.includes('cache_creation') && supportsCaching) {
+    parts.push(`<span class="channel-stat-badge" style="color: var(--primary-700); background: var(--primary-50); border-color: var(--primary-100);"><strong>缓存建</strong> ${cacheCreationText}</span>`);
+  }
+  if (channelStatsFields.includes('cost')) {
+    parts.push(`<span class="channel-stat-badge" style="color: var(--warning-700); background: var(--warning-50); border-color: var(--warning-100);"><strong>成本</strong> ${costDisplay}</span>`);
+  }
 
   return parts.join(' ');
 }

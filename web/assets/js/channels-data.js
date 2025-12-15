@@ -44,6 +44,18 @@ async function loadChannelStatsRange() {
   }
 }
 
+async function loadChannelStatsFields() {
+  try {
+    const resp = await fetchWithAuth('/admin/settings/channel_stats_fields');
+    const data = await resp.json();
+    if (data.success && data.data?.value) {
+      channelStatsFields = data.data.value.split(',').map(s => s.trim()).filter(Boolean);
+    }
+  } catch (e) {
+    console.error('加载统计字段设置失败', e);
+  }
+}
+
 async function loadChannelStats(range = channelStatsRange) {
   try {
     const params = new URLSearchParams({ range, limit: '500', offset: '0' });
