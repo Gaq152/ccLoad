@@ -302,6 +302,110 @@ function handleCooldownEvent(event) {
   }
 }
 
+// ========== 自动测速倒计时 ==========
+
+/**
+ * 自动测速倒计时管理器
+ */
+const AutoTestTimer = {
+  timerId: null,
+  nextRunTime: null,
+  intervalSeconds: 300, // 默认5分钟
+
+  init() {
+    const timerEl = document.getElementById('autoTestTimer');
+    if (!timerEl) return;
+
+    // 初始同步
+    this.sync();
+
+    // 启动倒计时
+    this.timerId = setInterval(() => this.tick(), 1000);
+
+    // 页面可见性恢复时重新同步
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) this.sync();
+    });
+  },
+
+  async sync() {
+    const timerEl = document.getElementById('autoTestTimer');
+    if (!timerEl) return;
+
+    try {
+      const res = await fetchWithAuth('/admin/endpoints/status');
+      if (res.ok) {
+        const data = await res.json();
+        if (!data.enabled) {
+          // 自动测速已禁用，隐藏组件
+          timerEl.style.display = 'none';
+          return;
+        }
+
+        // 显示组件
+        timerEl.style.display = 'flex';
+
+        if (data.next_run_time) {
+          this.nextRunTime = new Date(data.next_run_time);
+          this.intervalSeconds = data.interval_seconds || 300;
+          this.tick();
+          return;
+        }
+      }
+    } catch (e) {
+      // 忽略API错误，静默回退到本地估算
+    }
+
+    // 本地回退逻辑
+    if (!this.nextRunTime || new Date() > this.nextRunTime) {
+      const now = Date.now();
+      const interval = this.intervalSeconds * 1000;
+      const remainder = now % interval;
+      this.nextRunTime = new Date(now + (interval - remainder));
+    }
+    timerEl.style.display = 'flex';
+    this.tick();
+  },
+
+  tick() {
+    if (!this.nextRunTime) return;
+
+    const timerEl = document.getElementById('autoTestTimer');
+    const textEl = timerEl?.querySelector('.timer-text');
+    if (!textEl) return;
+
+    const now = new Date();
+    let diff = this.nextRunTime - now;
+
+    // 倒计时结束
+    if (diff <= 0) {
+      textEl.textContent = '测速中...';
+      timerEl.classList.add('testing');
+
+      // 5秒后重新同步
+      if (diff < -5000) {
+        timerEl.classList.remove('testing');
+        this.sync();
+      }
+      return;
+    }
+
+    timerEl.classList.remove('testing');
+
+    // 格式化 m:ss
+    const m = Math.floor(diff / 60000);
+    const s = Math.floor((diff % 60000) / 1000);
+    textEl.textContent = `${m}:${s.toString().padStart(2, '0')}`;
+  },
+
+  stop() {
+    if (this.timerId) {
+      clearInterval(this.timerId);
+      this.timerId = null;
+    }
+  }
+};
+
 // 显示Toast提示
 function showToast(message, type = 'info') {
   const toast = document.createElement('div');
