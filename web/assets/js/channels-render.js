@@ -5,6 +5,36 @@ function inlineCooldownBadge(c) {
   return ` <span style="color: #dc2626; font-size: 0.875rem; font-weight: 500; background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%); padding: 2px 8px; border-radius: 4px; border: 1px solid #fca5a5;">⚠️ 冷却中·${text}</span>`;
 }
 
+function buildLatencyBadge(latencyMs, statusCode) {
+  if (latencyMs === null || latencyMs === undefined) return '';
+
+  let color, bgColor, borderColor, text;
+  if (latencyMs < 0) {
+    // 超时/失败
+    color = '#dc2626';
+    bgColor = '#fee2e2';
+    borderColor = '#fca5a5';
+    text = '超时';
+  } else if (latencyMs < 500) {
+    color = '#16a34a';
+    bgColor = '#dcfce7';
+    borderColor = '#86efac';
+    text = `${latencyMs}ms`;
+  } else if (latencyMs < 1000) {
+    color = '#ca8a04';
+    bgColor = '#fef9c3';
+    borderColor = '#fde047';
+    text = `${latencyMs}ms`;
+  } else {
+    color = '#dc2626';
+    bgColor = '#fee2e2';
+    borderColor = '#fca5a5';
+    text = `${latencyMs}ms`;
+  }
+
+  return ` <span style="color: ${color}; font-size: 0.75rem; font-weight: 500; background: ${bgColor}; padding: 1px 6px; border-radius: 4px; border: 1px solid ${borderColor}; margin-left: 4px;">${text}</span>`;
+}
+
 function renderChannelStatsInline(stats, cache, channelType) {
   if (!stats) {
     return `<span class="channel-stat-badge" style="margin-left: 6px; color: var(--neutral-500);">统计: --</span>`;
@@ -137,6 +167,7 @@ function createChannelCard(channel) {
     typeBadge: buildChannelTypeBadge(channelTypeRaw),
     modelsText: modelsText,
     url: channel.url,
+    latencyBadge: buildLatencyBadge(channel.active_endpoint_latency, channel.active_endpoint_status),
     priority: channel.priority,
     statusText: channel.enabled ? '已启用' : '已禁用',
     cooldownBadge: inlineCooldownBadge(channel),

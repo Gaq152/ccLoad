@@ -83,9 +83,28 @@ func migrate(ctx context.Context, db *sql.DB, dialect Dialect) error {
 		}
 
 		// 增量迁移：确保auth_tokens表有缓存token字段（2025-12新增）
-		if tb.Name() == "auth_tokens" && dialect == DialectMySQL {
-			if err := ensureAuthTokensCacheFields(ctx, db); err != nil {
-				return fmt.Errorf("migrate auth_tokens cache fields: %w", err)
+		if tb.Name() == "auth_tokens" {
+			if dialect == DialectMySQL {
+				if err := ensureAuthTokensCacheFields(ctx, db); err != nil {
+					return fmt.Errorf("migrate auth_tokens cache fields: %w", err)
+				}
+			} else {
+				if err := ensureAuthTokensCacheFieldsSQLite(ctx, db); err != nil {
+					return fmt.Errorf("migrate auth_tokens cache fields: %w", err)
+				}
+			}
+		}
+
+		// 增量迁移：确保channel_endpoints表有status_code字段（2025-12新增）
+		if tb.Name() == "channel_endpoints" {
+			if dialect == DialectMySQL {
+				if err := ensureEndpointsStatusCode(ctx, db); err != nil {
+					return fmt.Errorf("migrate channel_endpoints.status_code: %w", err)
+				}
+			} else {
+				if err := ensureEndpointsStatusCodeSQLite(ctx, db); err != nil {
+					return fmt.Errorf("migrate channel_endpoints.status_code: %w", err)
+				}
 			}
 		}
 
@@ -100,6 +119,69 @@ func migrate(ctx context.Context, db *sql.DB, dialect Dialect) error {
 	// 初始化默认配置
 	if err := initDefaultSettings(ctx, db, dialect); err != nil {
 		return err
+	}
+
+	// 迁移：为没有端点的渠道自动创建默认端点（2025-12新增）
+	if err := migrateChannelEndpoints(ctx, db, dialect); err != nil {
+		return fmt.Errorf("migrate channel endpoints: %w", err)
+	}
+
+	return nil
+}
+
+// migrateChannelEndpoints 为没有端点的渠道自动创建默认端点（2025-12新增）
+func migrateChannelEndpoints(ctx context.Context, db *sql.DB, dialect Dialect) error {
+	// 查找有URL但没有端点的渠道
+	query := `
+		SELECT c.id, c.url
+		FROM channels c
+		LEFT JOIN channel_endpoints e ON c.id = e.channel_id
+		WHERE c.url != '' AND e.id IS NULL
+	`
+	rows, err := db.QueryContext(ctx, query)
+	if err != nil {
+		return fmt.Errorf("query channels without endpoints: %w", err)
+	}
+	defer rows.Close()
+
+	type channelURL struct {
+		id  int64
+		url string
+	}
+	var toMigrate []channelURL
+	for rows.Next() {
+		var ch channelURL
+		if err := rows.Scan(&ch.id, &ch.url); err != nil {
+			return fmt.Errorf("scan channel: %w", err)
+		}
+		toMigrate = append(toMigrate, ch)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate channels: %w", err)
+	}
+
+	if len(toMigrate) == 0 {
+		return nil
+	}
+
+	// 为每个渠道创建默认端点（区分数据库方言）
+	var insertQuery string
+	if dialect == DialectMySQL {
+		insertQuery = `
+			INSERT INTO channel_endpoints (channel_id, url, is_active, sort_order, created_at)
+			VALUES (?, ?, 1, 0, UNIX_TIMESTAMP())
+		`
+	} else {
+		insertQuery = `
+			INSERT INTO channel_endpoints (channel_id, url, is_active, sort_order, created_at)
+			VALUES (?, ?, 1, 0, unixepoch())
+		`
+	}
+	for _, ch := range toMigrate {
+		_, err := db.ExecContext(ctx, insertQuery, ch.id, ch.url)
+		if err != nil {
+			return fmt.Errorf("insert endpoint for channel %d: %w", ch.id, err)
+		}
 	}
 
 	return nil
@@ -280,6 +362,53 @@ func ensureChannelsAutoSelectEndpointSQLite(ctx context.Context, db *sql.DB) err
 	return nil
 }
 
+// ensureAuthTokensCacheFieldsSQLite 确保auth_tokens表有缓存token字段(SQLite增量迁移,2025-12新增)
+func ensureAuthTokensCacheFieldsSQLite(ctx context.Context, db *sql.DB) error {
+	rows, err := db.QueryContext(ctx, "PRAGMA table_info(auth_tokens)")
+	if err != nil {
+		return fmt.Errorf("check table info: %w", err)
+	}
+	defer rows.Close()
+
+	hasCacheRead := false
+	hasCacheCreation := false
+	for rows.Next() {
+		var cid int
+		var name, typ string
+		var notNull, pk int
+		var dfltValue any
+		if err := rows.Scan(&cid, &name, &typ, &notNull, &dfltValue, &pk); err != nil {
+			return fmt.Errorf("scan column info: %w", err)
+		}
+		if name == "cache_read_tokens_total" {
+			hasCacheRead = true
+		}
+		if name == "cache_creation_tokens_total" {
+			hasCacheCreation = true
+		}
+	}
+
+	if !hasCacheRead {
+		_, err = db.ExecContext(ctx,
+			"ALTER TABLE auth_tokens ADD COLUMN cache_read_tokens_total INTEGER NOT NULL DEFAULT 0",
+		)
+		if err != nil {
+			return fmt.Errorf("add cache_read_tokens_total column: %w", err)
+		}
+	}
+
+	if !hasCacheCreation {
+		_, err = db.ExecContext(ctx,
+			"ALTER TABLE auth_tokens ADD COLUMN cache_creation_tokens_total INTEGER NOT NULL DEFAULT 0",
+		)
+		if err != nil {
+			return fmt.Errorf("add cache_creation_tokens_total column: %w", err)
+		}
+	}
+
+	return nil
+}
+
 // ensureAuthTokensCacheFields 确保auth_tokens表有缓存token字段(MySQL增量迁移,2025-12新增)
 func ensureAuthTokensCacheFields(ctx context.Context, db *sql.DB) error {
 	// 检查cache_read_tokens_total字段是否存在
@@ -310,6 +439,67 @@ func ensureAuthTokensCacheFields(ctx context.Context, db *sql.DB) error {
 	)
 	if err != nil {
 		return fmt.Errorf("add cache_creation_tokens_total column: %w", err)
+	}
+
+	return nil
+}
+
+// ensureEndpointsStatusCode 确保channel_endpoints表有status_code字段(MySQL增量迁移,2025-12新增)
+func ensureEndpointsStatusCode(ctx context.Context, db *sql.DB) error {
+	var count int
+	err := db.QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='channel_endpoints' AND COLUMN_NAME='status_code'",
+	).Scan(&count)
+	if err != nil {
+		return fmt.Errorf("check status_code existence: %w", err)
+	}
+
+	if count > 0 {
+		return nil
+	}
+
+	_, err = db.ExecContext(ctx,
+		"ALTER TABLE channel_endpoints ADD COLUMN status_code INT DEFAULT NULL COMMENT '最近测速HTTP状态码'",
+	)
+	if err != nil {
+		return fmt.Errorf("add status_code column: %w", err)
+	}
+
+	return nil
+}
+
+// ensureEndpointsStatusCodeSQLite 确保channel_endpoints表有status_code字段(SQLite增量迁移,2025-12新增)
+func ensureEndpointsStatusCodeSQLite(ctx context.Context, db *sql.DB) error {
+	rows, err := db.QueryContext(ctx, "PRAGMA table_info(channel_endpoints)")
+	if err != nil {
+		return fmt.Errorf("check table info: %w", err)
+	}
+	defer rows.Close()
+
+	hasColumn := false
+	for rows.Next() {
+		var cid int
+		var name, typ string
+		var notNull, pk int
+		var dfltValue any
+		if err := rows.Scan(&cid, &name, &typ, &notNull, &dfltValue, &pk); err != nil {
+			return fmt.Errorf("scan column info: %w", err)
+		}
+		if name == "status_code" {
+			hasColumn = true
+			break
+		}
+	}
+
+	if hasColumn {
+		return nil
+	}
+
+	_, err = db.ExecContext(ctx,
+		"ALTER TABLE channel_endpoints ADD COLUMN status_code INTEGER DEFAULT NULL",
+	)
+	if err != nil {
+		return fmt.Errorf("add status_code column: %w", err)
 	}
 
 	return nil
@@ -359,7 +549,7 @@ func initDefaultSettings(ctx context.Context, db *sql.DB, dialect Dialect) error
 		{"endpoint_test_count", "3", "int", "端点测速次数(1-10次,取平均值)", "3"},
 		{"cooldown_mode", "exponential", "string", "冷却时间模式(exponential=递增,fixed=固定)", "exponential"},
 		{"cooldown_fixed_interval", "30", "int", "固定冷却时间间隔(秒,仅fixed模式生效)", "30"},
-		{"auto_test_endpoints_interval", "30", "int", "后台自动测速端点间隔(秒,0=禁用)", "30"},
+		{"auto_test_endpoints_interval", "300", "int", "后台自动测速端点间隔(秒,0=禁用)", "300"},
 	}
 
 	var query string

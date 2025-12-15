@@ -126,6 +126,12 @@ func (s *Server) handleListChannels(c *gin.Context) {
 		}
 		oc.KeyCooldowns = keyCooldowns
 
+		// 获取激活端点的延迟和状态码
+		if activeEp, err := s.store.GetActiveEndpoint(c.Request.Context(), cfg.ID); err == nil && activeEp != nil {
+			oc.ActiveEndpointLatency = activeEp.LatencyMs
+			oc.ActiveEndpointStatus = activeEp.StatusCode
+		}
+
 		out = append(out, oc)
 	}
 

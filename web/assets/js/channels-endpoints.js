@@ -303,6 +303,11 @@
     btn.disabled = true;
     btnText.innerHTML = '<span class="spinner-small"></span> 测速中';
 
+    // 在所有端点的延迟位置显示加载动画
+    document.querySelectorAll('.endpoint-latency').forEach(el => {
+      el.innerHTML = '<span class="spinner-small"></span>';
+    });
+
     try {
       // 如果端点还没保存到数据库（id=0），先保存
       const needSave = endpointsData.some(ep => !ep.id || ep.id === 0);

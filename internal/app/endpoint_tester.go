@@ -5,6 +5,8 @@ import (
 	"log"
 	"sync"
 	"time"
+
+	"ccLoad/internal/model"
 )
 
 // EndpointTester 后台端点测速服务
@@ -68,8 +70,18 @@ func (t *EndpointTester) loop() {
 
 // testAllEndpoints 测速所有开启自动选择的渠道端点
 func (t *EndpointTester) testAllEndpoints() {
+	// 使用可取消的 context，响应 shutdown 信号
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
+
+	// 监听 stopCh，提前取消
+	go func() {
+		select {
+		case <-t.stopCh:
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
 
 	// 获取所有开启自动选择的渠道
 	channels, err := t.server.store.GetChannelsWithAutoSelect(ctx)
@@ -109,35 +121,65 @@ func (t *EndpointTester) testAllEndpoints() {
 
 // testChannelEndpoints 测速单个渠道的所有端点
 func (t *EndpointTester) testChannelEndpoints(ctx context.Context, channelID int64, testCount int) {
+	// 检查是否已取消
+	select {
+	case <-ctx.Done():
+		return
+	default:
+	}
+
 	endpoints, err := t.server.store.ListEndpoints(ctx, channelID)
 	if err != nil || len(endpoints) == 0 {
 		return
 	}
 
 	// 并发测速
-	latencyResults := make(map[int64]int)
+	testResults := make(map[int64]model.EndpointTestResult)
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 
 	for _, ep := range endpoints {
+		// 检查是否已取消
+		select {
+		case <-ctx.Done():
+			break
+		default:
+		}
+
 		wg.Add(1)
 		go func(endpointID int64, url string) {
 			defer wg.Done()
 
-			info, _ := t.server.testEndpointLatencyMulti(url, testCount)
-			if info.LatencyMs >= 0 {
-				mu.Lock()
-				latencyResults[endpointID] = info.LatencyMs
-				mu.Unlock()
+			// 再次检查是否已取消
+			select {
+			case <-ctx.Done():
+				return
+			default:
 			}
+
+			info, _ := t.server.testEndpointLatencyMulti(url, testCount)
+			// 保存所有结果（包括失败的）
+			mu.Lock()
+			testResults[endpointID] = model.EndpointTestResult{
+				LatencyMs:  info.LatencyMs,
+				StatusCode: info.StatusCode,
+			}
+			mu.Unlock()
 		}(ep.ID, ep.URL)
 	}
 
 	wg.Wait()
 
+	// 检查是否已取消
+	select {
+	case <-ctx.Done():
+		return
+	default:
+	}
+
 	// 保存测速结果
-	if len(latencyResults) > 0 {
-		_ = t.server.store.UpdateEndpointsLatency(ctx, latencyResults)
+	if len(testResults) > 0 {
+		_ = t.server.store.UpdateEndpointsLatency(ctx, testResults)
 		// 选择最快的端点
 		_ = t.server.store.SelectFastestEndpoint(ctx, channelID)
 	}

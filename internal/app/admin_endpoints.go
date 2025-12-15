@@ -169,7 +169,7 @@ func (s *Server) HandleTestEndpoints(c *gin.Context) {
 
 	// 并发测速（每个端点测试 N 次取平均值）
 	results := make([]EndpointTestResult, len(endpoints))
-	latencyResults := make(map[int64]int)
+	testResults := make(map[int64]model.EndpointTestResult)
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 
@@ -190,11 +190,15 @@ func (s *Server) HandleTestEndpoints(c *gin.Context) {
 
 			if info.LatencyMs < 0 {
 				result.Error = "连接失败"
-			} else {
-				mu.Lock()
-				latencyResults[endpoint.ID] = info.LatencyMs
-				mu.Unlock()
 			}
+
+			// 无论成功失败都保存结果（失败时 latency=-1, status_code=0）
+			mu.Lock()
+			testResults[endpoint.ID] = model.EndpointTestResult{
+				LatencyMs:  info.LatencyMs,
+				StatusCode: info.StatusCode,
+			}
+			mu.Unlock()
 
 			results[idx] = result
 		}(i, ep)
@@ -203,13 +207,13 @@ func (s *Server) HandleTestEndpoints(c *gin.Context) {
 	wg.Wait()
 
 	// 保存测速结果
-	if len(latencyResults) > 0 {
-		_ = s.store.UpdateEndpointsLatency(c.Request.Context(), latencyResults)
+	if len(testResults) > 0 {
+		_ = s.store.UpdateEndpointsLatency(c.Request.Context(), testResults)
 	}
 
 	// 如果开启了自动选择，选择最快的端点
 	autoSelect, _ := s.store.GetChannelAutoSelectEndpoint(c.Request.Context(), channelID)
-	if autoSelect && len(latencyResults) > 0 {
+	if autoSelect && len(testResults) > 0 {
 		_ = s.store.SelectFastestEndpoint(c.Request.Context(), channelID)
 	}
 
