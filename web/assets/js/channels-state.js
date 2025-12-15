@@ -227,6 +227,81 @@ function toggleResponse(elementId) {
   }
 }
 
+// ========== 冷却事件 SSE 订阅 ==========
+let cooldownEventSource = null;
+
+/**
+ * 启动冷却事件 SSE 订阅
+ */
+function startCooldownSSE() {
+  if (cooldownEventSource) return;
+
+  // EventSource 不支持自定义头，使用 URL 参数传递 token
+  const token = localStorage.getItem('ccload_token') || '';
+  if (!token) {
+    console.warn('[Cooldown SSE] 未登录，跳过订阅');
+    return;
+  }
+  cooldownEventSource = new EventSource(`/admin/cooldown/stream?token=${encodeURIComponent(token)}`);
+
+  cooldownEventSource.addEventListener('connected', () => {
+    console.log('[Cooldown SSE] 已连接');
+  });
+
+  cooldownEventSource.addEventListener('cooldown', (e) => {
+    try {
+      const event = JSON.parse(e.data);
+      handleCooldownEvent(event);
+    } catch (err) {
+      console.error('[Cooldown SSE] 解析事件失败:', err);
+    }
+  });
+
+  cooldownEventSource.onerror = () => {
+    console.warn('[Cooldown SSE] 连接断开，5秒后重连');
+    stopCooldownSSE();
+    setTimeout(startCooldownSSE, 5000);
+  };
+}
+
+/**
+ * 停止冷却事件 SSE 订阅
+ */
+function stopCooldownSSE() {
+  if (cooldownEventSource) {
+    cooldownEventSource.close();
+    cooldownEventSource = null;
+  }
+}
+
+/**
+ * 处理冷却事件
+ */
+function handleCooldownEvent(event) {
+  if (event.type === 'channel') {
+    // 渠道冷却事件
+    const channel = channels.find(c => c.id === event.channel_id);
+    if (channel) {
+      channel.cooldown_remaining_ms = event.cooldown_ms;
+      // 更新 UI
+      updateChannelCooldownBadge(event.channel_id, event.cooldown_ms);
+      // 添加冷却样式
+      const card = document.getElementById(`channel-${event.channel_id}`);
+      if (card) card.classList.add('channel-card-cooldown');
+      // 启动倒计时
+      startCooldownCountdown();
+    }
+  } else if (event.type === 'key') {
+    // Key 冷却事件
+    const kc = currentChannelKeyCooldowns.find(k => k.key_index === event.key_index);
+    if (kc && editingChannelId === event.channel_id) {
+      kc.cooldown_remaining_ms = event.cooldown_ms;
+      updateKeyTableCooldownDisplay();
+      startCooldownCountdown();
+    }
+  }
+}
+
 // 显示Toast提示
 function showToast(message, type = 'info') {
   const toast = document.createElement('div');

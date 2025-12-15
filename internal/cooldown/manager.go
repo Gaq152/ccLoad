@@ -28,12 +28,18 @@ type ConfigGetter interface {
 	GetConfig(ctx context.Context, channelID int64) (*model.Config, error)
 }
 
+// CooldownCallback 冷却事件回调函数类型
+// 用于 SSE 推送冷却事件到前端
+type CooldownCallback func(channelID int64, channelName string, keyIndex int, until time.Time, statusCode int)
+
 // Manager 冷却管理器
 // 统一管理渠道级和Key级冷却逻辑
 // 遵循SRP原则：专注于冷却决策和执行
 type Manager struct {
-	store        storage.Store
-	configGetter ConfigGetter // 可选：优先使用缓存层（性能提升~60%）
+	store             storage.Store
+	configGetter      ConfigGetter     // 可选：优先使用缓存层（性能提升~60%）
+	onChannelCooldown CooldownCallback // 可选：渠道冷却事件回调
+	onKeyCooldown     CooldownCallback // 可选：Key冷却事件回调
 }
 
 // NewManager 创建冷却管理器实例
@@ -43,6 +49,12 @@ func NewManager(store storage.Store, configGetter ConfigGetter) *Manager {
 		store:        store,
 		configGetter: configGetter,
 	}
+}
+
+// SetCooldownCallbacks 设置冷却事件回调（用于 SSE 推送）
+func (m *Manager) SetCooldownCallbacks(onChannel, onKey CooldownCallback) {
+	m.onChannelCooldown = onChannel
+	m.onKeyCooldown = onKey
 }
 
 // HandleError 统一错误处理与冷却决策
@@ -144,16 +156,21 @@ func (m *Manager) HandleError(
 					duration := time.Until(reset1308Time)
 					log.Printf("[COOLDOWN] Key冷却(1308): 渠道=%d Key=%d 禁用至 %s (%.1f分钟)",
 						channelID, keyIndex, reset1308Time.Format("2006-01-02 15:04:05"), duration.Minutes())
+					// SSE 回调
+					m.notifyKeyCooldown(ctx, channelID, keyIndex, reset1308Time, statusCode)
 				}
 				return ActionRetryKey, nil
 			}
 
 			// 默认逻辑: 使用指数退避策略
-			_, err := m.store.BumpKeyCooldown(ctx, channelID, keyIndex, time.Now(), statusCode)
+			nextDuration, err := m.store.BumpKeyCooldown(ctx, channelID, keyIndex, time.Now(), statusCode)
 			if err != nil {
 				// 冷却更新失败是非致命错误
 				// 记录日志但不中断请求处理,避免因数据库BUSY导致无限重试
 				log.Printf("[WARN] Failed to update key cooldown (channel=%d, key=%d): %v", channelID, keyIndex, err)
+			} else {
+				// SSE 回调
+				m.notifyKeyCooldown(ctx, channelID, keyIndex, time.Now().Add(nextDuration), statusCode)
 			}
 		}
 		return ActionRetryKey, nil
@@ -169,17 +186,22 @@ func (m *Manager) HandleError(
 				duration := time.Until(reset1308Time)
 				log.Printf("[COOLDOWN] Channel冷却(1308): 渠道=%d 禁用至 %s (%.1f分钟)",
 					channelID, reset1308Time.Format("2006-01-02 15:04:05"), duration.Minutes())
+				// SSE 回调
+				m.notifyChannelCooldown(ctx, channelID, reset1308Time, statusCode)
 			}
 			return ActionRetryChannel, nil
 		}
 
 		// 默认逻辑: 使用指数退避策略
-		_, err := m.store.BumpChannelCooldown(ctx, channelID, time.Now(), statusCode)
+		nextDuration, err := m.store.BumpChannelCooldown(ctx, channelID, time.Now(), statusCode)
 		if err != nil {
 			// 冷却更新失败是非致命错误
 			// 设计原则: 数据库故障不应阻塞用户请求,系统应降级服务
 			// 影响: 可能导致短暂的冷却状态不一致,但总比拒绝服务更好
 			log.Printf("[WARN] Failed to update channel cooldown (channel=%d): %v", channelID, err)
+		} else {
+			// SSE 回调
+			m.notifyChannelCooldown(ctx, channelID, time.Now().Add(nextDuration), statusCode)
 		}
 		return ActionRetryChannel, nil
 
@@ -199,4 +221,34 @@ func (m *Manager) ClearChannelCooldown(ctx context.Context, channelID int64) err
 // 简化成功后的冷却清除逻辑
 func (m *Manager) ClearKeyCooldown(ctx context.Context, channelID int64, keyIndex int) error {
 	return m.store.ResetKeyCooldown(ctx, channelID, keyIndex)
+}
+
+// notifyChannelCooldown 通知渠道冷却事件（SSE 推送）
+func (m *Manager) notifyChannelCooldown(ctx context.Context, channelID int64, until time.Time, statusCode int) {
+	if m.onChannelCooldown == nil {
+		return
+	}
+	// 获取渠道名称
+	channelName := ""
+	if m.configGetter != nil {
+		if cfg, err := m.configGetter.GetConfig(ctx, channelID); err == nil && cfg != nil {
+			channelName = cfg.Name
+		}
+	}
+	m.onChannelCooldown(channelID, channelName, NoKeyIndex, until, statusCode)
+}
+
+// notifyKeyCooldown 通知 Key 冷却事件（SSE 推送）
+func (m *Manager) notifyKeyCooldown(ctx context.Context, channelID int64, keyIndex int, until time.Time, statusCode int) {
+	if m.onKeyCooldown == nil {
+		return
+	}
+	// 获取渠道名称
+	channelName := ""
+	if m.configGetter != nil {
+		if cfg, err := m.configGetter.GetConfig(ctx, channelID); err == nil && cfg != nil {
+			channelName = cfg.Name
+		}
+	}
+	m.onKeyCooldown(channelID, channelName, keyIndex, until, statusCode)
 }

@@ -126,6 +126,11 @@ func migrate(ctx context.Context, db *sql.DB, dialect Dialect) error {
 		return fmt.Errorf("migrate channel endpoints: %w", err)
 	}
 
+	// 迁移：确保所有多端点渠道至少有一个激活端点（2025-12新增）
+	if err := ensureActiveEndpoints(ctx, db); err != nil {
+		return fmt.Errorf("ensure active endpoints: %w", err)
+	}
+
 	return nil
 }
 
@@ -181,6 +186,60 @@ func migrateChannelEndpoints(ctx context.Context, db *sql.DB, dialect Dialect) e
 		_, err := db.ExecContext(ctx, insertQuery, ch.id, ch.url)
 		if err != nil {
 			return fmt.Errorf("insert endpoint for channel %d: %w", ch.id, err)
+		}
+	}
+
+	return nil
+}
+
+// ensureActiveEndpoints 确保所有有端点的渠道至少有一个激活端点（2025-12新增）
+func ensureActiveEndpoints(ctx context.Context, db *sql.DB) error {
+	// 查找有端点但没有激活端点的渠道
+	query := `
+		SELECT DISTINCT e.channel_id
+		FROM channel_endpoints e
+		WHERE e.channel_id NOT IN (
+			SELECT channel_id FROM channel_endpoints WHERE is_active = 1
+		)
+	`
+	rows, err := db.QueryContext(ctx, query)
+	if err != nil {
+		return fmt.Errorf("query channels without active endpoint: %w", err)
+	}
+	defer rows.Close()
+
+	var channelIDs []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return fmt.Errorf("scan channel id: %w", err)
+		}
+		channelIDs = append(channelIDs, id)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate channels: %w", err)
+	}
+
+	if len(channelIDs) == 0 {
+		return nil
+	}
+
+	// 为每个渠道激活第一个端点（按sort_order排序）
+	for _, channelID := range channelIDs {
+		_, err := db.ExecContext(ctx, `
+			UPDATE channel_endpoints
+			SET is_active = 1
+			WHERE channel_id = ? AND id = (
+				SELECT id FROM (
+					SELECT id FROM channel_endpoints
+					WHERE channel_id = ?
+					ORDER BY sort_order ASC
+					LIMIT 1
+				) AS t
+			)
+		`, channelID, channelID)
+		if err != nil {
+			return fmt.Errorf("activate first endpoint for channel %d: %w", channelID, err)
 		}
 	}
 

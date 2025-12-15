@@ -58,7 +58,8 @@ type Server struct {
 	maxConcurrency int           // 最大并发数（默认1000）
 
 	// 后台服务
-	endpointTester *EndpointTester // 后台端点测速服务
+	endpointTester  *EndpointTester  // 后台端点测速服务
+	cooldownService *CooldownService // 冷却事件 SSE 广播服务
 
 	// 优雅关闭机制
 	shutdownCh     chan struct{}  // 关闭信号channel
@@ -153,6 +154,15 @@ func NewServer(store storage.Store) *Server {
 	// 初始化冷却管理器（统一管理渠道级和Key级冷却）
 	// 传入Server作为configGetter，利用缓存层查询渠道配置
 	s.cooldownManager = cooldown.NewManager(store, s)
+
+	// 初始化冷却事件 SSE 广播服务
+	s.cooldownService = NewCooldownService(s.shutdownCh, &s.isShuttingDown)
+
+	// 设置冷却事件回调（用于 SSE 推送）
+	s.cooldownManager.SetCooldownCallbacks(
+		s.cooldownService.BroadcastChannelCooldown,
+		s.cooldownService.BroadcastKeyCooldown,
+	)
 
 	// 初始化渠道验证器管理器（支持88code套餐验证等扩展规则）
 	s.validatorManager = validator.NewManager()
@@ -443,6 +453,9 @@ func (s *Server) SetupRoutes(r *gin.Engine) {
 
 		// 日志实时推送（SSE）
 		admin.GET("/logs/stream", s.HandleLogSSE)
+
+		// 冷却事件实时推送（SSE）
+		admin.GET("/cooldown/stream", s.HandleCooldownSSE)
 	}
 
 	// 静态文件服务（安全）：使用框架自带的静态文件路由，自动做路径清理，防止目录遍历
@@ -518,10 +531,21 @@ func (s *Server) HandleChannelKeys(c *gin.Context) {
 }
 
 // 优雅关闭Server
+// PrepareShutdown 预关闭：关闭 shutdownCh 通知所有 SSE 连接断开
+// 应在 httpServer.Shutdown() 之前调用，让长连接主动断开
+func (s *Server) PrepareShutdown() {
+	if s.isShuttingDown.Swap(true) {
+		return // 已经在关闭中
+	}
+	log.Print("🛑 正在通知 SSE 连接关闭...")
+	close(s.shutdownCh)
+}
+
 // Shutdown 优雅关闭Server，等待所有后台goroutine完成
 // 参数ctx用于控制最大等待时间，超时后强制退出
 // 返回值：nil表示成功，context.DeadlineExceeded表示超时
 func (s *Server) Shutdown(ctx context.Context) error {
+	// 如果 PrepareShutdown 没被调用，这里也要关闭 shutdownCh
 	if s.isShuttingDown.Swap(true) {
 		select {
 		case <-s.shutdownDone:
@@ -529,6 +553,9 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		}
+	} else {
+		// PrepareShutdown 没被调用，这里关闭 shutdownCh
+		close(s.shutdownCh)
 	}
 	defer close(s.shutdownDone)
 
@@ -537,6 +564,11 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	// 停止后台端点测速服务
 	if s.endpointTester != nil {
 		s.endpointTester.Stop()
+	}
+
+	// 关闭冷却事件 SSE 服务
+	if s.cooldownService != nil {
+		s.cooldownService.Shutdown()
 	}
 
 	// 关闭shutdownCh，通知所有goroutine退出（幂等：由isShuttingDown守护）

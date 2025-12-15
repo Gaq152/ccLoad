@@ -180,6 +180,11 @@ func main() {
 
 	log.Println("收到关闭信号，正在优雅关闭服务器...")
 
+	// 先通知 SSE 连接关闭，让长连接主动断开
+	srv.PrepareShutdown()
+	// 给 SSE 连接一点时间断开
+	time.Sleep(100 * time.Millisecond)
+
 	// 设置5秒超时用于HTTP服务器关闭
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
