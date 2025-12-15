@@ -572,9 +572,6 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		s.cooldownService.Shutdown()
 	}
 
-	// 关闭shutdownCh，通知所有goroutine退出（幂等：由isShuttingDown守护）
-	close(s.shutdownCh)
-
 	// 停止LoginRateLimiter的cleanupLoop
 	if s.loginRateLimiter != nil {
 		s.loginRateLimiter.Stop()
