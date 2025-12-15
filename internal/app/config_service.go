@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"sync"
 	"time"
 
 	"ccLoad/internal/model"
@@ -12,11 +13,10 @@ import (
 )
 
 // ConfigService 配置管理服务
-// 职责: 启动时从数据库加载配置，提供只读访问
-// 配置修改后程序会自动重启，无需热重载
 type ConfigService struct {
 	store  storage.Store
-	cache  map[string]*model.SystemSetting // 启动时加载，运行期间只读
+	cache  map[string]*model.SystemSetting
+	mu     sync.RWMutex
 	loaded bool
 }
 
@@ -30,6 +30,9 @@ func NewConfigService(store storage.Store) *ConfigService {
 
 // LoadDefaults 启动时从数据库加载配置到内存（只调用一次）
 func (cs *ConfigService) LoadDefaults(ctx context.Context) error {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+
 	if cs.loaded {
 		return nil
 	}
@@ -50,6 +53,8 @@ func (cs *ConfigService) LoadDefaults(ctx context.Context) error {
 
 // GetInt 获取整数配置
 func (cs *ConfigService) GetInt(key string, defaultValue int) int {
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
 	if setting, ok := cs.cache[key]; ok {
 		if intVal, err := strconv.Atoi(setting.Value); err == nil {
 			return intVal
@@ -60,6 +65,8 @@ func (cs *ConfigService) GetInt(key string, defaultValue int) int {
 
 // GetBool 获取布尔配置
 func (cs *ConfigService) GetBool(key string, defaultValue bool) bool {
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
 	if setting, ok := cs.cache[key]; ok {
 		return setting.Value == "true" || setting.Value == "1"
 	}
@@ -68,6 +75,8 @@ func (cs *ConfigService) GetBool(key string, defaultValue bool) bool {
 
 // GetString 获取字符串配置
 func (cs *ConfigService) GetString(key string, defaultValue string) string {
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
 	if setting, ok := cs.cache[key]; ok {
 		return setting.Value
 	}
@@ -127,12 +136,23 @@ func (cs *ConfigService) GetDurationPositive(key string, defaultValue time.Durat
 
 // GetSetting 获取完整配置对象（用于验证等场景）
 func (cs *ConfigService) GetSetting(key string) *model.SystemSetting {
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
 	return cs.cache[key]
 }
 
-// UpdateSetting 更新配置（仅写数据库，不更新缓存，因为会重启）
+// UpdateSetting 更新配置并刷新缓存
 func (cs *ConfigService) UpdateSetting(ctx context.Context, key, value string) error {
-	return cs.store.UpdateSetting(ctx, key, value)
+	if err := cs.store.UpdateSetting(ctx, key, value); err != nil {
+		return err
+	}
+	// 刷新缓存
+	if updated, err := cs.store.GetSetting(ctx, key); err == nil {
+		cs.mu.Lock()
+		cs.cache[key] = updated
+		cs.mu.Unlock()
+	}
+	return nil
 }
 
 // ListAllSettings 获取所有配置(用于前端展示)
@@ -140,7 +160,18 @@ func (cs *ConfigService) ListAllSettings(ctx context.Context) ([]*model.SystemSe
 	return cs.store.ListAllSettings(ctx)
 }
 
-// BatchUpdateSettings 批量更新配置（仅写数据库，不更新缓存，因为会重启）
+// BatchUpdateSettings 批量更新配置并刷新缓存
 func (cs *ConfigService) BatchUpdateSettings(ctx context.Context, updates map[string]string) error {
-	return cs.store.BatchUpdateSettings(ctx, updates)
+	if err := cs.store.BatchUpdateSettings(ctx, updates); err != nil {
+		return err
+	}
+	// 刷新缓存
+	if settings, err := cs.store.ListAllSettings(ctx); err == nil {
+		cs.mu.Lock()
+		for _, s := range settings {
+			cs.cache[s.Key] = s
+		}
+		cs.mu.Unlock()
+	}
+	return nil
 }

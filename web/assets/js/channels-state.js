@@ -8,6 +8,7 @@ let currentChannelKeyCooldowns = []; // 当前编辑渠道的Key冷却信息
 let redirectTableData = []; // 模型重定向表格数据: [{from: '', to: ''}]
 let defaultTestContent = 'sonnet 4.0的发布日期是什么'; // 默认测试内容（从设置加载）
 let channelStatsRange = 'today'; // 渠道统计时间范围（从设置加载）
+let channelStatsFields = ['calls', 'rate', 'first_byte', 'input', 'output', 'cache_read', 'cache_creation', 'cost']; // 渠道统计显示字段
 let channelsCache = {}; // 按类型缓存渠道数据: {type: channels[]}
 
 // Filter state

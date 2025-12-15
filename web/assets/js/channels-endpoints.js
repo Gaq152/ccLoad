@@ -339,28 +339,9 @@
 
       const data = await res.json();
 
-      // 更新端点数据（优先用 endpoints，包含完整信息）
+      // 更新端点数据（后端返回的 endpoints 已包含最新 latency_ms）
       if (data.endpoints && data.endpoints.length > 0) {
-        // 合并测速结果的状态码到端点数据
-        const results = data.data || [];
-        data.endpoints.forEach(ep => {
-          const result = results.find(r => r.id === ep.id || r.url === ep.url);
-          if (result) {
-            ep.status_code = result.status_code;
-            ep.test_count = result.test_count;
-          }
-        });
         endpointsData = data.endpoints;
-      } else if (data.data && data.data.length > 0) {
-        // 合并测速结果到现有数据
-        data.data.forEach(result => {
-          const ep = endpointsData.find(e => e.id === result.id || e.url === result.url);
-          if (ep) {
-            ep.latency_ms = result.latency_ms;
-            ep.status_code = result.status_code;
-            ep.test_count = result.test_count;
-          }
-        });
       }
 
       // 更新自动选择状态（可能已自动切换）
