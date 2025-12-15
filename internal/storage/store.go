@@ -109,8 +109,8 @@ type EndpointStore interface {
 	GetActiveEndpoint(ctx context.Context, channelID int64) (*model.ChannelEndpoint, error)
 	SaveEndpoints(ctx context.Context, channelID int64, endpoints []model.ChannelEndpoint) error
 	SetActiveEndpoint(ctx context.Context, channelID int64, endpointID int64) error
-	UpdateEndpointLatency(ctx context.Context, endpointID int64, latencyMs int) error
-	UpdateEndpointsLatency(ctx context.Context, results map[int64]int) error
+	UpdateEndpointLatency(ctx context.Context, endpointID int64, latencyMs int, statusCode int) error
+	UpdateEndpointsLatency(ctx context.Context, results map[int64]model.EndpointTestResult) error
 	GetChannelAutoSelectEndpoint(ctx context.Context, channelID int64) (bool, error)
 	SetChannelAutoSelectEndpoint(ctx context.Context, channelID int64, autoSelect bool) error
 	SelectFastestEndpoint(ctx context.Context, channelID int64) error

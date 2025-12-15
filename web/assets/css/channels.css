@@ -239,6 +239,12 @@
       animation: spin 0.8s linear infinite;
     }
 
+    /* 端点列表中的 spinner 使用深色 */
+    .endpoint-latency .spinner-small {
+      border-color: rgba(0,0,0,0.1);
+      border-top-color: var(--primary-500, #3b82f6);
+    }
+
     @keyframes spin {
       to { transform: rotate(360deg); }
     }

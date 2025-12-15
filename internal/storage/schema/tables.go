@@ -105,6 +105,7 @@ func DefineChannelEndpointsTable() *TableBuilder {
 		Column("url VARCHAR(512) NOT NULL").
 		Column("is_active TINYINT NOT NULL DEFAULT 0").       // 当前选中的端点
 		Column("latency_ms INT DEFAULT NULL").                // 最近测速延迟(ms)，NULL表示未测试
+		Column("status_code INT DEFAULT NULL").               // 最近测速HTTP状态码，NULL表示未测试
 		Column("last_test_at BIGINT NOT NULL DEFAULT 0").     // 最后测速时间戳
 		Column("sort_order INT NOT NULL DEFAULT 0").          // 排序顺序
 		Column("created_at BIGINT NOT NULL").

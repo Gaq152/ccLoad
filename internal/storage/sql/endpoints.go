@@ -14,7 +14,7 @@ import (
 // ListEndpoints 获取渠道的所有端点
 func (s *SQLStore) ListEndpoints(ctx context.Context, channelID int64) ([]model.ChannelEndpoint, error) {
 	query := `
-		SELECT id, channel_id, url, is_active, latency_ms, last_test_at, sort_order, created_at
+		SELECT id, channel_id, url, is_active, latency_ms, status_code, last_test_at, sort_order, created_at
 		FROM channel_endpoints
 		WHERE channel_id = ?
 		ORDER BY sort_order ASC, id ASC
@@ -28,10 +28,10 @@ func (s *SQLStore) ListEndpoints(ctx context.Context, channelID int64) ([]model.
 	var endpoints []model.ChannelEndpoint
 	for rows.Next() {
 		var ep model.ChannelEndpoint
-		var latencyMs sql.NullInt64
+		var latencyMs, statusCode sql.NullInt64
 		err := rows.Scan(
 			&ep.ID, &ep.ChannelID, &ep.URL, &ep.IsActive,
-			&latencyMs, &ep.LastTestAt, &ep.SortOrder, &ep.CreatedAt,
+			&latencyMs, &statusCode, &ep.LastTestAt, &ep.SortOrder, &ep.CreatedAt,
 		)
 		if err != nil {
 			return nil, err
@@ -39,6 +39,10 @@ func (s *SQLStore) ListEndpoints(ctx context.Context, channelID int64) ([]model.
 		if latencyMs.Valid {
 			v := int(latencyMs.Int64)
 			ep.LatencyMs = &v
+		}
+		if statusCode.Valid {
+			v := int(statusCode.Int64)
+			ep.StatusCode = &v
 		}
 		endpoints = append(endpoints, ep)
 	}
@@ -49,7 +53,7 @@ func (s *SQLStore) ListEndpoints(ctx context.Context, channelID int64) ([]model.
 // GetActiveEndpoint 获取渠道的激活端点
 func (s *SQLStore) GetActiveEndpoint(ctx context.Context, channelID int64) (*model.ChannelEndpoint, error) {
 	query := `
-		SELECT id, channel_id, url, is_active, latency_ms, last_test_at, sort_order, created_at
+		SELECT id, channel_id, url, is_active, latency_ms, status_code, last_test_at, sort_order, created_at
 		FROM channel_endpoints
 		WHERE channel_id = ? AND is_active = 1
 		LIMIT 1
@@ -57,10 +61,10 @@ func (s *SQLStore) GetActiveEndpoint(ctx context.Context, channelID int64) (*mod
 	row := s.db.QueryRowContext(ctx, query, channelID)
 
 	var ep model.ChannelEndpoint
-	var latencyMs sql.NullInt64
+	var latencyMs, statusCode sql.NullInt64
 	err := row.Scan(
 		&ep.ID, &ep.ChannelID, &ep.URL, &ep.IsActive,
-		&latencyMs, &ep.LastTestAt, &ep.SortOrder, &ep.CreatedAt,
+		&latencyMs, &statusCode, &ep.LastTestAt, &ep.SortOrder, &ep.CreatedAt,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -71,6 +75,10 @@ func (s *SQLStore) GetActiveEndpoint(ctx context.Context, channelID int64) (*mod
 	if latencyMs.Valid {
 		v := int(latencyMs.Int64)
 		ep.LatencyMs = &v
+	}
+	if statusCode.Valid {
+		v := int(statusCode.Int64)
+		ep.StatusCode = &v
 	}
 	return &ep, nil
 }
@@ -93,16 +101,19 @@ func (s *SQLStore) SaveEndpoints(ctx context.Context, channelID int64, endpoints
 	if len(endpoints) > 0 {
 		now := time.Now().Unix()
 		insertQuery := `
-			INSERT INTO channel_endpoints (channel_id, url, is_active, latency_ms, last_test_at, sort_order, created_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?)
+			INSERT INTO channel_endpoints (channel_id, url, is_active, latency_ms, status_code, last_test_at, sort_order, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		`
 		for i, ep := range endpoints {
-			var latencyMs any = nil
+			var latencyMs, statusCode any = nil, nil
 			if ep.LatencyMs != nil {
 				latencyMs = *ep.LatencyMs
 			}
+			if ep.StatusCode != nil {
+				statusCode = *ep.StatusCode
+			}
 			_, err = tx.ExecContext(ctx, insertQuery,
-				channelID, ep.URL, ep.IsActive, latencyMs, ep.LastTestAt, i, now,
+				channelID, ep.URL, ep.IsActive, latencyMs, statusCode, ep.LastTestAt, i, now,
 			)
 			if err != nil {
 				return err
@@ -162,17 +173,17 @@ func (s *SQLStore) SetActiveEndpoint(ctx context.Context, channelID int64, endpo
 }
 
 // UpdateEndpointLatency 更新端点延迟测试结果
-func (s *SQLStore) UpdateEndpointLatency(ctx context.Context, endpointID int64, latencyMs int) error {
+func (s *SQLStore) UpdateEndpointLatency(ctx context.Context, endpointID int64, latencyMs int, statusCode int) error {
 	now := time.Now().Unix()
 	_, err := s.db.ExecContext(ctx,
-		"UPDATE channel_endpoints SET latency_ms = ?, last_test_at = ? WHERE id = ?",
-		latencyMs, now, endpointID,
+		"UPDATE channel_endpoints SET latency_ms = ?, status_code = ?, last_test_at = ? WHERE id = ?",
+		latencyMs, statusCode, now, endpointID,
 	)
 	return err
 }
 
-// UpdateEndpointsLatency 批量更新端点延迟（测速后调用）
-func (s *SQLStore) UpdateEndpointsLatency(ctx context.Context, results map[int64]int) error {
+// UpdateEndpointsLatency 批量更新端点延迟和状态码（测速后调用）
+func (s *SQLStore) UpdateEndpointsLatency(ctx context.Context, results map[int64]model.EndpointTestResult) error {
 	if len(results) == 0 {
 		return nil
 	}
@@ -184,10 +195,10 @@ func (s *SQLStore) UpdateEndpointsLatency(ctx context.Context, results map[int64
 	defer tx.Rollback()
 
 	now := time.Now().Unix()
-	for endpointID, latencyMs := range results {
+	for endpointID, result := range results {
 		_, err = tx.ExecContext(ctx,
-			"UPDATE channel_endpoints SET latency_ms = ?, last_test_at = ? WHERE id = ?",
-			latencyMs, now, endpointID,
+			"UPDATE channel_endpoints SET latency_ms = ?, status_code = ?, last_test_at = ? WHERE id = ?",
+			result.LatencyMs, result.StatusCode, now, endpointID,
 		)
 		if err != nil {
 			return err
@@ -221,18 +232,18 @@ func (s *SQLStore) SetChannelAutoSelectEndpoint(ctx context.Context, channelID i
 
 // SelectFastestEndpoint 自动选择最快端点并激活
 func (s *SQLStore) SelectFastestEndpoint(ctx context.Context, channelID int64) error {
-	// 查找延迟最小的端点
+	// 查找延迟最小的端点（排除超时的，latency_ms >= 0）
 	var fastestID int64
 	var fastestURL string
 	err := s.db.QueryRowContext(ctx, `
 		SELECT id, url FROM channel_endpoints
-		WHERE channel_id = ? AND latency_ms IS NOT NULL
+		WHERE channel_id = ? AND latency_ms IS NOT NULL AND latency_ms >= 0
 		ORDER BY latency_ms ASC
 		LIMIT 1
 	`, channelID).Scan(&fastestID, &fastestURL)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil // 没有测速结果，不做任何操作
+			return nil // 没有测速结果或全部超时，不做任何操作
 		}
 		return err
 	}
@@ -243,14 +254,13 @@ func (s *SQLStore) SelectFastestEndpoint(ctx context.Context, channelID int64) e
 
 // GetChannelsWithAutoSelect 获取所有开启自动选择且有端点的渠道ID列表
 func (s *SQLStore) GetChannelsWithAutoSelect(ctx context.Context) ([]*model.Config, error) {
-	// 只查询已启用、开启自动选择、且有多个端点的渠道
+	// 查询已启用、开启自动选择、且有端点的渠道
 	query := `
 		SELECT DISTINCT c.id, c.name
 		FROM channels c
 		INNER JOIN channel_endpoints e ON c.id = e.channel_id
 		WHERE c.enabled = 1 AND c.auto_select_endpoint = 1
 		GROUP BY c.id
-		HAVING COUNT(e.id) > 1
 	`
 	rows, err := s.db.QueryContext(ctx, query)
 	if err != nil {

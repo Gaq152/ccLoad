@@ -37,9 +37,16 @@ type ChannelEndpoint struct {
 	URL        string `json:"url"`
 	IsActive   bool   `json:"is_active"`    // 当前选中的端点
 	LatencyMs  *int   `json:"latency_ms"`   // 最近测速延迟(ms)，nil表示未测试
+	StatusCode *int   `json:"status_code"`  // 最近测速HTTP状态码，nil表示未测试
 	LastTestAt int64  `json:"last_test_at"` // 最后测速时间戳
 	SortOrder  int    `json:"sort_order"`   // 排序顺序
 	CreatedAt  int64  `json:"created_at"`
+}
+
+// EndpointTestResult 端点测速结果（用于批量更新）
+type EndpointTestResult struct {
+	LatencyMs  int
+	StatusCode int
 }
 
 // GetChannelType 默认返回"anthropic"（Claude API）
