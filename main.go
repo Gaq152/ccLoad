@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/signal"
 	"strings"
-	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -19,30 +18,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 )
-
-// restartRequested 标记是否需要重启（由设置保存触发）
-var restartRequested atomic.Bool
-
-// RequestRestart 请求程序重启（由 admin_settings 调用）
-func RequestRestart() {
-	restartRequested.Store(true)
-}
-
-// execSelf 使用 syscall.Exec 重新执行自身
-func execSelf() {
-	executable, err := os.Executable()
-	if err != nil {
-		log.Printf("[ERROR] 获取可执行文件路径失败: %v", err)
-		return
-	}
-
-	log.Printf("[INFO] 正在重启程序: %s", executable)
-
-	// syscall.Exec 替换当前进程，不会返回
-	if err := syscall.Exec(executable, os.Args, os.Environ()); err != nil {
-		log.Printf("[ERROR] 重启失败: %v", err)
-	}
-}
 
 // defaultTrustedProxies 默认可信代理（私有网段 + 共享地址空间）
 var defaultTrustedProxies = []string{
@@ -112,9 +87,6 @@ func main() {
 	// 渠道仅从数据库管理与读取；不再从本地文件初始化。
 
 	srv := app.NewServer(store)
-
-	// 注入重启函数（避免循环依赖）
-	app.RestartFunc = RequestRestart
 
 	// 创建Gin引擎
 	r := gin.New()
@@ -205,12 +177,4 @@ func main() {
 	}
 
 	log.Println("✅ 服务器已优雅关闭")
-
-	// 检查是否需要重启
-	if restartRequested.Load() {
-		log.Println("🔄 检测到重启请求，正在重启...")
-		execSelf()
-		// execSelf 不会返回，如果到这里说明重启失败
-		log.Println("[ERROR] 重启失败，程序退出")
-	}
 }

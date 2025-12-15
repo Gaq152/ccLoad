@@ -4,10 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 	"strconv"
-	"syscall"
-	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -85,18 +82,14 @@ func (s *Server) AdminUpdateSetting(c *gin.Context) {
 		return
 	}
 
-	log.Printf("[INFO] Setting updated: %s = %s (restart required)", key, req.Value)
+	log.Printf("[INFO] Setting updated: %s = %s", key, req.Value)
 
-	// 返回成功响应，告知需要重启
 	RespondJSON(c, http.StatusOK, gin.H{
 		"success": true,
-		"message": "配置已保存，程序将在2秒后重启",
+		"message": "配置已保存",
 		"key":     key,
 		"value":   req.Value,
 	})
-
-	// 异步触发重启
-	go triggerRestart()
 }
 
 // AdminResetSetting 重置配置为默认值
@@ -122,17 +115,14 @@ func (s *Server) AdminResetSetting(c *gin.Context) {
 		return
 	}
 
-	log.Printf("[INFO] Setting reset to default: %s = %s (restart required)", key, setting.DefaultValue)
+	log.Printf("[INFO] Setting reset to default: %s = %s", key, setting.DefaultValue)
 
 	RespondJSON(c, http.StatusOK, gin.H{
 		"success": true,
-		"message": "配置已重置为默认值，程序将在2秒后重启",
+		"message": "配置已重置为默认值",
 		"key":     key,
 		"value":   setting.DefaultValue,
 	})
-
-	// 异步触发重启
-	go triggerRestart()
 }
 
 // AdminBatchUpdateSettings 批量更新配置(事务保护)
@@ -170,15 +160,12 @@ func (s *Server) AdminBatchUpdateSettings(c *gin.Context) {
 		return
 	}
 
-	log.Printf("[INFO] Batch updated %d settings (restart required)", len(req))
+	log.Printf("[INFO] Batch updated %d settings", len(req))
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"message": fmt.Sprintf("已保存 %d 项配置，程序将在2秒后重启", len(req)),
+		"message": fmt.Sprintf("已保存 %d 项配置", len(req)),
 	})
-
-	// 异步触发重启
-	go triggerRestart()
 }
 
 // validateSettingValue 验证配置值的合法性
@@ -227,30 +214,4 @@ func validateSettingValue(key, valueType, value string) error {
 	}
 
 	return nil
-}
-
-// RestartFunc 重启函数（由 main 包注入，避免循环依赖）
-var RestartFunc func()
-
-// triggerRestart 触发程序重启
-// 等待2秒让HTTP响应完成发送，然后向自己发送SIGTERM信号
-func triggerRestart() {
-	time.Sleep(2 * time.Second)
-	log.Print("[INFO] Triggering restart due to settings change...")
-
-	// 设置重启标志（main.go 会在优雅关闭后检查并执行重启）
-	if RestartFunc != nil {
-		RestartFunc()
-	}
-
-	// 向自己发送 SIGTERM 信号，触发优雅关闭
-	p, err := os.FindProcess(os.Getpid())
-	if err != nil {
-		log.Printf("[ERROR] Failed to find process: %v", err)
-		return
-	}
-
-	if err := p.Signal(syscall.SIGTERM); err != nil {
-		log.Printf("[ERROR] Failed to send SIGTERM: %v", err)
-	}
 }
