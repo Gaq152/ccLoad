@@ -16,6 +16,10 @@ type EndpointTester struct {
 	interval time.Duration
 	stopCh   chan struct{}
 	wg       sync.WaitGroup
+
+	// 时间追踪（用于前端倒计时显示）
+	lastRunTime time.Time // 上次测速时间
+	mu          sync.RWMutex
 }
 
 // NewEndpointTester 创建端点测速服务
@@ -70,6 +74,11 @@ func (t *EndpointTester) loop() {
 
 // testAllEndpoints 测速所有开启自动选择的渠道端点
 func (t *EndpointTester) testAllEndpoints() {
+	// 记录本次测速时间
+	t.mu.Lock()
+	t.lastRunTime = time.Now()
+	t.mu.Unlock()
+
 	// 使用可取消的 context，响应 shutdown 信号
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
@@ -117,6 +126,29 @@ func (t *EndpointTester) testAllEndpoints() {
 	}
 
 	wg.Wait()
+}
+
+// GetStatus 获取测速状态（用于前端倒计时）
+func (t *EndpointTester) GetStatus() (nextRunTime time.Time, intervalSeconds int, enabled bool) {
+	if t == nil {
+		return time.Time{}, 0, false
+	}
+
+	t.mu.RLock()
+	lastRun := t.lastRunTime
+	t.mu.RUnlock()
+
+	intervalSeconds = int(t.interval.Seconds())
+
+	// 计算下次测速时间
+	if lastRun.IsZero() {
+		// 还没测过，下次测速是启动后的第一个周期
+		nextRunTime = time.Now().Add(t.interval)
+	} else {
+		nextRunTime = lastRun.Add(t.interval)
+	}
+
+	return nextRunTime, intervalSeconds, true
 }
 
 // testChannelEndpoints 测速单个渠道的所有端点

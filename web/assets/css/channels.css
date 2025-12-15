@@ -248,3 +248,52 @@
     @keyframes spin {
       to { transform: rotate(360deg); }
     }
+
+/* 自动测速倒计时组件 */
+.filter-timer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: var(--primary-50);
+  border: 1px solid var(--primary-200);
+  border-radius: var(--radius-base, 6px);
+  color: var(--primary-600);
+  font-size: 13px;
+  font-weight: 500;
+  margin-right: 8px;
+  transition: all 0.3s ease;
+  white-space: nowrap;
+}
+
+.filter-timer:hover {
+  background: var(--primary-100);
+  border-color: var(--primary-300);
+  transform: translateY(-1px);
+}
+
+.filter-timer .timer-icon {
+  display: flex;
+  align-items: center;
+  animation: pulse 2s infinite;
+}
+
+.filter-timer .timer-text {
+  font-family: var(--font-family-mono, monospace);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.5px;
+}
+
+/* 测速中状态 */
+.filter-timer.testing {
+  background: var(--warning-50, #fffbeb);
+  border-color: var(--warning-200, #fde68a);
+  color: var(--warning-600, #d97706);
+}
+
+/* 移动端适配 */
+@media (max-width: 640px) {
+  .filter-timer {
+    display: none;
+  }
+}

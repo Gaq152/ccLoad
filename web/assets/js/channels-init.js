@@ -88,16 +88,21 @@ document.addEventListener('DOMContentLoaded', async () => {
   // 启动冷却事件 SSE 订阅
   startCooldownSSE();
 
+  // 启动自动测速倒计时
+  AutoTestTimer.init();
+
   // 页面可见性监听（后台标签页暂停倒计时，节省CPU）
   document.addEventListener('visibilitychange', function() {
     if (document.hidden) {
       stopCooldownCountdown();
       stopCooldownSSE();
+      AutoTestTimer.stop();
     } else {
       // 页面重新可见时，重新加载数据并启动倒计时
       clearChannelsCache();
       loadChannels(filters.channelType);
       startCooldownSSE();
+      AutoTestTimer.init();
     }
   });
 });

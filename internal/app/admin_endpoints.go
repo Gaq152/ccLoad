@@ -309,3 +309,23 @@ func (s *Server) testEndpointLatencyMulti(url string, testCount int) (endpointTe
 		TestCount:  successCount,
 	}, nil
 }
+
+// HandleEndpointsStatus 获取端点测速状态（用于前端倒计时）
+// GET /admin/endpoints/status
+func (s *Server) HandleEndpointsStatus(c *gin.Context) {
+	nextRunTime, intervalSeconds, enabled := s.endpointTester.GetStatus()
+
+	if !enabled {
+		c.JSON(http.StatusOK, gin.H{
+			"enabled": false,
+			"message": "自动端点测速已禁用",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"enabled":          true,
+		"next_run_time":    nextRunTime.Format(time.RFC3339),
+		"interval_seconds": intervalSeconds,
+	})
+}

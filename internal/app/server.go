@@ -429,6 +429,7 @@ func (s *Server) SetupRoutes(r *gin.Engine) {
 		admin.PUT("/channels/:id/endpoints", s.HandleChannelEndpoints)
 		admin.POST("/channels/:id/endpoints/test", s.HandleTestEndpoints)
 		admin.PUT("/channels/:id/endpoints/active", s.HandleSetActiveEndpoint)
+		admin.GET("/endpoints/status", s.HandleEndpointsStatus) // 测速状态（前端倒计时）
 
 		// 统计分析
 		admin.GET("/errors", s.HandleErrors)
