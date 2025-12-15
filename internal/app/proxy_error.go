@@ -123,7 +123,10 @@ type tokenStatsUpdate struct {
 }
 
 func (s *Server) tokenStatsWorker() {
-	defer s.wg.Done()
+	defer func() {
+		log.Print("[DEBUG] tokenStatsWorker 退出")
+		s.wg.Done()
+	}()
 
 	if s.tokenStatsCh == nil {
 		return

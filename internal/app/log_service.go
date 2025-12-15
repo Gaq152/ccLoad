@@ -80,7 +80,10 @@ func (s *LogService) StartWorkers() {
 
 // logWorker 日志 Worker（后台协程）
 func (s *LogService) logWorker() {
-	defer s.wg.Done()
+	defer func() {
+		log.Print("[DEBUG] logWorker 退出")
+		s.wg.Done()
+	}()
 
 	batch := make([]*model.LogEntry, 0, config.LogBatchSize)
 	ticker := time.NewTicker(config.LogBatchTimeout)
@@ -244,7 +247,10 @@ func (s *LogService) StartCleanupLoop() {
 
 // cleanupOldLogsLoop 日志清理后台协程（私有方法）
 func (s *LogService) cleanupOldLogsLoop() {
-	defer s.wg.Done()
+	defer func() {
+		log.Print("[DEBUG] cleanupOldLogsLoop 退出")
+		s.wg.Done()
+	}()
 
 	ticker := time.NewTicker(config.LogCleanupInterval)
 	defer ticker.Stop()
