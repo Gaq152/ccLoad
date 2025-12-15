@@ -99,6 +99,18 @@ func (s *SQLStore) SaveEndpoints(ctx context.Context, channelID int64, endpoints
 
 	// 插入新端点
 	if len(endpoints) > 0 {
+		// 确保至少有一个端点是激活的（如果没有激活的，默认第一个）
+		hasActive := false
+		for _, ep := range endpoints {
+			if ep.IsActive {
+				hasActive = true
+				break
+			}
+		}
+		if !hasActive {
+			endpoints[0].IsActive = true
+		}
+
 		now := time.Now().Unix()
 		insertQuery := `
 			INSERT INTO channel_endpoints (channel_id, url, is_active, latency_ms, status_code, last_test_at, sort_order, created_at)
