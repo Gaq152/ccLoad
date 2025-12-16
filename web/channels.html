@@ -12,7 +12,7 @@
   <link href="/web/assets/css/inter.css" rel="stylesheet">
   <link rel="stylesheet" href="/web/assets/css/channels.css">
 </head>
-<body>
+<body class="dashboard-theme">
   <div class="app-container">
     <main class="main-content">
       <div class="content-area">
@@ -165,7 +165,7 @@
                 </svg>
                 <span>导入</span>
               </button>
-              <button type="button" id="toggleInlineKeyBtn" onclick="toggleInlineKeyVisibility()" style="width: 26px; height: 26px; border-radius: 6px; border: 1px solid var(--neutral-300); background: white; color: var(--neutral-500); cursor: pointer; padding: 0; display: inline-flex; align-items: center; justify-content: center; transition: all 0.2s;" title="显示/隐藏API Key" onmouseover="this.style.background='var(--neutral-50)'; this.style.borderColor='var(--neutral-400)';" onmouseout="this.style.background='white'; this.style.borderColor='var(--neutral-300)';">
+              <button type="button" id="toggleInlineKeyBtn" onclick="toggleInlineKeyVisibility()" style="width: 26px; height: 26px; border-radius: 6px; border: 1px solid var(--neutral-300); background: var(--input-focus-bg); color: var(--neutral-500); cursor: pointer; padding: 0; display: inline-flex; align-items: center; justify-content: center; transition: all 0.2s;" title="显示/隐藏API Key" onmouseover="this.style.background='var(--neutral-50)'; this.style.borderColor='var(--neutral-400)';" onmouseout="this.style.background='var(--input-focus-bg)'; this.style.borderColor='var(--neutral-300)';">
                 <svg id="inlineEyeIcon" width="13" height="13" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
                   <path d="M1.5 8C1.5 8 3.5 3.5 8 3.5C12.5 3.5 14.5 8 14.5 8C14.5 8 12.5 12.5 8 12.5C3.5 12.5 1.5 8 1.5 8Z" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
                   <circle cx="8" cy="8" r="2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -181,7 +181,7 @@
           <input type="hidden" id="channelApiKey" required>
 
           <!-- Key表格容器（最多显示5行+滚动） -->
-          <div style="max-height: 250px; overflow-y: auto; border: 1px solid var(--neutral-200); border-radius: 8px; background: white;">
+          <div style="max-height: 250px; overflow-y: auto; border: 1px solid var(--neutral-200); border-radius: 8px; background: var(--card-bg);">
             <table style="width: 100%; border-collapse: collapse;">
               <thead style="position: sticky; top: 0; z-index: 1; background: var(--neutral-100);">
                 <tr style="border-bottom: 2px solid var(--neutral-300);">
@@ -202,7 +202,7 @@
                     <select
                       id="keyStatusFilter"
                       onchange="filterKeysByStatus(this.value)"
-                      style="width: 100%; padding: 4px 8px; border: 1px solid var(--neutral-300); border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; background: white;"
+                      style="width: 100%; padding: 4px 8px; border: 1px solid var(--neutral-300); border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; background: var(--input-bg);"
                     >
                       <option value="all">全部</option>
                       <option value="normal">正常</option>
@@ -216,7 +216,7 @@
                       onclick="batchDeleteSelectedKeys()"
                       disabled
                       title="批量删除选中的Keys"
-                      style="padding: 4px 12px; border-radius: 6px; border: 1px solid var(--neutral-300); background: white; color: var(--neutral-500); cursor: not-allowed; font-size: 12px; font-weight: 500; transition: all 0.2s;"
+                      style="padding: 4px 12px; border-radius: 6px; border: 1px solid var(--neutral-300); background: var(--input-bg); color: var(--neutral-500); cursor: not-allowed; font-size: 12px; font-weight: 500; transition: all 0.2s;"
                     >
                       删除选中
                     </button>
@@ -269,7 +269,7 @@
           </div>
 
           <!-- 重定向表格容器 -->
-          <div style="max-height: 300px; overflow-y: auto; border: 1px solid var(--neutral-200); border-radius: 8px; background: white;">
+          <div style="max-height: 300px; overflow-y: auto; border: 1px solid var(--neutral-200); border-radius: 8px; background: var(--card-bg);">
             <table style="width: 100%; border-collapse: collapse;">
               <thead style="position: sticky; top: 0; z-index: 1; background: var(--neutral-100);">
                 <tr style="border-bottom: 2px solid var(--neutral-300);">
@@ -510,7 +510,7 @@
         data-action="test"
         data-index="{{index}}"
         title="测试此Key"
-        style="width: 28px; height: 28px; border-radius: 6px; border: 1px solid var(--neutral-200); background: white; color: var(--neutral-500); cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: center; justify-content: center; padding: 0;"
+        style="width: 28px; height: 28px; border-radius: 6px; border: 1px solid var(--neutral-200); background: var(--input-focus-bg); color: var(--neutral-500); cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: center; justify-content: center; padding: 0;"
       >
         <svg width="12" height="12" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path d="M4 2L12 8L4 14V2Z" fill="currentColor"/>
@@ -522,7 +522,7 @@
         data-action="delete"
         data-index="{{index}}"
         title="删除此Key"
-        style="width: 28px; height: 28px; border-radius: 6px; border: 1px solid var(--neutral-200); background: white; color: var(--neutral-500); cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: center; justify-content: center; padding: 0;"
+        style="width: 28px; height: 28px; border-radius: 6px; border: 1px solid var(--neutral-200); background: var(--input-focus-bg); color: var(--neutral-500); cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: center; justify-content: center; padding: 0;"
       >
         <svg width="12" height="12" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path d="M5.5 2.5V1.5C5.5 1.22386 5.72386 1 6 1H8C8.27614 1 8.5 1.22386 8.5 1.5V2.5M2 3.5H12M3 3.5V11.5C3 12.0523 3.44772 12.5 4 12.5H10C10.5523 12.5 11 12.0523 11 11.5V3.5M5.5 6.5V9.5M8.5 6.5V9.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -587,7 +587,7 @@
           type="button"
           class="redirect-delete-btn"
           data-index="{{index}}"
-          style="padding: 4px 8px; border-radius: 6px; border: 1px solid var(--error-300); background: white; color: var(--error-600); cursor: pointer; font-size: 12px; transition: all 0.2s;"
+          style="padding: 4px 8px; border-radius: 6px; border: 1px solid var(--error-300); background: var(--input-focus-bg); color: var(--error-600); cursor: pointer; font-size: 12px; transition: all 0.2s;"
           title="删除此规则"
         >
           删除
