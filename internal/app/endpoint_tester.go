@@ -170,11 +170,12 @@ func (t *EndpointTester) testChannelEndpoints(ctx context.Context, channelID int
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 
+TestLoop:
 	for _, ep := range endpoints {
 		// 检查是否已取消
 		select {
 		case <-ctx.Done():
-			break
+			break TestLoop
 		default:
 		}
 
