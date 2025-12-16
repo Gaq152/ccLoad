@@ -84,6 +84,10 @@ type AuthTokenStore interface {
 	UpdateTokenLastUsed(ctx context.Context, tokenHash string, now time.Time) error
 	UpdateTokenStats(ctx context.Context, tokenHash string, isSuccess bool, duration float64, isStreaming bool, firstByteTime float64, promptTokens int64, completionTokens int64, cacheReadTokens int64, cacheCreationTokens int64, costUSD float64) error
 	GetAuthTokenStatsInRange(ctx context.Context, startTime, endTime time.Time) (map[int64]*model.AuthTokenRangeStats, error)
+	// Token-Channel 关联（渠道访问控制）
+	GetTokenChannels(ctx context.Context, tokenID int64) ([]int64, error)
+	SetTokenChannels(ctx context.Context, tokenID int64, channelIDs []int64) error
+	LoadTokenChannelsMap(ctx context.Context, tokenIDs []int64) (map[int64][]int64, error)
 }
 
 // SettingsStore 系统配置管理接口

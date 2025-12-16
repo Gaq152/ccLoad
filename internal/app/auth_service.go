@@ -20,6 +20,12 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+// TokenChannelConfig 令牌渠道访问配置（2025-12新增）
+type TokenChannelConfig struct {
+	AllChannels bool    // true=允许所有渠道, false=仅允许指定渠道
+	ChannelIDs  []int64 // 允许的渠道ID列表（仅当AllChannels=false时有效）
+}
+
 // AuthService 认证和授权服务
 // 职责：处理所有认证和授权相关的业务逻辑
 // - Token 认证（管理界面动态令牌）
@@ -37,9 +43,10 @@ type AuthService struct {
 
 	// API 认证（代理 API 使用的数据库令牌）
 	// [FIX] 2025-12: 存储过期时间而非bool，支持懒惰过期校验
-	authTokens    map[string]int64 // Token哈希 → 过期时间(Unix毫秒，0=永不过期)
-	authTokenIDs  map[string]int64 // Token哈希 → Token ID 映射（用于日志记录，2025-12新增）
-	authTokensMux sync.RWMutex     // 并发保护（支持热更新）
+	authTokens        map[string]int64              // Token哈希 → 过期时间(Unix毫秒，0=永不过期)
+	authTokenIDs      map[string]int64              // Token哈希 → Token ID 映射（用于日志记录，2025-12新增）
+	authTokenChannels map[int64]*TokenChannelConfig // Token ID → 渠道访问配置（2025-12新增）
+	authTokensMux     sync.RWMutex                  // 并发保护（支持热更新）
 
 	// 数据库依赖（用于热更新令牌）
 	store storage.Store
@@ -67,14 +74,15 @@ func NewAuthService(
 	}
 
 	s := &AuthService{
-		passwordHash:     passwordHash,
-		validTokens:      make(map[string]time.Time),
-		authTokens:       make(map[string]int64),
-		authTokenIDs:     make(map[string]int64),
-		loginRateLimiter: loginRateLimiter,
-		store:            store,
-		lastUsedCh:       make(chan string, 256), // 带缓冲，避免阻塞请求
-		done:             make(chan struct{}),
+		passwordHash:      passwordHash,
+		validTokens:       make(map[string]time.Time),
+		authTokens:        make(map[string]int64),
+		authTokenIDs:      make(map[string]int64),
+		authTokenChannels: make(map[int64]*TokenChannelConfig),
+		loginRateLimiter:  loginRateLimiter,
+		store:             store,
+		lastUsedCh:        make(chan string, 256), // 带缓冲，避免阻塞请求
+		done:              make(chan struct{}),
 	}
 
 	// 启动 last_used_at 更新 worker
@@ -469,6 +477,7 @@ func (s *AuthService) HandleLogout(c *gin.Context) {
 // ReloadAuthTokens 从数据库重新加载API访问令牌
 // 用于CRUD操作后立即生效，无需重启服务
 // [FIX] 2025-12: 同时加载过期时间，支持懒惰过期校验
+// [FIX] 2025-12: 同时加载渠道访问配置，支持令牌级渠道控制
 func (s *AuthService) ReloadAuthTokens() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -481,6 +490,10 @@ func (s *AuthService) ReloadAuthTokens() error {
 	// 构建新的令牌映射（存储过期时间而非bool）
 	newTokens := make(map[string]int64, len(tokens))
 	newTokenIDs := make(map[string]int64, len(tokens))
+	newTokenChannels := make(map[int64]*TokenChannelConfig, len(tokens))
+
+	// 收集需要加载渠道配置的令牌ID
+	tokenIDsToLoad := make([]int64, 0, len(tokens))
 	for _, t := range tokens {
 		// ExpiresAt: nil → 0 (永不过期), *int64 → Unix毫秒
 		var expiresAt int64
@@ -489,14 +502,61 @@ func (s *AuthService) ReloadAuthTokens() error {
 		}
 		newTokens[t.Token] = expiresAt
 		newTokenIDs[t.Token] = t.ID
+
+		// 初始化渠道配置
+		newTokenChannels[t.ID] = &TokenChannelConfig{
+			AllChannels: t.AllChannels,
+			ChannelIDs:  nil, // 稍后批量加载
+		}
+
+		// 如果不是AllChannels，需要加载具体的渠道列表
+		if !t.AllChannels {
+			tokenIDsToLoad = append(tokenIDsToLoad, t.ID)
+		}
+	}
+
+	// 批量加载非AllChannels令牌的渠道配置
+	if len(tokenIDsToLoad) > 0 {
+		channelsMap, err := s.store.LoadTokenChannelsMap(ctx, tokenIDsToLoad)
+		if err != nil {
+			log.Printf("[WARN] 加载令牌渠道配置失败: %v", err)
+			// 降级处理：不影响基本认证功能
+		} else {
+			for tokenID, channelIDs := range channelsMap {
+				if cfg, exists := newTokenChannels[tokenID]; exists {
+					cfg.ChannelIDs = channelIDs
+				}
+			}
+		}
 	}
 
 	// 原子替换（避免读写竞争）
 	s.authTokensMux.Lock()
 	s.authTokens = newTokens
 	s.authTokenIDs = newTokenIDs
+	s.authTokenChannels = newTokenChannels
 	s.authTokensMux.Unlock()
 
 	log.Printf("[RELOAD] API令牌已热更新（%d个有效令牌）", len(newTokens))
 	return nil
+}
+
+// GetTokenChannelConfig 获取令牌的渠道访问配置
+// 返回值:
+//   - config: 渠道配置（nil表示令牌不存在或未配置）
+//   - exists: 令牌是否存在
+func (s *AuthService) GetTokenChannelConfig(tokenID int64) (*TokenChannelConfig, bool) {
+	s.authTokensMux.RLock()
+	defer s.authTokensMux.RUnlock()
+
+	cfg, exists := s.authTokenChannels[tokenID]
+	if !exists || cfg == nil {
+		return nil, false
+	}
+
+	// 返回副本，避免并发修改
+	return &TokenChannelConfig{
+		AllChannels: cfg.AllChannels,
+		ChannelIDs:  append([]int64(nil), cfg.ChannelIDs...),
+	}, true
 }

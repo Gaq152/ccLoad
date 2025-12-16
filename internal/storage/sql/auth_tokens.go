@@ -32,12 +32,12 @@ func (s *SQLStore) CreateAuthToken(ctx context.Context, token *model.AuthToken) 
 
 	result, err := s.db.ExecContext(ctx, `
 		INSERT INTO auth_tokens (
-			token, description, created_at, expires_at, last_used_at, is_active,
+			token, description, created_at, expires_at, last_used_at, is_active, all_channels,
 			success_count, failure_count, stream_avg_ttfb, non_stream_avg_rt, stream_count, non_stream_count,
 			prompt_tokens_total, completion_tokens_total, total_cost_usd
 		)
-		VALUES (?, ?, ?, ?, ?, ?, 0, 0, 0.0, 0.0, 0, 0, 0, 0, 0.0)
-	`, token.Token, token.Description, token.CreatedAt.UnixMilli(), expiresAt, lastUsedAt, boolToInt(token.IsActive))
+		VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 0.0, 0.0, 0, 0, 0, 0, 0.0)
+	`, token.Token, token.Description, token.CreatedAt.UnixMilli(), expiresAt, lastUsedAt, boolToInt(token.IsActive), boolToInt(token.AllChannels))
 
 	if err != nil {
 		return fmt.Errorf("create auth token: %w", err)
@@ -61,11 +61,11 @@ func (s *SQLStore) GetAuthToken(ctx context.Context, id int64) (*model.AuthToken
 	token := &model.AuthToken{}
 	var createdAtMs int64
 	var expiresAt, lastUsedAt sql.NullInt64
-	var isActive int
+	var isActive, allChannels int
 
 	err := s.db.QueryRowContext(ctx, `
 		SELECT
-			id, token, description, created_at, expires_at, last_used_at, is_active,
+			id, token, description, created_at, expires_at, last_used_at, is_active, all_channels,
 			success_count, failure_count, stream_avg_ttfb, non_stream_avg_rt, stream_count, non_stream_count,
 			prompt_tokens_total, completion_tokens_total, cache_read_tokens_total, cache_creation_tokens_total, total_cost_usd
 		FROM auth_tokens
@@ -78,6 +78,7 @@ func (s *SQLStore) GetAuthToken(ctx context.Context, id int64) (*model.AuthToken
 		&expiresAt,
 		&lastUsedAt,
 		&isActive,
+		&allChannels,
 		&token.SuccessCount,
 		&token.FailureCount,
 		&token.StreamAvgTTFB,
@@ -107,6 +108,7 @@ func (s *SQLStore) GetAuthToken(ctx context.Context, id int64) (*model.AuthToken
 		token.LastUsedAt = &lastUsedAt.Int64
 	}
 	token.IsActive = isActive != 0
+	token.AllChannels = allChannels != 0
 
 	return token, nil
 }
@@ -117,11 +119,11 @@ func (s *SQLStore) GetAuthTokenByValue(ctx context.Context, tokenHash string) (*
 	token := &model.AuthToken{}
 	var createdAtMs int64
 	var expiresAt, lastUsedAt sql.NullInt64
-	var isActive int
+	var isActive, allChannels int
 
 	err := s.db.QueryRowContext(ctx, `
 		SELECT
-			id, token, description, created_at, expires_at, last_used_at, is_active,
+			id, token, description, created_at, expires_at, last_used_at, is_active, all_channels,
 			success_count, failure_count, stream_avg_ttfb, non_stream_avg_rt, stream_count, non_stream_count,
 			prompt_tokens_total, completion_tokens_total, cache_read_tokens_total, cache_creation_tokens_total, total_cost_usd
 		FROM auth_tokens
@@ -134,6 +136,7 @@ func (s *SQLStore) GetAuthTokenByValue(ctx context.Context, tokenHash string) (*
 		&expiresAt,
 		&lastUsedAt,
 		&isActive,
+		&allChannels,
 		&token.SuccessCount,
 		&token.FailureCount,
 		&token.StreamAvgTTFB,
@@ -163,6 +166,7 @@ func (s *SQLStore) GetAuthTokenByValue(ctx context.Context, tokenHash string) (*
 		token.LastUsedAt = &lastUsedAt.Int64
 	}
 	token.IsActive = isActive != 0
+	token.AllChannels = allChannels != 0
 
 	return token, nil
 }
@@ -171,7 +175,7 @@ func (s *SQLStore) GetAuthTokenByValue(ctx context.Context, tokenHash string) (*
 func (s *SQLStore) ListAuthTokens(ctx context.Context) ([]*model.AuthToken, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT
-			id, token, description, created_at, expires_at, last_used_at, is_active,
+			id, token, description, created_at, expires_at, last_used_at, is_active, all_channels,
 			success_count, failure_count, stream_avg_ttfb, non_stream_avg_rt, stream_count, non_stream_count,
 			prompt_tokens_total, completion_tokens_total, cache_read_tokens_total, cache_creation_tokens_total, total_cost_usd
 		FROM auth_tokens
@@ -187,7 +191,7 @@ func (s *SQLStore) ListAuthTokens(ctx context.Context) ([]*model.AuthToken, erro
 		token := &model.AuthToken{}
 		var createdAtMs int64
 		var expiresAt, lastUsedAt sql.NullInt64
-		var isActive int
+		var isActive, allChannels int
 
 		if err := rows.Scan(
 			&token.ID,
@@ -197,6 +201,7 @@ func (s *SQLStore) ListAuthTokens(ctx context.Context) ([]*model.AuthToken, erro
 			&expiresAt,
 			&lastUsedAt,
 			&isActive,
+			&allChannels,
 			&token.SuccessCount,
 			&token.FailureCount,
 			&token.StreamAvgTTFB,
@@ -221,6 +226,7 @@ func (s *SQLStore) ListAuthTokens(ctx context.Context) ([]*model.AuthToken, erro
 			token.LastUsedAt = &lastUsedAt.Int64
 		}
 		token.IsActive = isActive != 0
+		token.AllChannels = allChannels != 0
 
 		tokens = append(tokens, token)
 	}
@@ -235,7 +241,7 @@ func (s *SQLStore) ListActiveAuthTokens(ctx context.Context) ([]*model.AuthToken
 
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT
-			id, token, description, created_at, expires_at, last_used_at, is_active,
+			id, token, description, created_at, expires_at, last_used_at, is_active, all_channels,
 			success_count, failure_count, stream_avg_ttfb, non_stream_avg_rt, stream_count, non_stream_count,
 			prompt_tokens_total, completion_tokens_total, cache_read_tokens_total, cache_creation_tokens_total, total_cost_usd
 		FROM auth_tokens
@@ -252,7 +258,7 @@ func (s *SQLStore) ListActiveAuthTokens(ctx context.Context) ([]*model.AuthToken
 		token := &model.AuthToken{}
 		var createdAtMs int64
 		var expiresAt, lastUsedAt sql.NullInt64
-		var isActive int
+		var isActive, allChannels int
 
 		if err := rows.Scan(
 			&token.ID,
@@ -262,6 +268,7 @@ func (s *SQLStore) ListActiveAuthTokens(ctx context.Context) ([]*model.AuthToken
 			&expiresAt,
 			&lastUsedAt,
 			&isActive,
+			&allChannels,
 			&token.SuccessCount,
 			&token.FailureCount,
 			&token.StreamAvgTTFB,
@@ -286,6 +293,7 @@ func (s *SQLStore) ListActiveAuthTokens(ctx context.Context) ([]*model.AuthToken
 			token.LastUsedAt = &lastUsedAt.Int64
 		}
 		token.IsActive = isActive != 0
+		token.AllChannels = allChannels != 0
 
 		tokens = append(tokens, token)
 	}
@@ -310,9 +318,10 @@ func (s *SQLStore) UpdateAuthToken(ctx context.Context, token *model.AuthToken) 
 		SET description = ?,
 		    expires_at = ?,
 		    last_used_at = ?,
-		    is_active = ?
+		    is_active = ?,
+		    all_channels = ?
 		WHERE id = ?
-	`, token.Description, expiresAt, lastUsedAt, boolToInt(token.IsActive), token.ID)
+	`, token.Description, expiresAt, lastUsedAt, boolToInt(token.IsActive), boolToInt(token.AllChannels), token.ID)
 
 	if err != nil {
 		return fmt.Errorf("update auth token: %w", err)
@@ -519,4 +528,120 @@ func (s *SQLStore) UpdateTokenStats(
 	}
 
 	return nil
+}
+
+// ============================================================================
+// Token-Channel 关联管理（令牌渠道访问控制）
+// ============================================================================
+
+// GetTokenChannels 获取令牌允许使用的渠道ID列表
+// 仅当令牌的 all_channels=false 时有意义
+func (s *SQLStore) GetTokenChannels(ctx context.Context, tokenID int64) ([]int64, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT channel_id FROM token_channels
+		WHERE token_id = ?
+		ORDER BY channel_id ASC
+	`, tokenID)
+	if err != nil {
+		return nil, fmt.Errorf("get token channels: %w", err)
+	}
+	defer rows.Close()
+
+	var channelIDs []int64
+	for rows.Next() {
+		var channelID int64
+		if err := rows.Scan(&channelID); err != nil {
+			return nil, fmt.Errorf("scan channel id: %w", err)
+		}
+		channelIDs = append(channelIDs, channelID)
+	}
+
+	return channelIDs, rows.Err()
+}
+
+// SetTokenChannels 设置令牌允许使用的渠道列表（覆盖式更新）
+// 先删除旧关联，再插入新关联
+func (s *SQLStore) SetTokenChannels(ctx context.Context, tokenID int64, channelIDs []int64) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// 删除旧关联
+	_, err = tx.ExecContext(ctx, "DELETE FROM token_channels WHERE token_id = ?", tokenID)
+	if err != nil {
+		return fmt.Errorf("delete old token channels: %w", err)
+	}
+
+	// 插入新关联
+	if len(channelIDs) > 0 {
+		now := time.Now().UnixMilli()
+		for _, channelID := range channelIDs {
+			_, err = tx.ExecContext(ctx, `
+				INSERT INTO token_channels (token_id, channel_id, created_at)
+				VALUES (?, ?, ?)
+			`, tokenID, channelID, now)
+			if err != nil {
+				return fmt.Errorf("insert token channel: %w", err)
+			}
+		}
+	}
+
+	// 触发异步Redis同步
+	s.triggerAsyncSync(syncAuthTokens)
+
+	return tx.Commit()
+}
+
+// LoadTokenChannelsMap 批量加载多个令牌的渠道关联
+// 用于列表展示时一次性获取所有令牌的渠道配置
+// 返回 map[tokenID][]channelID
+func (s *SQLStore) LoadTokenChannelsMap(ctx context.Context, tokenIDs []int64) (map[int64][]int64, error) {
+	if len(tokenIDs) == 0 {
+		return make(map[int64][]int64), nil
+	}
+
+	// 构建 IN 查询
+	placeholders := make([]string, len(tokenIDs))
+	args := make([]any, len(tokenIDs))
+	for i, id := range tokenIDs {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+
+	query := fmt.Sprintf(`
+		SELECT token_id, channel_id FROM token_channels
+		WHERE token_id IN (%s)
+		ORDER BY token_id, channel_id
+	`, joinStrings(placeholders, ","))
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("load token channels map: %w", err)
+	}
+	defer rows.Close()
+
+	result := make(map[int64][]int64)
+	for rows.Next() {
+		var tokenID, channelID int64
+		if err := rows.Scan(&tokenID, &channelID); err != nil {
+			return nil, fmt.Errorf("scan token channel: %w", err)
+		}
+		result[tokenID] = append(result[tokenID], channelID)
+	}
+
+	return result, rows.Err()
+}
+
+// joinStrings 辅助函数：连接字符串切片
+func joinStrings(strs []string, sep string) string {
+	if len(strs) == 0 {
+		return ""
+	}
+	result := strs[0]
+	for i := 1; i < len(strs); i++ {
+		result += sep + strs[i]
+	}
+	return result
 }

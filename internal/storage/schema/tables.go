@@ -62,6 +62,7 @@ func DefineAuthTokensTable() *TableBuilder {
 		Column("expires_at BIGINT NOT NULL DEFAULT 0").
 		Column("last_used_at BIGINT NOT NULL DEFAULT 0").
 		Column("is_active TINYINT NOT NULL DEFAULT 1").
+		Column("all_channels TINYINT NOT NULL DEFAULT 1"). // 是否允许使用所有渠道（1=全部，0=仅指定渠道）
 		Column("success_count INT NOT NULL DEFAULT 0").
 		Column("failure_count INT NOT NULL DEFAULT 0").
 		Column("stream_avg_ttfb DOUBLE NOT NULL DEFAULT 0.0").
@@ -112,6 +113,24 @@ func DefineChannelEndpointsTable() *TableBuilder {
 		Column("FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE").
 		Index("idx_channel_endpoints_channel", "channel_id").
 		Index("idx_channel_endpoints_active", "channel_id, is_active")
+}
+
+// DefineTokenChannelsTable 定义token_channels表结构（令牌-渠道关联，多对多）
+// 用于控制API令牌可以使用哪些渠道
+// 设计说明：
+//   - 如果令牌的 all_channels=1，则不查询此表，允许使用所有渠道
+//   - 如果令牌的 all_channels=0，则只能使用此表中关联的渠道
+//   - 新建渠道时，不会自动添加到任何令牌（需手动配置）
+func DefineTokenChannelsTable() *TableBuilder {
+	return NewTable("token_channels").
+		Column("token_id INT NOT NULL").
+		Column("channel_id INT NOT NULL").
+		Column("created_at BIGINT NOT NULL").
+		Column("PRIMARY KEY (token_id, channel_id)").
+		Column("FOREIGN KEY (token_id) REFERENCES auth_tokens(id) ON DELETE CASCADE").
+		Column("FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE").
+		Index("idx_token_channels_token", "token_id").
+		Index("idx_token_channels_channel", "channel_id")
 }
 
 // DefineLogsTable 定义logs表结构

@@ -17,6 +17,10 @@ type AuthToken struct {
 	LastUsedAt  *int64    `json:"last_used_at,omitempty"` // 最后使用时间(Unix毫秒时间戳)
 	IsActive    bool      `json:"is_active"`              // 是否启用
 
+	// 渠道访问控制（2025-12新增）
+	AllChannels bool    `json:"all_channels"`           // 是否允许使用所有渠道（true=全部，false=仅指定渠道）
+	ChannelIDs  []int64 `json:"channel_ids,omitempty"`  // 允许使用的渠道ID列表（仅当 AllChannels=false 时有效）
+
 	// 统计字段（2025-11新增）
 	SuccessCount   int64   `json:"success_count"`     // 成功调用次数
 	FailureCount   int64   `json:"failure_count"`     // 失败调用次数
@@ -26,11 +30,11 @@ type AuthToken struct {
 	NonStreamCount int64   `json:"non_stream_count"`  // 非流式请求计数(用于计算平均值)
 
 	// Token成本统计（2025-12新增）
-	PromptTokensTotal          int64   `json:"prompt_tokens_total"`           // 累计输入Token数
-	CompletionTokensTotal      int64   `json:"completion_tokens_total"`       // 累计输出Token数
-	CacheReadTokensTotal       int64   `json:"cache_read_tokens_total"`       // 累计缓存读Token数
-	CacheCreationTokensTotal   int64   `json:"cache_creation_tokens_total"`   // 累计缓存写Token数
-	TotalCostUSD               float64 `json:"total_cost_usd"`                // 累计成本(美元)
+	PromptTokensTotal        int64   `json:"prompt_tokens_total"`         // 累计输入Token数
+	CompletionTokensTotal    int64   `json:"completion_tokens_total"`     // 累计输出Token数
+	CacheReadTokensTotal     int64   `json:"cache_read_tokens_total"`     // 累计缓存读Token数
+	CacheCreationTokensTotal int64   `json:"cache_creation_tokens_total"` // 累计缓存写Token数
+	TotalCostUSD             float64 `json:"total_cost_usd"`              // 累计成本(美元)
 }
 
 // AuthTokenRangeStats 某个时间范围内的token统计（从logs表聚合，2025-12新增）
