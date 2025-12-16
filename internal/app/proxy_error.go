@@ -6,6 +6,7 @@ import (
 	"ccLoad/internal/util"
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"time"
 )
@@ -313,6 +314,24 @@ func (s *Server) handleProxyErrorResponse(
 	errMsg := ""
 	if res.Status == 499 {
 		errMsg = "upstream returned 499 (not client cancel)"
+	}
+
+	// 400 错误详细调试日志（请求体 + 响应体）
+	if res.Status == 400 {
+		log.Printf("[DEBUG-400] 渠道: ID=%d 名称=%s URL=%s", cfg.ID, cfg.Name, cfg.URL)
+		// 打印响应体（上游返回的错误信息）
+		respPreview := string(res.Body)
+		if len(respPreview) > 1000 {
+			respPreview = respPreview[:1000] + "...(truncated)"
+		}
+		log.Printf("[DEBUG-400] 响应体: %s", respPreview)
+		// 打印请求体（帮助定位问题字段）
+		reqBodyLen := len(reqCtx.body)
+		reqPreview := string(reqCtx.body)
+		if reqBodyLen > 2000 {
+			reqPreview = reqPreview[:2000] + fmt.Sprintf("...(truncated, total=%d bytes)", reqBodyLen)
+		}
+		log.Printf("[DEBUG-400] 请求体(%d bytes): %s", reqBodyLen, reqPreview)
 	}
 
 	s.AddLogAsync(buildLogEntry(actualModel, cfg.ID, cfg.Name, res.Status,
