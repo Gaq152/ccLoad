@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"encoding/json"
-	"log"
 	"strconv"
 	"time"
 
@@ -37,16 +36,12 @@ func (s *Server) HandleLogSSE(c *gin.Context) {
 		sinceTime = time.UnixMilli(sinceMs + 1)
 	}
 
-	log.Printf("[SSE DEBUG] 连接参数: since_ms=%d, sinceTime=%v", sinceMs, sinceTime)
-
 	// 如果有 since 参数，先推送历史日志（重连恢复）
 	if !sinceTime.IsZero() {
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 		// 获取 since 之后的日志，限制500条防止被截断
 		missedLogs, err := s.store.ListLogs(ctx, sinceTime, 500, 0, nil)
 		cancel()
-
-		log.Printf("[SSE DEBUG] 查询历史日志: since=%v, 结果数量=%d, err=%v", sinceTime, len(missedLogs), err)
 
 		if err == nil && len(missedLogs) > 0 {
 			// 反转顺序：数据库返回 DESC（新→旧），改为 ASC（旧→新）
@@ -62,7 +57,6 @@ func (s *Server) HandleLogSSE(c *gin.Context) {
 				}
 			}
 			w.Flush()
-			log.Printf("[SSE DEBUG] 已推送 %d 条历史日志", len(missedLogs))
 		}
 	}
 
