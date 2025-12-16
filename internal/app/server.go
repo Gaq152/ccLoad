@@ -427,6 +427,9 @@ func (s *Server) SetupRoutes(r *gin.Engine) {
 		admin.GET("/cache/stats", s.HandleCacheStats)
 		admin.GET("/models", s.HandleGetModels)
 
+		// 渠道健康监控（第三方数据代理）
+		admin.GET("/channel-health-proxy", s.handleChannelHealthProxy)
+
 		// API访问令牌管理
 		admin.GET("/auth-tokens", s.HandleListAuthTokens)
 		admin.POST("/auth-tokens", s.HandleCreateAuthToken)
