@@ -3457,6 +3457,143 @@ body.dashboard-theme .app-container {
   margin-top: 16px;
 }
 
+/* 隐藏渠道 Tab 导航样式（Gemini 优化） */
+.hidden-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--dash-border);
+  margin-bottom: 16px;
+}
+
+.hidden-tab-btn {
+  background: none;
+  border: none;
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--dash-text-muted);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hidden-tab-btn:hover {
+  color: var(--dash-text-main);
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.hidden-tab-btn.active {
+  color: var(--dash-accent);
+  border-bottom-color: var(--dash-accent);
+}
+
+/* 数量徽章 */
+.hidden-badge {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: var(--dash-text-muted);
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 12px;
+  line-height: 1.2;
+  min-width: 20px;
+  text-align: center;
+}
+
+.hidden-tab-btn.active .hidden-badge {
+  background-color: rgba(59, 130, 246, 0.2);
+  color: var(--dash-accent);
+}
+
+/* 列表容器 */
+.hidden-list-container {
+  min-height: 200px;
+}
+
+.hidden-list-panel {
+  display: none;
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.hidden-list-panel.active {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  animation: fadeIn 0.2s ease-out;
+}
+
+/* 改进的列表项 */
+.hidden-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--dash-border);
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+.hidden-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--dash-border-light, rgba(255, 255, 255, 0.15));
+}
+
+.hidden-item .name {
+  font-family: 'SF Mono', 'Menlo', monospace;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--dash-text-main);
+}
+
+/* 恢复动画 */
+.hidden-item.removing {
+  opacity: 0;
+  transform: translateX(20px);
+  transition: all 0.25s ease-out;
+}
+
+/* 空状态 */
+.hidden-empty {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--dash-text-muted);
+  font-size: 13px;
+  border: 1px dashed var(--dash-border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.hidden-empty-hint {
+  font-size: 12px;
+  color: var(--dash-text-muted);
+  opacity: 0.7;
+  margin-top: 8px;
+}
+
+/* 底部操作按钮 */
+.text-btn.danger {
+  background: none;
+  border: none;
+  color: var(--error-500);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 6px 12px;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.text-btn.danger:hover {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.text-btn.danger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 @media (max-width: 768px) {
   .health-grid {
     grid-template-columns: 1fr;
