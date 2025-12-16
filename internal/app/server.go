@@ -89,11 +89,12 @@ func NewServer(store storage.Store) *Server {
 	// 从ConfigService读取运行时配置（启动时加载一次，修改后重启生效）
 	// 配置验证已移至 ConfigService 的带约束 API（SRP）
 	maxKeyRetries := configService.GetIntMin("max_key_retries", config.DefaultMaxKeyRetries, 1)
-	firstByteTimeout := configService.GetDurationNonNegative("upstream_first_byte_timeout", 0)
-	nonStreamTimeout := configService.GetDurationPositive("non_stream_timeout", 120*time.Second)
+
+	// 超时配置（固定值，不再支持Web管理）
+	firstByteTimeout := time.Duration(0)  // 流式请求首字节超时（0=禁用）
+	nonStreamTimeout := 120 * time.Second // 非流式请求超时
 
 	logRetentionDays := configService.GetInt("log_retention_days", 7)
-	enable88codeFreeOnly := configService.GetBool("88code_free_only", false)
 
 	// 冷却时间配置
 	cooldownMode := configService.GetString("cooldown_mode", "exponential")
@@ -108,16 +109,9 @@ func NewServer(store storage.Store) *Server {
 		}
 	}
 
-	// TLS证书验证配置（从ConfigService读取）
-	skipTLSVerify := configService.GetBool("skip_tls_verify", false)
-	if skipTLSVerify {
-		log.Print("[WARN]  警告：TLS证书验证已禁用（skip_tls_verify=true）")
-		log.Print("   仅用于开发/测试环境，生产环境严禁使用！")
-		log.Print("   当前配置存在中间人攻击风险，API Key可能泄漏")
-	}
-
 	// 构建HTTP Transport（使用统一函数，消除DRY违反）
-	transport := buildHTTPTransport(skipTLSVerify)
+	// TLS证书验证始终开启（安全默认值）
+	transport := buildHTTPTransport(false)
 	log.Print("[INFO] HTTP/2已启用（头部压缩+多路复用，HTTPS自动协商）")
 
 	s := &Server{
@@ -166,12 +160,6 @@ func NewServer(store storage.Store) *Server {
 
 	// 初始化渠道验证器管理器（支持88code套餐验证等扩展规则）
 	s.validatorManager = validator.NewManager()
-
-	// 注册88code套餐验证器（启动时读取配置，修改后重启生效）
-	s.validatorManager.AddValidator(validator.NewSubscriptionValidator(enable88codeFreeOnly))
-	if enable88codeFreeOnly {
-		log.Print("[INFO] 88code subscription validator enabled (non-FREE plans will be cooled down)")
-	}
 
 	// 初始化Key选择器（移除store依赖，避免重复查询）
 	s.keySelector = NewKeySelector()

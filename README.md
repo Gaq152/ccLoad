@@ -673,9 +673,6 @@ Claude-API-2,sk-ant-yyy,https://api.anthropic.com,5,"[\"claude-3-opus-20240229\"
 |--------|--------|------|
 | `log_retention_days` | `7` | 日志保留天数（-1永久保留，1-365天） |
 | `max_key_retries` | `3` | 单个渠道内最大Key重试次数 |
-| `upstream_first_byte_timeout` | `0` | 上游首字节超时（秒，0=禁用） |
-| `88code_free_only` | `false` | 仅允许使用88code免费订阅 |
-| `skip_tls_verify` | `false` | 跳过TLS证书验证（⚠️仅开发环境） |
 
 #### API 访问令牌配置
 

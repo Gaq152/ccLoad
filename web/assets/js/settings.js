@@ -89,12 +89,6 @@ function getMultiselectValue(key) {
 
 // 下拉选项配置（中文化）
 const selectOptions = {
-  'channel_stats_range': [
-    { value: 'today', label: '本日' },
-    { value: '7d', label: '近7天' },
-    { value: '30d', label: '近30天' },
-    { value: 'all', label: '全部' }
-  ],
   'cooldown_mode': [
     { value: 'exponential', label: '递增（指数退避）' },
     { value: 'fixed', label: '固定（相同间隔）' }
@@ -112,6 +106,11 @@ const multiSelectOptions = {
     { value: 'cache_read', label: '缓存读' },
     { value: 'cache_creation', label: '缓存建' },
     { value: 'cost', label: '成本' }
+  ],
+  'nav_visible_pages': [
+    { value: 'stats', label: '调用统计' },
+    { value: 'trends', label: '请求趋势' },
+    { value: 'model-test', label: '模型测试' }
   ]
 };
 
@@ -178,6 +177,7 @@ async function saveAllSettings() {
   // 收集所有变更
   const updates = {};
   const needsRestartKeys = [];
+  let needsPageReload = false;
 
   for (const key of Object.keys(originalSettings)) {
     const input = document.getElementById(key);
@@ -195,6 +195,12 @@ async function saveAllSettings() {
 
     if (currentValue !== originalSettings[key]) {
       updates[key] = currentValue;
+
+      // 导航栏配置修改需要刷新页面
+      if (key === 'nav_visible_pages') {
+        needsPageReload = true;
+      }
+
       // 检查是否需要重启（从 DOM 中读取 description）
       const row = input.closest('tr');
       if (row?.querySelector('td')?.textContent?.includes('[需重启]')) {
@@ -222,7 +228,19 @@ async function saveAllSettings() {
       if (needsRestartKeys.length > 0) {
         msg += `\n\n以下配置需要重启服务才能生效:\n${needsRestartKeys.join(', ')}`;
       }
+      if (needsPageReload) {
+        msg += '\n\n导航栏配置已更新，页面即将刷新...';
+      }
       showSuccess(msg);
+
+      // 导航栏配置修改后自动刷新页面
+      if (needsPageReload) {
+        setTimeout(() => {
+          location.reload();
+        }, 500);
+      } else {
+        loadSettings();
+      }
     } else {
       showError('保存失败: ' + (data.error || '未知错误'));
     }
@@ -230,8 +248,6 @@ async function saveAllSettings() {
     console.error('保存异常:', err);
     showError('保存异常: ' + err.message);
   }
-
-  loadSettings();
 }
 
 async function resetSetting(key) {

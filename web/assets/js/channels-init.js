@@ -78,7 +78,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   await initChannelTypeFilter(initialType);
 
   await loadDefaultTestContent();
-  await loadChannelStatsRange();
   await loadChannelStatsFields();
 
   await loadChannels(initialType);

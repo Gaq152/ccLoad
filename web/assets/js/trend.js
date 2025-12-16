@@ -1125,14 +1125,6 @@
         });
       }
 
-      // 筛选按钮
-      const btnFilter = document.getElementById('btn_filter');
-      if (btnFilter) {
-        btnFilter.addEventListener('click', () => {
-          loadData();
-        });
-      }
-
       // 输入框自动筛选（防抖）
       const debouncedFilter = debounce(loadData, 500);
       ['f_id', 'f_name'].forEach(id => {

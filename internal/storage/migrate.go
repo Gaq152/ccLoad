@@ -121,6 +121,11 @@ func migrate(ctx context.Context, db *sql.DB, dialect Dialect) error {
 		return err
 	}
 
+	// 清理废弃的配置项（2025-12清理）
+	if err := removeDeprecatedSettings(ctx, db); err != nil {
+		return fmt.Errorf("remove deprecated settings: %w", err)
+	}
+
 	// 迁移：为没有端点的渠道自动创建默认端点（2025-12新增）
 	if err := migrateChannelEndpoints(ctx, db, dialect); err != nil {
 		return fmt.Errorf("migrate channel endpoints: %w", err)
@@ -593,19 +598,35 @@ func createIndex(ctx context.Context, db *sql.DB, idx schema.IndexDef, dialect D
 	return fmt.Errorf("create index: %w", err)
 }
 
+// removeDeprecatedSettings 删除废弃的配置项（2025-12清理）
+func removeDeprecatedSettings(ctx context.Context, db *sql.DB) error {
+	deprecatedKeys := []string{
+		"upstream_first_byte_timeout",
+		"non_stream_timeout",
+		"88code_free_only",
+		"skip_tls_verify",
+		"channel_stats_range",
+	}
+
+	for _, key := range deprecatedKeys {
+		_, err := db.ExecContext(ctx, "DELETE FROM system_settings WHERE key = ?", key)
+		if err != nil {
+			return fmt.Errorf("delete deprecated setting %s: %w", key, err)
+		}
+	}
+
+	return nil
+}
+
 func initDefaultSettings(ctx context.Context, db *sql.DB, dialect Dialect) error {
 	settings := []struct {
 		key, value, valueType, desc, defaultVal string
 	}{
 		{"log_retention_days", "7", "int", "日志保留天数(-1永久保留,1-365天)", "7"},
 		{"max_key_retries", "3", "int", "单渠道最大Key重试次数", "3"},
-		{"upstream_first_byte_timeout", "0", "duration", "上游首字节超时(秒,0=禁用)", "0"},
-		{"non_stream_timeout", "120", "duration", "非流式请求超时(秒,0=禁用)", "120"},
-		{"88code_free_only", "false", "bool", "仅允许使用88code免费订阅(free订阅可用时生效)", "false"},
-		{"skip_tls_verify", "false", "bool", "跳过TLS证书验证", "false"},
 		{"channel_test_content", "sonnet 4.0的发布日期是什么", "string", "渠道测试默认内容", "sonnet 4.0的发布日期是什么"},
-		{"channel_stats_range", "today", "string", "渠道管理费用统计范围", "today"},
 		{"channel_stats_fields", "calls,rate,first_byte,input,output,cache_read,cache_creation,cost", "string", "渠道统计显示字段(逗号分隔)", "calls,rate,first_byte,input,output,cache_read,cache_creation,cost"},
+		{"nav_visible_pages", "stats,trends,model-test", "string", "导航栏可选页面(stats=调用统计,trends=请求趋势,model-test=模型测试)", "stats,trends,model-test"},
 		{"endpoint_test_count", "3", "int", "端点测速次数(1-10次,取平均值)", "3"},
 		{"cooldown_mode", "exponential", "string", "冷却时间模式(exponential=递增,fixed=固定)", "exponential"},
 		{"cooldown_fixed_interval", "30", "int", "固定冷却时间间隔(秒,仅fixed模式生效)", "30"},
