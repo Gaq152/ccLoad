@@ -117,7 +117,7 @@ const multiSelectOptions = {
 function renderInput(setting) {
   const safeKey = escapeHtml(setting.key);
   const safeValue = escapeHtml(setting.value);
-  const baseStyle = 'padding: 6px 10px; border: 1px solid var(--color-border); border-radius: 6px; background: var(--color-bg-secondary); color: var(--color-text); font-size: 13px;';
+  const baseStyle = 'padding: 6px 10px; border: 1px solid var(--neutral-300); border-radius: 6px; background: var(--input-bg, rgba(255, 255, 255, 0.9)); color: var(--neutral-800); font-size: 13px;';
 
   // 多选下拉（逗号分隔值）
   if (multiSelectOptions[setting.key]) {
