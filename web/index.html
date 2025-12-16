@@ -4,368 +4,188 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="icon" type="image/x-icon" href="/web/favicon.ico">
-  <link rel="apple-touch-icon" href="/web/apple-touch-icon.png">
-  <link rel="manifest" href="/web/manifest.json">
-  <meta name="theme-color" content="#3b82f6">
-  <title>Claude Code & Codex Proxy 代理服务</title>
+  <title>ccLoad Monitor</title>
   <link rel="stylesheet" href="/web/assets/css/styles.css">
   <link href="/web/assets/css/inter.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
-<body>
+<body class="dashboard-theme">
   <div class="app-container">
+  <div class="dash-container">
 
-    <!-- 主内容区域 -->
-    <main class="main-content">
-      <div class="content-area">
-        <!-- 页面标题 -->
-        <header class="mb-6">
-          <div class="hero-header animate-slide-up">
-            <div class="hero-icon">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
-              </svg>
-            </div>
-            <div>
-              <h1 class="hero-title">
-                Claude Code & Codex API 代理服务
-              </h1>
-              <p class="hero-subtitle">
-                智能路由 · 故障切换 · 统计分析
-              </p>
-            </div>
-          </div>
-        </header>
-
-        <!-- 时间范围选择器 -->
-        <section class="mb-4">
-          <div class="time-range-container">
-            <div class="time-range-selector">
-              <button class="time-range-btn active" data-range="today">本日</button>
-              <button class="time-range-btn" data-range="yesterday">昨日</button>
-              <button class="time-range-btn" data-range="day_before_yesterday">前日</button>
-              <button class="time-range-btn" data-range="this_week">本周</button>
-              <button class="time-range-btn" data-range="last_week">上周</button>
-              <button class="time-range-btn" data-range="this_month">本月</button>
-              <button class="time-range-btn" data-range="last_month">上月</button>
-            </div>
-          </div>
-        </section>
-
-        <!-- 按渠道类型统计 -->
-        <section class="mb-6">
-          <div class="grid grid-cols-2 animate-slide-up" style="animation-delay: 0.1s; gap: var(--space-3);">
-            <!-- Claude Code -->
-            <div class="channel-card" id="type-anthropic-card">
-              <div class="channel-card-header">
-                <div class="channel-card-title">
-                  <div class="channel-icon" style="background: linear-gradient(135deg, #CC9B7A, #D4A574);">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M12 2L2 22h20L12 2zm0 4.5L18.5 20h-13L12 6.5z"/>
-                    </svg>
-                  </div>
-                  <span>Claude Code</span>
-                </div>
-                <div class="channel-cost">
-                  <span class="cost-label">成本</span>
-                  <span class="cost-value" id="type-anthropic-cost">$0.00</span>
-                </div>
-              </div>
-              <!-- 主要指标 -->
-              <div class="channel-metrics">
-                <div class="metric-item">
-                  <div class="metric-value metric-total" id="type-anthropic-requests">0</div>
-                  <div class="metric-label">总请求</div>
-                </div>
-                <div class="metric-item">
-                  <div class="metric-value metric-success" id="type-anthropic-success">0</div>
-                  <div class="metric-label">成功</div>
-                </div>
-                <div class="metric-item">
-                  <div class="metric-value metric-error" id="type-anthropic-error">0</div>
-                  <div class="metric-label">失败</div>
-                </div>
-                <div class="metric-item">
-                  <div class="metric-value metric-rate" id="type-anthropic-rate">0.0%</div>
-                  <div class="metric-label">成功率</div>
-                </div>
-              </div>
-              <!-- Token统计 -->
-              <div class="token-stats">
-                <div class="token-item">
-                  <span class="token-label">输入</span>
-                  <span class="token-value" id="type-anthropic-input">0</span>
-                </div>
-                <div class="token-item">
-                  <span class="token-label">输出</span>
-                  <span class="token-value" id="type-anthropic-output">0</span>
-                </div>
-                <div class="token-item">
-                  <span class="token-label">缓存读</span>
-                  <span class="token-value token-cache" id="type-anthropic-cache-read">0</span>
-                </div>
-                <div class="token-item">
-                  <span class="token-label">缓存创</span>
-                  <span class="token-value token-cache" id="type-anthropic-cache-create">0</span>
-                </div>
-              </div>
-            </div>
-
-            <!-- Codex -->
-            <div class="channel-card" id="type-codex-card">
-              <div class="channel-card-header">
-                <div class="channel-card-title">
-                  <div class="channel-icon" style="background: linear-gradient(135deg, #10a37f, #0d8a6a);">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z"/>
-                    </svg>
-                  </div>
-                  <span>Codex</span>
-                </div>
-                <div class="channel-cost">
-                  <span class="cost-label">成本</span>
-                  <span class="cost-value" id="type-codex-cost">$0.00</span>
-                </div>
-              </div>
-              <!-- 主要指标 -->
-              <div class="channel-metrics">
-                <div class="metric-item">
-                  <div class="metric-value metric-total" id="type-codex-requests">0</div>
-                  <div class="metric-label">总请求</div>
-                </div>
-                <div class="metric-item">
-                  <div class="metric-value metric-success" id="type-codex-success">0</div>
-                  <div class="metric-label">成功</div>
-                </div>
-                <div class="metric-item">
-                  <div class="metric-value metric-error" id="type-codex-error">0</div>
-                  <div class="metric-label">失败</div>
-                </div>
-                <div class="metric-item">
-                  <div class="metric-value metric-rate" id="type-codex-rate">0.0%</div>
-                  <div class="metric-label">成功率</div>
-                </div>
-              </div>
-              <!-- Token统计 -->
-              <div class="token-stats">
-                <div class="token-item">
-                  <span class="token-label">输入</span>
-                  <span class="token-value" id="type-codex-input">0</span>
-                </div>
-                <div class="token-item">
-                  <span class="token-label">输出</span>
-                  <span class="token-value" id="type-codex-output">0</span>
-                </div>
-                <div class="token-item">
-                  <span class="token-label">缓存读</span>
-                  <span class="token-value token-cache" id="type-codex-cache-read">0</span>
-                </div>
-                <div class="token-item">
-                  <span class="token-label">缓存创</span>
-                  <span class="token-value token-cache" id="type-codex-cache-create">0</span>
-                </div>
-              </div>
-            </div>
-
-            <!-- OpenAI -->
-            <div class="channel-card" id="type-openai-card">
-              <div class="channel-card-header">
-                <div class="channel-card-title">
-                  <div class="channel-icon" style="background: linear-gradient(135deg, #10a37f, #0d8a6a);">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z"/>
-                    </svg>
-                  </div>
-                  <span>OpenAI</span>
-                </div>
-                <div class="channel-cost">
-                  <span class="cost-label">成本</span>
-                  <span class="cost-value" id="type-openai-cost">$0.00</span>
-                </div>
-              </div>
-              <!-- 主要指标 -->
-              <div class="channel-metrics">
-                <div class="metric-item">
-                  <div class="metric-value metric-total" id="type-openai-requests">0</div>
-                  <div class="metric-label">总请求</div>
-                </div>
-                <div class="metric-item">
-                  <div class="metric-value metric-success" id="type-openai-success">0</div>
-                  <div class="metric-label">成功</div>
-                </div>
-                <div class="metric-item">
-                  <div class="metric-value metric-error" id="type-openai-error">0</div>
-                  <div class="metric-label">失败</div>
-                </div>
-                <div class="metric-item">
-                  <div class="metric-value metric-rate" id="type-openai-rate">0.0%</div>
-                  <div class="metric-label">成功率</div>
-                </div>
-              </div>
-              <!-- Token统计 -->
-              <div class="token-stats">
-                <div class="token-item">
-                  <span class="token-label">输入</span>
-                  <span class="token-value" id="type-openai-input">0</span>
-                </div>
-                <div class="token-item">
-                  <span class="token-label">输出</span>
-                  <span class="token-value" id="type-openai-output">0</span>
-                </div>
-              </div>
-            </div>
-
-            <!-- Gemini -->
-            <div class="channel-card" id="type-gemini-card">
-              <div class="channel-card-header">
-                <div class="channel-card-title">
-                  <div class="channel-icon" style="background: linear-gradient(135deg, #4285f4, #1a73e8);">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M12 2L2 7v10l10 5 10-5V7L12 2zm0 2.18L19.82 8 12 11.82 4.18 8 12 4.18zM4 9.48l7 3.5v7.84l-7-3.5V9.48zm16 0v7.84l-7 3.5v-7.84l7-3.5z"/>
-                    </svg>
-                  </div>
-                  <span>Google Gemini</span>
-                </div>
-                <div class="channel-cost">
-                  <span class="cost-label">成本</span>
-                  <span class="cost-value" id="type-gemini-cost">$0.00</span>
-                </div>
-              </div>
-              <!-- 主要指标 -->
-              <div class="channel-metrics">
-                <div class="metric-item">
-                  <div class="metric-value metric-total" id="type-gemini-requests">0</div>
-                  <div class="metric-label">总请求</div>
-                </div>
-                <div class="metric-item">
-                  <div class="metric-value metric-success" id="type-gemini-success">0</div>
-                  <div class="metric-label">成功</div>
-                </div>
-                <div class="metric-item">
-                  <div class="metric-value metric-error" id="type-gemini-error">0</div>
-                  <div class="metric-label">失败</div>
-                </div>
-                <div class="metric-item">
-                  <div class="metric-value metric-rate" id="type-gemini-rate">0.0%</div>
-                  <div class="metric-label">成功率</div>
-                </div>
-              </div>
-              <!-- Token统计 -->
-              <div class="token-stats">
-                <div class="token-item">
-                  <span class="token-label">输入</span>
-                  <span class="token-value" id="type-gemini-input">0</span>
-                </div>
-                <div class="token-item">
-                  <span class="token-label">输出</span>
-                  <span class="token-value" id="type-gemini-output">0</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-        <!-- 实时状态栏 - 总览 -->
-        <section class="mb-6">
-          <div class="grid grid-cols-4 animate-slide-up" style="animation-delay: 0.2s; gap: var(--space-3);">
-            <div class="summary-card summary-card-primary">
-              <div class="summary-icon">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M12 2v20M2 12h20"/>
-                </svg>
-              </div>
-              <div class="summary-content">
-                <div class="summary-value metric-total" id="total-requests">--</div>
-                <div class="summary-label">总请求数</div>
-              </div>
-            </div>
-            <div class="summary-card summary-card-success">
-              <div class="summary-icon">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M20 6L9 17l-5-5"/>
-                </svg>
-              </div>
-              <div class="summary-content">
-                <div class="summary-value metric-success" id="success-requests">--</div>
-                <div class="summary-label">成功请求</div>
-              </div>
-            </div>
-            <div class="summary-card summary-card-error">
-              <div class="summary-icon">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M18 6L6 18M6 6l12 12"/>
-                </svg>
-              </div>
-              <div class="summary-content">
-                <div class="summary-value metric-error" id="error-requests">--</div>
-                <div class="summary-label">失败请求</div>
-              </div>
-            </div>
-            <div class="summary-card summary-card-rate">
-              <div class="summary-icon">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M3 12h18M3 6h18M3 18h18"/>
-                </svg>
-              </div>
-              <div class="summary-content">
-                <div class="summary-value metric-rate" id="success-rate">--.-%</div>
-                <div class="summary-label">成功率</div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <!-- 服务详情 -->
-        <section class="mb-8">
-            <div class="glass-card animate-slide-up" style="animation-delay: 0.4s;">
-
-
-            <!-- API接口 -->
-            <div class="glass-card animate-slide-up" style="animation-delay: 0.3s;">
-              <h3 class="text-xl font-semibold mb-6">
-                <svg class="inline-block w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2-2v16z"/>
-                </svg>
-                API 接口
-              </h3>
-              <div class="space-y-3">
-                <div class="bg-neutral-100 bg-opacity-90 rounded-lg p-3 border border-neutral-200">
-                  <div class="text-xs font-mono font-semibold" style="color: var(--success-600);">POST</div>
-                  <div class="font-mono text-sm font-medium" style="color: var(--neutral-800);">/v1/messages</div>
-                  <div class="text-xs mt-1" style="color: var(--neutral-600);">Claude API 透明代理</div>
-                </div>
-                <div class="bg-neutral-100 bg-opacity-90 rounded-lg p-3 border border-neutral-200">
-                  <div class="text-xs font-mono font-semibold" style="color: var(--success-600);">POST</div>
-                  <div class="font-mono text-sm font-medium" style="color: var(--neutral-800);">/v1/responses</div>
-                  <div class="text-xs mt-1" style="color: var(--neutral-600);">Codex API 透明代理</div>
-                </div>  
-                <div class="bg-neutral-100 bg-opacity-90 rounded-lg p-3 border border-neutral-200">
-                  <div class="text-xs font-mono font-semibold" style="color: var(--success-600);">POST</div>
-                  <div class="font-mono text-sm font-medium" style="color: var(--neutral-800);">/v1beta</div>
-                  <div class="text-xs mt-1" style="color: var(--neutral-600);">Gemini 透明代理</div>
-                </div>
-                <div class="bg-neutral-100 bg-opacity-90 rounded-lg p-3 border border-neutral-200">
-                  <div class="text-xs font-mono font-semibold" style="color: var(--primary-600);">GET</div>
-                  <div class="font-mono text-sm font-medium" style="color: var(--neutral-800);">/public/summary</div>
-                  <div class="text-xs mt-1" style="color: var(--neutral-600);">公开统计数据</div>
-                </div>
-              </div>
-              <div class="mt-6 p-3 bg-info-50 rounded-lg border border-info-200">
-                <div class="text-xs font-semibold" style="color: var(--info-600);">提示</div>
-                <div class="text-sm mt-1" style="color: var(--neutral-700);">
-                  管理功能需要登录访问，代理服务公开使用
-                </div>
-              </div>
-            </div>
-
-            
-          </div>
-        </section>
-
+    <!-- 顶部导航 -->
+    <header class="dash-nav">
+      <div class="dash-brand">
+        <div class="status-indicator"></div>
+        <span class="brand-name">ccLoad Monitor</span>
       </div>
-    </main>
+      <div class="dash-actions">
+        <div class="refresh-timer">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <path d="M12 6v6l4 2"/>
+          </svg>
+          <span id="refresh-countdown">30s</span>
+          <button class="refresh-btn" id="refresh-btn" title="手动刷新">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M23 4v6h-6M1 20v-6h6"/>
+              <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+            </svg>
+          </button>
+        </div>
+        <button class="dash-btn active" data-range="today">本日</button>
+        <button class="dash-btn" data-range="this_week">本周</button>
+        <button class="dash-btn" data-range="this_month">本月</button>
+      </div>
+    </header>
+
+    <!-- 核心指标行 -->
+    <div class="dash-grid stats-row">
+      <div class="dash-panel stat-panel">
+        <div class="panel-header">总请求</div>
+        <div class="stat-value primary" id="stat-total">--</div>
+        <div class="stat-meta" id="stat-total-meta">成功 -- / 失败 --</div>
+      </div>
+      <div class="dash-panel stat-panel">
+        <div class="panel-header">成功率</div>
+        <div class="stat-value success" id="stat-rate">--%</div>
+        <div class="stat-meta" id="stat-rate-meta">--</div>
+      </div>
+      <div class="dash-panel stat-panel">
+        <div class="panel-header">Token 消耗</div>
+        <div class="stat-value warning" id="stat-tokens">--</div>
+        <div class="stat-meta" id="stat-tokens-meta">输入 -- / 输出 --</div>
+      </div>
+      <div class="dash-panel stat-panel">
+        <div class="panel-header">成本</div>
+        <div class="stat-value error" id="stat-cost">$--</div>
+        <div class="stat-meta" id="stat-cost-meta">--</div>
+      </div>
+    </div>
+
+    <!-- 图表行 -->
+    <div class="dash-grid chart-row">
+      <!-- 渠道健康矩阵 -->
+      <div class="dash-panel health-matrix-panel">
+        <div class="panel-header-row">
+          <div class="panel-title">渠道健康矩阵</div>
+          <div class="dash-actions matrix-controls">
+            <!-- 周期切换按钮组 -->
+            <button class="dash-btn active" data-period="24h">24H</button>
+            <button class="dash-btn" data-period="7d">7D</button>
+            <button class="dash-btn" data-period="30d">30D</button>
+
+            <!-- 垂直分隔线 -->
+            <div class="separator-vertical"></div>
+
+            <!-- Tab 切换按钮组 -->
+            <button class="dash-btn tab-btn active" data-tab="cc">CC (Claude)</button>
+            <button class="dash-btn tab-btn" data-tab="cx">CX (OpenAI)</button>
+
+            <!-- 垂直分隔线 -->
+            <div class="separator-vertical"></div>
+
+            <!-- 刷新倒计时和按钮 -->
+            <div class="refresh-timer">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M12 6v6l4 2"/>
+              </svg>
+              <span id="health-matrix-countdown">5:00</span>
+              <button class="refresh-btn" id="health-matrix-refresh-btn" title="手动刷新">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M23 4v6h-6M1 20v-6h6"/>
+                  <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+                </svg>
+              </button>
+            </div>
+
+            <!-- 垂直分隔线 -->
+            <div class="separator-vertical"></div>
+
+            <!-- 管理隐藏渠道按钮 -->
+            <button class="dash-btn btn-icon" id="manage-hidden-btn" title="管理已隐藏渠道">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                <circle cx="12" cy="12" r="3"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- CC (Claude) 分组 - 默认显示 -->
+        <div class="service-group tab-content active" id="tab-cc">
+          <div class="health-grid" id="grid-cc">
+            <!-- 动态填充 -->
+          </div>
+        </div>
+
+        <!-- CX (OpenAI) 分组 - 默认隐藏 -->
+        <div class="service-group tab-content" id="tab-cx">
+          <div class="health-grid" id="grid-cx">
+            <!-- 动态填充 -->
+          </div>
+        </div>
+      </div>
+
+      <!-- 渠道状态 -->
+      <div class="dash-panel">
+        <div class="panel-header-row">
+          <div class="panel-title">渠道状态</div>
+        </div>
+        <div class="status-list" id="channel-status-list">
+          <!-- 动态填充 -->
+        </div>
+      </div>
+    </div>
+
+    <!-- 实时日志 -->
+    <div class="dash-grid console-row">
+      <div class="dash-panel console-panel">
+        <div class="panel-header-row">
+          <div class="panel-title">最近请求</div>
+        </div>
+        <div class="console-table-wrapper">
+          <table class="console-table">
+            <thead>
+              <tr>
+                <th width="70">时间</th>
+                <th width="50">状态</th>
+                <th>渠道</th>
+                <th>模型</th>
+                <th width="80">Token</th>
+                <th width="70">耗时</th>
+                <th width="60">成本</th>
+              </tr>
+            </thead>
+            <tbody id="logs-tbody">
+              <!-- 动态填充 -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </div>
   </div>
 
+  <!-- 隐藏渠道管理模态框 -->
+  <div id="hidden-channels-modal" class="modal">
+    <div class="modal-content" style="max-width: 500px;">
+      <div class="modal-header">
+        <h3 class="modal-title">已隐藏渠道</h3>
+        <button class="close-btn" onclick="closeHiddenManager()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="hidden-channels-list" class="hidden-list">
+          <!-- JS 动态填充 -->
+        </div>
+      </div>
+    </div>
+  </div>
 
   <script src="/web/assets/js/ui.js"></script>
+  <script src="/web/assets/js/health-matrix.js"></script>
   <script src="/web/assets/js/index.js"></script>
 </body>
 </html>
