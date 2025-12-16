@@ -1,0 +1,172 @@
+/* =================================================================
+   Theme System - ccLoad
+   语义化变量系统，支持 Dark/Light 模式切换
+   默认暗色主题，浅色主题通过 [data-theme="light"] 激活
+   ================================================================= */
+
+/* === Dark Mode (默认) === */
+:root {
+  /* 基础背景 */
+  --theme-bg-body: #111217;
+  --theme-bg-card: #181b1f;
+  --theme-bg-panel: #1f2226;
+  --theme-bg-input: rgba(0, 0, 0, 0.2);
+  --theme-bg-input-focus: rgba(0, 0, 0, 0.3);
+  --theme-bg-hover: rgba(255, 255, 255, 0.05);
+  --theme-bg-active: rgba(255, 255, 255, 0.1);
+
+  /* 文本颜色 */
+  --theme-text-main: #dce1e6;
+  --theme-text-muted: #8e95a3;
+  --theme-text-subtle: #6b7280;
+  --theme-text-inverse: #111217;
+
+  /* 边框与分割线 */
+  --theme-border: #2c3235;
+  --theme-border-light: rgba(255, 255, 255, 0.08);
+  --theme-border-focus: #5794f2;
+
+  /* 功能色（暗色模式优化） */
+  --theme-accent: #5794f2;
+  --theme-success: #73bf69;
+  --theme-warning: #f2cc0c;
+  --theme-error: #f2495c;
+  --theme-info: #6ed0e0;
+
+  /* 玻璃态效果 */
+  --theme-glass-bg: rgba(24, 27, 31, 0.85);
+  --theme-glass-border: rgba(255, 255, 255, 0.08);
+  --theme-glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+
+  /* 阴影 */
+  --theme-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --theme-shadow-md: 0 4px 6px rgba(0, 0, 0, 0.4);
+  --theme-shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.5);
+
+  /* 滚动条 */
+  --theme-scrollbar-track: transparent;
+  --theme-scrollbar-thumb: rgba(255, 255, 255, 0.2);
+  --theme-scrollbar-thumb-hover: rgba(255, 255, 255, 0.3);
+
+  /* 表格 */
+  --theme-table-header-bg: rgba(255, 255, 255, 0.03);
+  --theme-table-row-hover: rgba(255, 255, 255, 0.03);
+  --theme-table-border: rgba(255, 255, 255, 0.05);
+
+  /* Modal */
+  --theme-modal-overlay: rgba(0, 0, 0, 0.7);
+  --theme-modal-bg: #1f2226;
+
+  /* 图标颜色 */
+  --theme-icon-default: #8e95a3;
+  --theme-icon-hover: #dce1e6;
+}
+
+/* === Light Mode === */
+[data-theme="light"] {
+  /* 基础背景 */
+  --theme-bg-body: #f5f7fa;
+  --theme-bg-card: #ffffff;
+  --theme-bg-panel: #ffffff;
+  --theme-bg-input: #ffffff;
+  --theme-bg-input-focus: #ffffff;
+  --theme-bg-hover: rgba(0, 0, 0, 0.04);
+  --theme-bg-active: rgba(0, 0, 0, 0.08);
+
+  /* 文本颜色 */
+  --theme-text-main: #1f2937;
+  --theme-text-muted: #6b7280;
+  --theme-text-subtle: #9ca3af;
+  --theme-text-inverse: #ffffff;
+
+  /* 边框与分割线 */
+  --theme-border: #e5e7eb;
+  --theme-border-light: #f3f4f6;
+  --theme-border-focus: #3b82f6;
+
+  /* 功能色（浅色模式优化） */
+  --theme-accent: #3b82f6;
+  --theme-success: #10b981;
+  --theme-warning: #f59e0b;
+  --theme-error: #ef4444;
+  --theme-info: #06b6d4;
+
+  /* 玻璃态效果 */
+  --theme-glass-bg: rgba(255, 255, 255, 0.8);
+  --theme-glass-border: rgba(255, 255, 255, 0.5);
+  --theme-glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+
+  /* 阴影 */
+  --theme-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --theme-shadow-md: 0 4px 6px rgba(0, 0, 0, 0.07);
+  --theme-shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
+
+  /* 滚动条 */
+  --theme-scrollbar-track: transparent;
+  --theme-scrollbar-thumb: rgba(0, 0, 0, 0.2);
+  --theme-scrollbar-thumb-hover: rgba(0, 0, 0, 0.3);
+
+  /* 表格 */
+  --theme-table-header-bg: #f9fafb;
+  --theme-table-row-hover: #f9fafb;
+  --theme-table-border: #e5e7eb;
+
+  /* Modal */
+  --theme-modal-overlay: rgba(0, 0, 0, 0.5);
+  --theme-modal-bg: #ffffff;
+
+  /* 图标颜色 */
+  --theme-icon-default: #6b7280;
+  --theme-icon-hover: #1f2937;
+}
+
+/* === 过渡动画 === */
+html {
+  transition: background-color 0.3s ease;
+}
+
+html.theme-transition,
+html.theme-transition *,
+html.theme-transition *::before,
+html.theme-transition *::after {
+  transition: background-color 0.3s ease,
+              border-color 0.3s ease,
+              color 0.3s ease,
+              box-shadow 0.3s ease !important;
+}
+
+/* === 主题切换按钮样式 === */
+.theme-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 8px;
+  background: var(--theme-bg-hover);
+  color: var(--theme-icon-default);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.theme-toggle:hover {
+  background: var(--theme-bg-active);
+  color: var(--theme-icon-hover);
+}
+
+.theme-toggle svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* 旋转动画 */
+.theme-toggle.rotating svg {
+  animation: rotate-icon 0.5s ease;
+}
+
+@keyframes rotate-icon {
+  0% { transform: rotate(0deg) scale(1); }
+  50% { transform: rotate(180deg) scale(0.8); }
+  100% { transform: rotate(360deg) scale(1); }
+}

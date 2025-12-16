@@ -144,7 +144,17 @@
       }, [n.icon(), h('span', {}, n.label)]) )
     ]);
     const loggedIn = isLoggedIn();
+
+    // 主题切换按钮
+    const themeBtn = h('button', {
+      class: 'theme-toggle',
+      id: 'theme-toggle-btn',
+      onclick: () => window.ThemeManager && ThemeManager.toggle(),
+      title: '切换主题'
+    });
+
     const right = h('div', { class: 'topbar-right' }, [
+      themeBtn,
       h('button', {
         class: 'btn btn-secondary btn-sm',
         onclick: loggedIn ? onLogout : () => location.href = '/web/login.html'
@@ -214,6 +224,11 @@
     // 插入顶部条
     const topbar = buildTopbar(activeKey, visiblePages);
     document.body.appendChild(topbar);
+
+    // 更新主题切换按钮图标
+    if (window.ThemeManager && ThemeManager.refreshButton) {
+      ThemeManager.refreshButton();
+    }
 
     // 背景动效
     injectBackground();

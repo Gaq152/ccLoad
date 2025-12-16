@@ -8,10 +8,15 @@
   <link rel="manifest" href="/web/manifest.json">
   <meta name="theme-color" content="#3b82f6">
   <title>登录 - Claude Code & Codex Proxy</title>
+  <link rel="stylesheet" href="/web/assets/css/theme.css">
   <link rel="stylesheet" href="/web/assets/css/styles.css">
+  <script src="/web/assets/js/theme.js"></script>
   <link href="/web/assets/css/inter.css" rel="stylesheet">
 </head>
 <body class="dashboard-theme">
+  <!-- 主题切换按钮 -->
+  <button class="theme-toggle" id="theme-toggle-btn" onclick="ThemeManager.toggle()" title="切换主题" style="position: fixed; top: 20px; right: 20px; z-index: 100;"></button>
+
   <!-- 动画背景 -->
   <div class="login-background">
     <div class="floating-shapes">
