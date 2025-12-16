@@ -3588,6 +3588,22 @@ body.dashboard-theme select option {
   color: var(--neutral-800);
 }
 
+/* 渠道编辑模态框中的内联select（筛选下拉框） */
+body.dashboard-theme select {
+  background: var(--input-bg);
+  color: var(--neutral-800);
+}
+
+/* API Key 输入框暗色主题适配 */
+body.dashboard-theme .inline-key-input {
+  background: var(--input-bg);
+  color: var(--neutral-800);
+}
+
+body.dashboard-theme .inline-key-input:focus {
+  background: var(--input-focus-bg);
+}
+
 /* 模态框 */
 body.dashboard-theme .modal-content {
   background: var(--neutral-100);
