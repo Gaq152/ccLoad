@@ -150,43 +150,54 @@ func ClassifyHTTPStatusWithBody(statusCode int, responseBody []byte) ErrorLevel 
 		return ErrorLevelKey
 	}
 
-	// 仅分析401和403错误,其他状态码使用标准分类器
-	if statusCode != 401 && statusCode != 403 {
-		return ClassifyHTTPStatus(statusCode)
-	}
-
-	// 401/403错误:分析响应体内容
-	if len(responseBody) == 0 {
-		return ErrorLevelKey // 无响应体,默认Key级错误
-	}
-
-	bodyLower := strings.ToLower(string(responseBody))
-
-	// 渠道级错误特征:**仅限账户级不可逆错误**
-	// 设计原则:保守策略,只有明确是渠道级错误时才返回ErrorLevelChannel
-	channelErrorPatterns := []string{
-		// 账户状态(不可逆)
-		"account suspended", // 账户暂停
-		"account disabled",  // 账户禁用
-		"account banned",    // 账户封禁
-		"service disabled",  // 服务禁用
-
-		// 注意:以下错误已移除(改为Key级,让系统先尝试其他Key):
-		// - "额度已用尽", "quota_exceeded" → 可能只是单个Key额度用尽
-		// - "余额不足", "balance" → 可能只是单个Key余额不足
-		// - "limit reached" → 可能只是单个Key限额到达
-	}
-
-	for _, pattern := range channelErrorPatterns {
-		if strings.Contains(bodyLower, pattern) {
-			return ErrorLevelChannel // 明确的渠道级错误
+	// 扩展：分析 400/401/403 错误的响应体
+	if statusCode == 400 || statusCode == 401 || statusCode == 403 {
+		if len(responseBody) == 0 {
+			return ClassifyHTTPStatus(statusCode) // 无响应体，使用默认分类
 		}
+
+		bodyLower := strings.ToLower(string(responseBody))
+
+		// [FIX] 400错误：检测服务器错误特征
+		if statusCode == 400 {
+			serverErrorPatterns := []string{
+				"server_error",           // {"type":"server_error"}
+				"upstream request failed", // Upstream request failed
+				"internal error",         // 内部错误
+				"service unavailable",    // 服务不可用
+			}
+
+			for _, pattern := range serverErrorPatterns {
+				if strings.Contains(bodyLower, pattern) {
+					return ErrorLevelChannel // 明确的服务器错误，应切换渠道
+				}
+			}
+		}
+
+		// 401/403错误：渠道级错误特征（仅限账户级不可逆错误）
+		if statusCode == 401 || statusCode == 403 {
+			channelErrorPatterns := []string{
+				"account suspended", // 账户暂停
+				"account disabled",  // 账户禁用
+				"account banned",    // 账户封禁
+				"service disabled",  // 服务禁用
+			}
+
+			for _, pattern := range channelErrorPatterns {
+				if strings.Contains(bodyLower, pattern) {
+					return ErrorLevelChannel
+				}
+			}
+		}
+
+		// 默认:Key级错误
+		// 包括:认证失败、权限不足、额度用尽、余额不足等
+		// 让handleProxyError根据渠道Key数量决定是否升级为渠道级
+		return ErrorLevelKey
 	}
 
-	// 默认:Key级错误
-	// 包括:认证失败、权限不足、额度用尽、余额不足等
-	// 让handleProxyError根据渠道Key数量决定是否升级为渠道级
-	return ErrorLevelKey
+	// 其他状态码使用标准分类器
+	return ClassifyHTTPStatus(statusCode)
 }
 
 // ClassifyRateLimitError 分析429 Rate Limit错误的具体类型
