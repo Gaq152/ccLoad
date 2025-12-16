@@ -435,6 +435,8 @@ func (s *Server) SetupRoutes(r *gin.Engine) {
 		admin.POST("/auth-tokens", s.HandleCreateAuthToken)
 		admin.PUT("/auth-tokens/:id", s.HandleUpdateAuthToken)
 		admin.DELETE("/auth-tokens/:id", s.HandleDeleteAuthToken)
+		admin.GET("/auth-tokens/:id/channels", s.HandleGetTokenChannels)  // 获取令牌渠道配置（2025-12新增）
+		admin.PUT("/auth-tokens/:id/channels", s.HandleSetTokenChannels)  // 设置令牌渠道配置（2025-12新增）
 
 		// 系统配置管理
 		admin.GET("/settings", s.AdminListSettings)

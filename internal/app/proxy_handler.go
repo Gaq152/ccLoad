@@ -184,6 +184,15 @@ func (s *Server) HandleProxyRequest(c *gin.Context) {
 		return
 	}
 
+	// 从context提取tokenHash和tokenID（用于统计和日志，2025-11新增tokenHash, 2025-12新增tokenID）
+	tokenHash, _ := c.Get("token_hash")
+	tokenHashStr, _ := tokenHash.(string)
+	tokenID, _ := c.Get("token_id")
+	tokenIDInt64, _ := tokenID.(int64)
+
+	// 根据令牌的渠道访问配置过滤候选渠道（2025-12新增）
+	cands = s.filterByTokenChannels(cands, tokenIDInt64)
+
 	if len(cands) == 0 {
 		s.AddLogAsync(&model.LogEntry{
 			Time:        model.JSONTime{Time: time.Now()},
@@ -196,12 +205,6 @@ func (s *Server) HandleProxyRequest(c *gin.Context) {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "no available upstream (all cooled or none)"})
 		return
 	}
-
-	// 从context提取tokenHash和tokenID（用于统计和日志，2025-11新增tokenHash, 2025-12新增tokenID）
-	tokenHash, _ := c.Get("token_hash")
-	tokenHashStr, _ := tokenHash.(string)
-	tokenID, _ := c.Get("token_id")
-	tokenIDInt64, _ := tokenID.(int64)
 
 	reqCtx := &proxyRequestContext{
 		originalModel: originalModel,

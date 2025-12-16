@@ -185,6 +185,51 @@
     </div>
   </div>
 
+  <!-- 渠道配置对话框 -->
+  <div id="channelsModal" class="modal">
+    <div class="modal-content" style="max-width: 560px;">
+      <div class="modal-header">
+        <h2 style="margin: 0; font-size: 18px;">渠道访问配置</h2>
+        <button onclick="closeChannelsModal()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: var(--neutral-500);">&times;</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="channelsTokenId">
+
+        <!-- iOS 风格 Toggle Switch -->
+        <div class="form-group">
+          <div class="toggle-row">
+            <div class="toggle-label">
+              <div class="toggle-label-text">允许使用所有渠道</div>
+              <div class="toggle-label-desc">启用后，此令牌可以使用所有可用渠道</div>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="allChannelsCheckbox" onchange="toggleChannelsList()">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <!-- 渠道列表区域 -->
+        <div id="channelsListContainer" class="form-group">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+            <label class="form-label" style="margin: 0;">允许使用的渠道</label>
+            <span id="channelCountBadge" class="channel-count-badge">0</span>
+          </div>
+          <div id="channelsList" class="channels-list">
+            <div class="channels-loading">加载中...</div>
+          </div>
+          <p style="font-size: 13px; color: var(--neutral-600); margin-top: 8px;">
+            选择此令牌允许使用的渠道。新建的渠道默认不会自动添加到此列表。
+          </p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button onclick="closeChannelsModal()" class="btn btn-secondary">取消</button>
+        <button onclick="saveTokenChannels()" class="btn btn-primary">保存</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 模板引擎 -->
   <script src="/web/assets/js/template-engine.js"></script>
 
@@ -204,6 +249,7 @@
       <td style="text-align: center;">{{{nonStreamAvgHtml}}}</td>
       <td style="color: var(--neutral-600);">{{lastUsed}}</td>
       <td>
+        <button class="btn btn-secondary btn-channels" style="padding: 4px 12px; font-size: 13px; margin-right: 4px;" title="渠道配置">渠道</button>
         <button class="btn btn-secondary btn-edit" style="padding: 4px 12px; font-size: 13px; margin-right: 4px;">编辑</button>
         <button class="btn btn-danger btn-delete" style="padding: 4px 12px; font-size: 13px;">删除</button>
       </td>

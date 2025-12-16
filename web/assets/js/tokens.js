@@ -50,6 +50,14 @@
       container.addEventListener('click', (e) => {
         const target = e.target;
 
+        // 处理渠道配置按钮
+        if (target.classList.contains('btn-channels')) {
+          const row = target.closest('tr');
+          const tokenId = row ? parseInt(row.dataset.tokenId) : null;
+          if (tokenId) showChannelsModal(tokenId);
+          return;
+        }
+
         // 处理编辑按钮
         if (target.classList.contains('btn-edit')) {
           const row = target.closest('tr');
@@ -350,6 +358,7 @@
           <td style="text-align: center;">${nonStreamAvgHtml}</td>
           <td style="color: var(--neutral-600);">${lastUsed}</td>
           <td>
+            <button class="btn btn-secondary btn-channels" style="padding: 4px 12px; font-size: 13px; margin-right: 4px;" title="渠道配置">渠道</button>
             <button class="btn btn-secondary btn-edit" style="padding: 4px 12px; font-size: 13px; margin-right: 4px;">编辑</button>
             <button class="btn btn-danger btn-delete" style="padding: 4px 12px; font-size: 13px;">删除</button>
           </td>
@@ -519,6 +528,150 @@
         toast.style.animation = 'slideOut 0.3s ease-out';
         setTimeout(() => toast.remove(), 300);
       }, 3000);
+    }
+
+    // ============================================================================
+    // 渠道配置功能（2025-12新增）
+    // ============================================================================
+
+    // 缓存渠道列表
+    let allChannels = [];
+
+    // 显示渠道配置对话框
+    async function showChannelsModal(tokenId) {
+      document.getElementById('channelsTokenId').value = tokenId;
+      document.getElementById('channelsModal').style.display = 'block';
+      document.getElementById('channelsList').innerHTML = '<div class="channels-loading">加载中...</div>';
+      updateChannelCountBadge(0);
+
+      try {
+        // 并行加载渠道列表和令牌配置
+        const [channelsRes, configRes] = await Promise.all([
+          fetchWithAuth(`${API_BASE}/channels`),
+          fetchWithAuth(`${API_BASE}/auth-tokens/${tokenId}/channels`)
+        ]);
+
+        if (!channelsRes.ok) throw new Error('加载渠道列表失败');
+        if (!configRes.ok) throw new Error('加载令牌渠道配置失败');
+
+        const channelsData = await channelsRes.json();
+        const configData = await configRes.json();
+
+        allChannels = channelsData.data || [];
+        const config = configData.data || {};
+
+        // 设置全部渠道复选框
+        document.getElementById('allChannelsCheckbox').checked = config.all_channels !== false;
+
+        // 渲染渠道列表
+        renderChannelsList(config.channel_ids || []);
+
+        // 根据 all_channels 状态显示/隐藏渠道列表
+        toggleChannelsList();
+      } catch (error) {
+        console.error('加载渠道配置失败:', error);
+        document.getElementById('channelsList').innerHTML = `<div class="channels-error">加载失败: ${error.message}</div>`;
+      }
+    }
+
+    // 渲染渠道列表（Gemini 优化样式）
+    function renderChannelsList(selectedIds) {
+      const container = document.getElementById('channelsList');
+
+      if (allChannels.length === 0) {
+        container.innerHTML = '<div class="channels-empty">暂无渠道</div>';
+        updateChannelCountBadge(0);
+        return;
+      }
+
+      const selectedSet = new Set(selectedIds);
+      let html = '';
+
+      allChannels.forEach(channel => {
+        const isChecked = selectedSet.has(channel.id);
+        const statusClass = channel.enabled ? 'enabled' : 'disabled';
+        const statusText = channel.enabled ? '启用' : '禁用';
+        const selectedClass = isChecked ? ' selected' : '';
+
+        html += `
+          <label class="channel-item${selectedClass}" data-channel-id="${channel.id}">
+            <span class="channel-checkbox">
+              <input type="checkbox" value="${channel.id}" ${isChecked ? 'checked' : ''} onchange="updateChannelSelection(this)">
+              <span class="checkmark"></span>
+            </span>
+            <span class="channel-info">
+              <span class="channel-name">${escapeHtml(channel.name)}</span>
+              <span class="channel-status ${statusClass}">${statusText}</span>
+            </span>
+            <span class="channel-type">${channel.channel_type || 'anthropic'}</span>
+          </label>
+        `;
+      });
+
+      container.innerHTML = html;
+      updateChannelCountBadge(selectedIds.length);
+    }
+
+    // 更新渠道选择状态（用于样式同步）
+    function updateChannelSelection(checkbox) {
+      const channelItem = checkbox.closest('.channel-item');
+      if (checkbox.checked) {
+        channelItem.classList.add('selected');
+      } else {
+        channelItem.classList.remove('selected');
+      }
+      // 更新计数徽章
+      const checkedCount = document.querySelectorAll('#channelsList input[type="checkbox"]:checked').length;
+      updateChannelCountBadge(checkedCount);
+    }
+
+    // 更新渠道数量徽章
+    function updateChannelCountBadge(count) {
+      const badge = document.getElementById('channelCountBadge');
+      if (badge) {
+        badge.textContent = count;
+      }
+    }
+
+    // 切换渠道列表显示
+    function toggleChannelsList() {
+      const allChannelsChecked = document.getElementById('allChannelsCheckbox').checked;
+      const container = document.getElementById('channelsListContainer');
+      container.style.display = allChannelsChecked ? 'none' : 'block';
+    }
+
+    // 保存令牌渠道配置
+    async function saveTokenChannels() {
+      const tokenId = document.getElementById('channelsTokenId').value;
+      const allChannelsChecked = document.getElementById('allChannelsCheckbox').checked;
+
+      // 获取选中的渠道ID
+      const checkboxes = document.querySelectorAll('#channelsList input[type="checkbox"]:checked');
+      const channelIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
+
+      try {
+        const response = await fetchWithAuth(`${API_BASE}/auth-tokens/${tokenId}/channels`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            all_channels: allChannelsChecked,
+            channel_ids: channelIds
+          })
+        });
+
+        if (!response.ok) throw new Error('保存失败');
+
+        closeChannelsModal();
+        showToast('渠道配置已保存', 'success');
+      } catch (error) {
+        console.error('保存渠道配置失败:', error);
+        showToast('保存失败: ' + error.message, 'error');
+      }
+    }
+
+    // 关闭渠道配置对话框
+    function closeChannelsModal() {
+      document.getElementById('channelsModal').style.display = 'none';
     }
 
     // 初始化顶部导航栏

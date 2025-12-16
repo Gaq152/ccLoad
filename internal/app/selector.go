@@ -144,3 +144,50 @@ func shuffleSamePriorityChannels(channels []*modelpkg.Config) []*modelpkg.Config
 
 	return result
 }
+
+// filterByTokenChannels 根据令牌的渠道访问配置过滤候选渠道
+// 参数:
+//   - channels: 候选渠道列表
+//   - tokenID: API令牌ID（从context获取）
+//
+// 返回值:
+//   - 过滤后的渠道列表（只包含令牌允许访问的渠道）
+//
+// 设计说明:
+//   - 如果tokenID为0或令牌配置为AllChannels，则不过滤
+//   - 否则只返回令牌允许的渠道
+func (s *Server) filterByTokenChannels(channels []*modelpkg.Config, tokenID int64) []*modelpkg.Config {
+	// tokenID为0表示没有令牌认证（理论上不应该发生，因为API需要认证）
+	if tokenID == 0 || len(channels) == 0 {
+		return channels
+	}
+
+	// 获取令牌的渠道配置
+	cfg, exists := s.authService.GetTokenChannelConfig(tokenID)
+	if !exists || cfg == nil {
+		// 令牌配置不存在，默认允许所有渠道（降级处理）
+		log.Printf("[WARN] 令牌ID=%d的渠道配置不存在，使用默认全部允许", tokenID)
+		return channels
+	}
+
+	// AllChannels=true 表示允许所有渠道
+	if cfg.AllChannels {
+		return channels
+	}
+
+	// 构建允许的渠道ID集合（O(1)查找）
+	allowedSet := make(map[int64]struct{}, len(cfg.ChannelIDs))
+	for _, id := range cfg.ChannelIDs {
+		allowedSet[id] = struct{}{}
+	}
+
+	// 过滤渠道
+	filtered := make([]*modelpkg.Config, 0, len(channels))
+	for _, ch := range channels {
+		if _, allowed := allowedSet[ch.ID]; allowed {
+			filtered = append(filtered, ch)
+		}
+	}
+
+	return filtered
+}

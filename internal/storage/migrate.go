@@ -36,6 +36,7 @@ func migrate(ctx context.Context, db *sql.DB, dialect Dialect) error {
 		schema.DefineChannelModelsTable,
 		schema.DefineChannelEndpointsTable, // 多端点管理表
 		schema.DefineAuthTokensTable,
+		schema.DefineTokenChannelsTable, // 令牌-渠道关联表（依赖 auth_tokens 和 channels）
 		schema.DefineSystemSettingsTable,
 		schema.DefineAdminSessionsTable,
 		schema.DefineLogsTable,
@@ -82,15 +83,21 @@ func migrate(ctx context.Context, db *sql.DB, dialect Dialect) error {
 			}
 		}
 
-		// 增量迁移：确保auth_tokens表有缓存token字段（2025-12新增）
+		// 增量迁移：确保auth_tokens表有缓存token字段和all_channels字段
 		if tb.Name() == "auth_tokens" {
 			if dialect == DialectMySQL {
 				if err := ensureAuthTokensCacheFields(ctx, db); err != nil {
 					return fmt.Errorf("migrate auth_tokens cache fields: %w", err)
 				}
+				if err := ensureAuthTokensAllChannels(ctx, db); err != nil {
+					return fmt.Errorf("migrate auth_tokens.all_channels: %w", err)
+				}
 			} else {
 				if err := ensureAuthTokensCacheFieldsSQLite(ctx, db); err != nil {
 					return fmt.Errorf("migrate auth_tokens cache fields: %w", err)
+				}
+				if err := ensureAuthTokensAllChannelsSQLite(ctx, db); err != nil {
+					return fmt.Errorf("migrate auth_tokens.all_channels: %w", err)
 				}
 			}
 		}
@@ -564,6 +571,67 @@ func ensureEndpointsStatusCodeSQLite(ctx context.Context, db *sql.DB) error {
 	)
 	if err != nil {
 		return fmt.Errorf("add status_code column: %w", err)
+	}
+
+	return nil
+}
+
+// ensureAuthTokensAllChannels 确保auth_tokens表有all_channels字段(MySQL增量迁移)
+func ensureAuthTokensAllChannels(ctx context.Context, db *sql.DB) error {
+	var count int
+	err := db.QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='auth_tokens' AND COLUMN_NAME='all_channels'",
+	).Scan(&count)
+	if err != nil {
+		return fmt.Errorf("check all_channels existence: %w", err)
+	}
+
+	if count > 0 {
+		return nil
+	}
+
+	_, err = db.ExecContext(ctx,
+		"ALTER TABLE auth_tokens ADD COLUMN all_channels TINYINT NOT NULL DEFAULT 1 COMMENT '是否允许使用所有渠道'",
+	)
+	if err != nil {
+		return fmt.Errorf("add all_channels column: %w", err)
+	}
+
+	return nil
+}
+
+// ensureAuthTokensAllChannelsSQLite 确保auth_tokens表有all_channels字段(SQLite增量迁移)
+func ensureAuthTokensAllChannelsSQLite(ctx context.Context, db *sql.DB) error {
+	rows, err := db.QueryContext(ctx, "PRAGMA table_info(auth_tokens)")
+	if err != nil {
+		return fmt.Errorf("check table info: %w", err)
+	}
+	defer rows.Close()
+
+	hasColumn := false
+	for rows.Next() {
+		var cid int
+		var name, typ string
+		var notNull, pk int
+		var dfltValue any
+		if err := rows.Scan(&cid, &name, &typ, &notNull, &dfltValue, &pk); err != nil {
+			return fmt.Errorf("scan column info: %w", err)
+		}
+		if name == "all_channels" {
+			hasColumn = true
+			break
+		}
+	}
+
+	if hasColumn {
+		return nil
+	}
+
+	_, err = db.ExecContext(ctx,
+		"ALTER TABLE auth_tokens ADD COLUMN all_channels INTEGER NOT NULL DEFAULT 1",
+	)
+	if err != nil {
+		return fmt.Errorf("add all_channels column: %w", err)
 	}
 
 	return nil

@@ -156,6 +156,7 @@ func (s *Server) HandleUpdateAuthToken(c *gin.Context) {
 		Description *string `json:"description"`
 		IsActive    *bool   `json:"is_active"`
 		ExpiresAt   *int64  `json:"expires_at"`
+		AllChannels *bool   `json:"all_channels"` // 是否允许使用所有渠道（2025-12新增）
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -182,6 +183,9 @@ func (s *Server) HandleUpdateAuthToken(c *gin.Context) {
 	}
 	if req.ExpiresAt != nil {
 		token.ExpiresAt = req.ExpiresAt
+	}
+	if req.AllChannels != nil {
+		token.AllChannels = *req.AllChannels
 	}
 
 	if err := s.store.UpdateAuthToken(ctx, token); err != nil {
@@ -228,4 +232,100 @@ func (s *Server) HandleDeleteAuthToken(c *gin.Context) {
 	log.Printf("[INFO] 删除API令牌: ID=%d", id)
 
 	RespondJSON(c, http.StatusOK, gin.H{"id": id})
+}
+
+// ============================================================================
+// 令牌渠道访问控制 API（2025-12新增）
+// ============================================================================
+
+// HandleGetTokenChannels 获取令牌的渠道访问配置
+// GET /admin/auth-tokens/:id/channels
+func (s *Server) HandleGetTokenChannels(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		RespondErrorMsg(c, http.StatusBadRequest, "invalid token id")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// 获取令牌信息
+	token, err := s.store.GetAuthToken(ctx, id)
+	if err != nil {
+		RespondErrorMsg(c, http.StatusNotFound, "token not found")
+		return
+	}
+
+	// 获取允许的渠道列表
+	channelIDs, err := s.store.GetTokenChannels(ctx, id)
+	if err != nil {
+		log.Print("❌ 获取令牌渠道配置失败: " + err.Error())
+		RespondError(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	RespondJSON(c, http.StatusOK, gin.H{
+		"token_id":     id,
+		"all_channels": token.AllChannels,
+		"channel_ids":  channelIDs,
+	})
+}
+
+// HandleSetTokenChannels 设置令牌的渠道访问配置
+// PUT /admin/auth-tokens/:id/channels
+func (s *Server) HandleSetTokenChannels(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		RespondErrorMsg(c, http.StatusBadRequest, "invalid token id")
+		return
+	}
+
+	var req struct {
+		AllChannels bool    `json:"all_channels"` // 是否允许使用所有渠道
+		ChannelIDs  []int64 `json:"channel_ids"`  // 允许的渠道ID列表（仅当 all_channels=false 时有效）
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		RespondErrorMsg(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// 获取现有令牌
+	token, err := s.store.GetAuthToken(ctx, id)
+	if err != nil {
+		RespondErrorMsg(c, http.StatusNotFound, "token not found")
+		return
+	}
+
+	// 更新 AllChannels 字段
+	token.AllChannels = req.AllChannels
+	if err := s.store.UpdateAuthToken(ctx, token); err != nil {
+		log.Print("❌ 更新令牌失败: " + err.Error())
+		RespondError(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	// 更新渠道关联（无论 AllChannels 的值如何，都保存 ChannelIDs 以便切换时保留配置）
+	if err := s.store.SetTokenChannels(ctx, id, req.ChannelIDs); err != nil {
+		log.Print("❌ 设置令牌渠道关联失败: " + err.Error())
+		RespondError(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	// 触发热更新
+	if err := s.authService.ReloadAuthTokens(); err != nil {
+		log.Print("[WARN]  热更新失败: " + err.Error())
+	}
+
+	log.Printf("[INFO] 设置API令牌渠道配置: ID=%d, AllChannels=%v, ChannelCount=%d", id, req.AllChannels, len(req.ChannelIDs))
+
+	RespondJSON(c, http.StatusOK, gin.H{
+		"token_id":     id,
+		"all_channels": req.AllChannels,
+		"channel_ids":  req.ChannelIDs,
+	})
 }
