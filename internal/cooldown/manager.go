@@ -79,6 +79,14 @@ func (m *Manager) HandleError(
 	isNetworkError bool,
 	headers map[string][]string, // 新增headers参数用于429错误分析
 ) (Action, error) {
+	// [DEBUG] 记录错误处理入口参数
+	errorBodyPreview := string(errorBody)
+	if len(errorBodyPreview) > 200 {
+		errorBodyPreview = errorBodyPreview[:200] + "..."
+	}
+	log.Printf("[COOLDOWN] HandleError入口: 渠道=%d Key=%d 状态码=%d 网络错误=%v 错误体=%q",
+		channelID, keyIndex, statusCode, isNetworkError, errorBodyPreview)
+
 	var errLevel util.ErrorLevel
 
 	// 1. 区分网络错误和HTTP错误的分类策略
@@ -89,8 +97,10 @@ func (m *Manager) HandleError(
 		// 其他可重试错误(502等) → 默认Key级错误（可能只是单个Key的连接问题）
 		if statusCode == util.StatusFirstByteTimeout || statusCode == 504 {
 			errLevel = util.ErrorLevelChannel
+			log.Printf("[COOLDOWN] 网络错误分类: 状态码=%d → Channel级(首字节超时/整体超时)", statusCode)
 		} else {
 			errLevel = util.ErrorLevelKey
+			log.Printf("[COOLDOWN] 网络错误分类: 状态码=%d → Key级(普通网络波动)", statusCode)
 		}
 	} else {
 		// HTTP错误: 使用智能分类器(结合响应体内容和headers)
@@ -99,9 +109,11 @@ func (m *Manager) HandleError(
 		if statusCode == 429 && headers != nil {
 			// 使用增强的Rate Limit分类器
 			errLevel = util.ClassifyRateLimitError(headers, errorBody)
+			log.Printf("[COOLDOWN] HTTP错误分类(429): → %s级", errorLevelName(errLevel))
 		} else {
 			// 其他HTTP错误使用标准分类器
 			errLevel = util.ClassifyHTTPStatusWithBody(statusCode, errorBody)
+			log.Printf("[COOLDOWN] HTTP错误分类: 状态码=%d → %s级", statusCode, errorLevelName(errLevel))
 		}
 	}
 
@@ -133,14 +145,24 @@ func (m *Manager) HandleError(
 
 		// 查询失败或单Key渠道:直接升级为渠道级错误
 		if err != nil || config == nil || config.KeyCount <= 1 {
+			log.Printf("[COOLDOWN] 单Key渠道升级: Key级 → Channel级 (KeyCount=%d)",
+				func() int {
+					if config != nil {
+						return config.KeyCount
+					}
+					return 0
+				}())
 			errLevel = util.ErrorLevelChannel
 		}
 	}
 
 	// 4. 根据错误级别执行冷却
+	log.Printf("[COOLDOWN] 最终决策: 错误级别=%s, 准备执行冷却", errorLevelName(errLevel))
+
 	switch errLevel {
 	case util.ErrorLevelClient:
 		// 客户端错误:不冷却,直接返回
+		log.Printf("[COOLDOWN] 执行动作: Client级错误 → 直接返回给客户端(不冷却)")
 		return ActionReturnClient, nil
 
 	case util.ErrorLevelKey:
@@ -159,6 +181,7 @@ func (m *Manager) HandleError(
 					// SSE 回调
 					m.notifyKeyCooldown(ctx, channelID, keyIndex, reset1308Time, statusCode)
 				}
+				log.Printf("[COOLDOWN] 执行动作: Key级错误(1308) → 重试同渠道其他Key")
 				return ActionRetryKey, nil
 			}
 
@@ -169,10 +192,13 @@ func (m *Manager) HandleError(
 				// 记录日志但不中断请求处理,避免因数据库BUSY导致无限重试
 				log.Printf("[WARN] Failed to update key cooldown (channel=%d, key=%d): %v", channelID, keyIndex, err)
 			} else {
+				log.Printf("[COOLDOWN] Key冷却(指数退避): 渠道=%d Key=%d 冷却时长=%.1fs (状态码=%d)",
+					channelID, keyIndex, nextDuration.Seconds(), statusCode)
 				// SSE 回调
 				m.notifyKeyCooldown(ctx, channelID, keyIndex, time.Now().Add(nextDuration), statusCode)
 			}
 		}
+		log.Printf("[COOLDOWN] 执行动作: Key级错误 → 重试同渠道其他Key")
 		return ActionRetryKey, nil
 
 	case util.ErrorLevelChannel:
@@ -189,6 +215,7 @@ func (m *Manager) HandleError(
 				// SSE 回调
 				m.notifyChannelCooldown(ctx, channelID, reset1308Time, statusCode)
 			}
+			log.Printf("[COOLDOWN] 执行动作: Channel级错误(1308) → 切换到其他渠道")
 			return ActionRetryChannel, nil
 		}
 
@@ -200,14 +227,34 @@ func (m *Manager) HandleError(
 			// 影响: 可能导致短暂的冷却状态不一致,但总比拒绝服务更好
 			log.Printf("[WARN] Failed to update channel cooldown (channel=%d): %v", channelID, err)
 		} else {
+			log.Printf("[COOLDOWN] Channel冷却(指数退避): 渠道=%d 冷却时长=%.1fs (状态码=%d)",
+				channelID, nextDuration.Seconds(), statusCode)
 			// SSE 回调
 			m.notifyChannelCooldown(ctx, channelID, time.Now().Add(nextDuration), statusCode)
 		}
+		log.Printf("[COOLDOWN] 执行动作: Channel级错误 → 切换到其他渠道")
 		return ActionRetryChannel, nil
 
 	default:
 		// 未知错误级别:保守策略,直接返回
+		log.Printf("[COOLDOWN] 执行动作: 未知错误级别 → 直接返回给客户端")
 		return ActionReturnClient, nil
+	}
+}
+
+// errorLevelName 返回错误级别的可读名称
+func errorLevelName(level util.ErrorLevel) string {
+	switch level {
+	case util.ErrorLevelNone:
+		return "None"
+	case util.ErrorLevelKey:
+		return "Key"
+	case util.ErrorLevelChannel:
+		return "Channel"
+	case util.ErrorLevelClient:
+		return "Client"
+	default:
+		return "Unknown"
 	}
 }
 
