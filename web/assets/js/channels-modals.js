@@ -8,8 +8,13 @@ function showAddModal() {
   document.querySelector('input[name="channelType"][value="anthropic"]').checked = true;
   document.querySelector('input[name="keyStrategy"][value="sequential"]').checked = true;
 
-  // 新建模式隐藏"管理端点"按钮
+  // 新建模式隐藏"测速"按钮（需要先保存才能测速）
   document.getElementById('manageEndpointsBtn').style.display = 'none';
+
+  // 重置端点列表
+  if (typeof resetInlineEndpoints === 'function') {
+    resetInlineEndpoints();
+  }
 
   redirectTableData = [];
   renderRedirectTable();
@@ -31,9 +36,15 @@ async function editChannel(id) {
 
   document.getElementById('modalTitle').textContent = '编辑渠道';
   document.getElementById('channelName').value = channel.name;
-  document.getElementById('channelUrl').value = channel.url;
 
-  // 编辑模式显示"管理端点"按钮
+  // 加载端点列表
+  if (typeof loadEndpointsFromServer === 'function') {
+    await loadEndpointsFromServer(id, channel.url);
+  } else {
+    document.getElementById('channelUrl').value = channel.url;
+  }
+
+  // 编辑模式显示"测速"按钮
   document.getElementById('manageEndpointsBtn').style.display = 'inline-flex';
 
   let apiKeys = [];
@@ -105,6 +116,15 @@ async function saveChannel(event) {
 
   document.getElementById('channelApiKey').value = validKeys.join(',');
 
+  // 获取端点列表
+  const endpoints = typeof getInlineEndpoints === 'function' ? getInlineEndpoints() : [];
+  const primaryUrl = endpoints[0] || document.getElementById('channelUrl').value.trim();
+
+  if (!primaryUrl) {
+    if (window.showError) showError('请至少添加一个API URL');
+    return;
+  }
+
   const modelRedirects = redirectTableToJSON();
 
   const channelType = document.querySelector('input[name="channelType"]:checked')?.value || 'anthropic';
@@ -112,7 +132,7 @@ async function saveChannel(event) {
 
   const formData = {
     name: document.getElementById('channelName').value.trim(),
-    url: document.getElementById('channelUrl').value.trim(),
+    url: primaryUrl, // 使用第一个端点作为主URL
     api_key: validKeys.join(','),
     channel_type: channelType,
     key_strategy: keyStrategy,
@@ -129,6 +149,8 @@ async function saveChannel(event) {
 
   try {
     let res;
+    let channelId = editingChannelId;
+
     if (editingChannelId) {
       res = await fetchWithAuth(`/admin/channels/${editingChannelId}`, {
         method: 'PUT',
@@ -146,6 +168,17 @@ async function saveChannel(event) {
     if (!res.ok) {
       const text = await res.text();
       throw new Error(text || 'HTTP ' + res.status);
+    }
+
+    // 新建时获取返回的渠道ID
+    if (!editingChannelId) {
+      const result = await res.json();
+      channelId = result.data?.id || result.id;
+    }
+
+    // 保存多端点（如果有多个）
+    if (channelId && endpoints.length > 1 && typeof saveEndpointsToServer === 'function') {
+      await saveEndpointsToServer(channelId);
     }
 
     closeModal();
@@ -219,9 +252,15 @@ function copyChannel(id, name) {
   currentChannelKeyCooldowns = [];
   document.getElementById('modalTitle').textContent = '复制渠道';
   document.getElementById('channelName').value = copiedName;
-  document.getElementById('channelUrl').value = channel.url;
 
-  // 复制模式隐藏"管理端点"按钮（复制是新建操作）
+  // 设置端点（使用原渠道URL）
+  if (typeof setInlineEndpoints === 'function') {
+    setInlineEndpoints([channel.url]);
+  } else {
+    document.getElementById('channelUrl').value = channel.url;
+  }
+
+  // 复制模式隐藏"测速"按钮（复制是新建操作）
   document.getElementById('manageEndpointsBtn').style.display = 'none';
 
   inlineKeyTableData = parseKeys(channel.api_key);
