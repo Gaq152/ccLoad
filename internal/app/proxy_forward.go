@@ -125,6 +125,15 @@ func (s *Server) handleErrorResponse(
 
 	duration := reqCtx.Duration()
 
+	// 524 错误响应体日志
+	if resp.StatusCode == 524 {
+		bodyPreview := string(rb)
+		if len(bodyPreview) > 500 {
+			bodyPreview = bodyPreview[:500] + "...(truncated)"
+		}
+		log.Printf("[DEBUG-524] 总耗时: %.2fs 响应体: %s", duration, bodyPreview)
+	}
+
 	return &fwResult{
 		Status:        resp.StatusCode,
 		Header:        hdrClone,
@@ -317,6 +326,13 @@ func (s *Server) handleResponse(
 
 	// 错误状态：读取完整响应体
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		// 524 错误详细调试日志（Cloudflare 源站超时）
+		if resp.StatusCode == 524 {
+			log.Printf("[DEBUG-524] Cloudflare超时错误详情:")
+			log.Printf("[DEBUG-524] 渠道: ID=%d 名称=%s URL=%s", cfg.ID, cfg.Name, cfg.URL)
+			log.Printf("[DEBUG-524] 首字节耗时: %.2fs", firstByteTime)
+			log.Printf("[DEBUG-524] 响应头: %v", resp.Header)
+		}
 		return s.handleErrorResponse(reqCtx, resp, firstByteTime, hdrClone)
 	}
 
