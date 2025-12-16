@@ -439,25 +439,47 @@ func (s *Server) forwardAttempt(
 		// [INFO] 检查SSE流中是否有error事件（如1308错误）
 		// 虽然HTTP状态码是200，但error事件表示实际上发生了错误，需要触发冷却逻辑
 		if res.SSEErrorEvent != nil {
-			// 将SSE error事件当作HTTP错误处理
-			// 注意：不改变HTTP状态码，因为上游确实返回的是200
-			// 但我们需要将错误体传递给冷却管理器来触发冷却
-			log.Printf("[WARN]  [SSE错误处理] HTTP状态码200但检测到SSE error事件，触发冷却逻辑")
-			// 将error事件存入Body字段，用于冷却管理器解析
+			// [FIX] 流式响应已写出数据，不能重试（会导致混流和token倍增）
+			// 只触发冷却，不返回重试动作
+			log.Printf("[WARN]  [SSE错误处理] HTTP状态码200但检测到SSE error事件，触发冷却但不重试（避免混流）")
 			res.Body = res.SSEErrorEvent
-			return s.handleProxyErrorResponse(ctx, cfg, keyIndex, actualModel, selectedKey, res, duration, reqCtx)
+			// 触发冷却但不重试
+			_, _ = s.cooldownManager.HandleError(ctx, cfg.ID, keyIndex, 200, res.SSEErrorEvent, false, nil)
+			s.invalidateChannelRelatedCache(cfg.ID)
+			// 记录失败日志
+			s.AddLogAsync(buildLogEntry(actualModel, cfg.ID, cfg.Name, 200,
+				duration, reqCtx.isStreaming, selectedKey, cfg.URL, reqCtx.tokenID, reqCtx.clientIP, res, "SSE error event"))
+			// 返回成功（因为已经写出了200状态码和部分数据）
+			return &proxyResult{
+				status:    200,
+				channelID: &cfg.ID,
+				message:   "partial success with SSE error",
+				duration:  duration,
+				succeeded: true, // 标记为成功，避免上层重试
+			}, false, false
 		}
 
 		// [INFO] 检查流响应是否不完整（2025-12新增）
 		// 虽然HTTP状态码是200且流传输结束，但检测到流响应不完整或流传输中断，需要触发冷却逻辑
 		// 触发条件：(1) 流传输错误  (2) 流式请求但没有usage数据（疑似不完整响应）
 		if res.StreamDiagMsg != "" {
-			log.Printf("[WARN]  [流响应不完整] HTTP状态码200但检测到流响应不完整，触发冷却逻辑: %s", res.StreamDiagMsg)
-			// 使用内部状态码 StatusStreamIncomplete 标识流响应不完整
-			// 这将触发渠道级冷却，因为这通常是上游服务问题（网络不稳定、负载过高等）
-			res.Body = []byte(res.StreamDiagMsg)
-			res.Status = util.StatusStreamIncomplete // 599 - 流响应不完整
-			return s.handleProxyErrorResponse(ctx, cfg, keyIndex, actualModel, selectedKey, res, duration, reqCtx)
+			// [FIX] 流式响应已写出数据，不能重试（会导致混流和token倍增）
+			// 只触发冷却，不返回重试动作
+			log.Printf("[WARN]  [流响应不完整] HTTP状态码200但检测到流响应不完整，触发冷却但不重试（避免混流）: %s", res.StreamDiagMsg)
+			// 触发冷却但不重试
+			_, _ = s.cooldownManager.HandleError(ctx, cfg.ID, keyIndex, util.StatusStreamIncomplete, []byte(res.StreamDiagMsg), false, nil)
+			s.invalidateChannelRelatedCache(cfg.ID)
+			// 记录失败日志
+			s.AddLogAsync(buildLogEntry(actualModel, cfg.ID, cfg.Name, util.StatusStreamIncomplete,
+				duration, reqCtx.isStreaming, selectedKey, cfg.URL, reqCtx.tokenID, reqCtx.clientIP, res, res.StreamDiagMsg))
+			// 返回成功（因为已经写出了200状态码和部分数据）
+			return &proxyResult{
+				status:    200,
+				channelID: &cfg.ID,
+				message:   "partial success with incomplete stream",
+				duration:  duration,
+				succeeded: true, // 标记为成功，避免上层重试
+			}, false, false
 		}
 
 		return s.handleProxySuccess(ctx, cfg, keyIndex, actualModel, selectedKey, res, duration, reqCtx)
