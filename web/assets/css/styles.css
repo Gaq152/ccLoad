@@ -2,52 +2,42 @@
 
 /* ===== CSS 变量和设计令牌 ===== */
 :root {
-  /* 品牌色彩系统 */
-  --primary-50: #f0f7ff;
-  --primary-100: #e0efff;
-  --primary-200: #b8dcff;
-  --primary-300: #7cc3ff;
-  --primary-400: #3ca3ff;
-  --primary-500: #3b82f6;
-  --primary-600: #2563eb;
-  --primary-700: #1d4ed8;
-  --primary-800: #1e40af;
-  --primary-900: #1e3a8a;
+  /* 映射到 theme.css 语义变量（向后兼容） */
+  --neutral-50:  var(--theme-bg-body);
+  --neutral-100: var(--theme-bg-card);
+  --neutral-200: var(--theme-border);
+  --neutral-300: var(--theme-border-light);
+  --neutral-400: var(--theme-text-subtle);
+  --neutral-500: var(--theme-text-muted);
+  --neutral-600: var(--theme-text-muted);
+  --neutral-700: var(--theme-text-main);
+  --neutral-800: var(--theme-text-main);
+  --neutral-900: var(--theme-text-main);
 
-  /* 中性色彩 */
-  --neutral-50: #f9fafb;
-  --neutral-100: #f3f4f6;
-  --neutral-200: #e5e7eb;
-  --neutral-300: #d1d5db;
-  --neutral-400: #9ca3af;
-  --neutral-500: #6b7280;
-  --neutral-600: #4b5563;
-  --neutral-700: #374151;
-  --neutral-800: #1f2937;
-  --neutral-900: #111827;
-
-  /* 功能色彩 */
-  --success-50: #ecfdf5;
-  --success-400: #34d399;
-  --success-500: #10b981;
-  --success-600: #059669;
-  --warning-50: #fffbeb;
-  --warning-400: #fbbf24;
-  --warning-500: #f59e0b;
-  --warning-600: #d97706;
-  --error-50: #fef2f2;
-  --error-400: #f87171;
-  --error-500: #ef4444;
-  --error-600: #dc2626;
-  --info-50: #f0f9ff;
-  --info-500: #06b6d4;
-  --info-600: #0891b2;
+  /* 功能色映射 */
+  --primary-500: var(--theme-accent);
+  --primary-600: var(--theme-accent);
+  --primary-700: var(--theme-accent);
+  --success-500: var(--theme-success);
+  --success-600: var(--theme-success);
+  --warning-500: var(--theme-warning);
+  --warning-600: var(--theme-warning);
+  --error-500: var(--theme-error);
+  --error-600: var(--theme-error);
+  --info-500: var(--theme-info);
+  --info-600: var(--theme-info);
 
   /* 玻璃态效果 */
-  --glass-bg: rgba(255, 255, 255, 0.95);
-  --glass-border: rgba(255, 255, 255, 0.2);
-  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-  --glass-shadow-hover: 0 12px 40px rgba(0, 0, 0, 0.15);
+  --glass-bg: var(--theme-glass-bg);
+  --glass-border: var(--theme-glass-border);
+  --glass-shadow: var(--theme-glass-shadow);
+  --glass-shadow-hover: var(--theme-glass-shadow);
+
+  /* 组件变量 */
+  --card-bg: var(--theme-bg-card);
+  --input-bg: var(--theme-bg-input);
+  --input-focus-bg: var(--theme-bg-input-focus);
+  --text-main: var(--theme-text-main);
 
   /* 新拟态效果 */
   --neumorphism-light: #ffffff;
@@ -115,9 +105,9 @@
   --topbar-height: 64px;
   --container-max-width: 100%;
 
-  /* Topbar 前景色（提高对比度） */
-  --topbar-fg: var(--neutral-900);
-  --topbar-fg-muted: var(--neutral-700);
+  /* Topbar 前景色 */
+  --topbar-fg: var(--theme-text-main);
+  --topbar-fg-muted: var(--theme-text-muted);
 }
 
 
@@ -142,10 +132,8 @@ body {
   font-family: var(--font-family-sans);
   font-size: var(--text-base);
   line-height: var(--leading-normal);
-  color: var(--neutral-800);
-  background: radial-gradient(1200px 600px at -10% -10%, rgba(99,102,241,0.35), transparent 60%),
-              radial-gradient(900px 600px at 110% -10%, rgba(236,72,153,0.25), transparent 60%),
-              linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: var(--theme-text-main);
+  background-color: var(--theme-bg-body);
   min-height: 100vh;
   overflow-x: hidden;
 }
@@ -3638,122 +3626,119 @@ body.dashboard-theme .app-container {
 /* 这会让所有使用了 --glass-bg, --neutral-* 的组件自动变黑 */
 
 body.dashboard-theme {
-  /* --- [关键] 覆盖标准中性色 (Inverted Scale) --- */
+  /* --- [关键] 映射到 theme.css 的语义化变量 --- */
 
-  /* 定义暗色主题基础变量 */
-  --dash-bg: #0f1115;
-  --dash-panel-bg: #181b1f;
-  --dash-border: #2d333b;
-  --dash-text-main: #e6edf3;
-  --dash-text-muted: #7d8590;
-  --dash-accent-blue: #3b82f6;
+  /* 基础变量映射 */
+  --dash-bg: var(--theme-bg-body);
+  --dash-panel-bg: var(--theme-bg-card);
+  --dash-border: var(--theme-border);
+  --dash-text-main: var(--theme-text-main);
+  --dash-text-muted: var(--theme-text-muted);
+  --dash-accent-blue: var(--theme-accent);
 
-  /* 将原本的 50(浅)->900(深) 反转为 50(深)->900(浅) */
-  --neutral-50:  var(--dash-bg);       /* 全局背景 */
-  --neutral-100: var(--dash-panel-bg); /* 卡片/容器背景 */
-  --neutral-200: var(--dash-border);   /* 边框颜色 */
-  --neutral-300: #384047;              /* 输入框边框 */
-  --neutral-400: #6b7280;
-  --neutral-500: #9ca3af;
-  --neutral-600: #a0aec0;              /* 次要文字 */
-  --neutral-700: #cbd5e0;              /* 普通文字 */
-  --neutral-800: var(--dash-text-main);/* 主要文字 */
-  --neutral-900: #ffffff;              /* 高亮文字 */
+  /* Neutral 色阶映射 */
+  --neutral-50:  var(--theme-bg-body);
+  --neutral-100: var(--theme-bg-card);
+  --neutral-200: var(--theme-border);
+  --neutral-300: var(--theme-border-light);
+  --neutral-400: var(--theme-text-subtle);
+  --neutral-500: var(--theme-text-muted);
+  --neutral-600: var(--theme-text-muted);
+  --neutral-700: var(--theme-text-main);
+  --neutral-800: var(--theme-text-main);
+  --neutral-900: var(--theme-text-main);
 
   /* --- [关键] 覆盖功能色 --- */
-  /* 让深蓝色在黑底上更亮一点 */
-  --primary-50:  rgba(59, 130, 246, 0.15);
-  --primary-500: #3b82f6;
-  --primary-600: var(--dash-accent-blue);
-  --primary-700: #60a5fa;
+  --primary-500: var(--theme-accent);
+  --primary-600: var(--theme-accent);
+  --primary-700: var(--theme-accent);
 
-  /* 成功色（暗色主题适配） */
-  --success-50:  rgba(16, 185, 129, 0.15);
-  --success-200: rgba(16, 185, 129, 0.35);
-  --success-700: #34d399;
+  /* 成功色 */
+  --success-500: var(--theme-success);
+  --success-600: var(--theme-success);
+  --success-700: var(--theme-success);
 
-  /* 警告色（暗色主题适配） */
-  --warning-50:  rgba(245, 158, 11, 0.15);
-  --warning-700: #fbbf24;
+  /* 警告色 */
+  --warning-500: var(--theme-warning);
+  --warning-600: var(--theme-warning);
+  --warning-700: var(--theme-warning);
 
-  /* 错误色（暗色主题适配） */
-  --error-50:  rgba(239, 68, 68, 0.15);
-  --error-200: rgba(239, 68, 68, 0.35);
-  --error-700: #f87171;
+  /* 错误色 */
+  --error-500: var(--theme-error);
+  --error-600: var(--theme-error);
+  --error-700: var(--theme-error);
 
-  /* 次要色（暗色主题适配） */
-  --secondary-50:  rgba(99, 102, 241, 0.15);
-  --secondary-700: #818cf8;
+  /* 次要色 */
+  --secondary-500: var(--theme-info);
+  --secondary-700: var(--theme-info);
 
   /* --- [关键] 覆盖玻璃态变量 --- */
-  /* 让 .glass-card 变成"暗色玻璃" */
-  --glass-bg: rgba(24, 27, 31, 0.85);
-  --glass-border: rgba(255, 255, 255, 0.08);
-  --glass-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+  --glass-bg: var(--theme-glass-bg);
+  --glass-border: var(--theme-glass-border);
+  --glass-shadow: var(--theme-glass-shadow);
 
   /* --- 组件特定变量覆盖 --- */
-  --card-bg: var(--neutral-100);       /* 卡片使用深色背景 */
-  --input-bg: rgba(0, 0, 0, 0.2);      /* 输入框使用半透明黑 */
-  --input-focus-bg: rgba(0, 0, 0, 0.4);
-  --text-main: var(--neutral-800);
+  --card-bg: var(--theme-bg-card);
+  --input-bg: var(--theme-bg-input);
+  --input-focus-bg: var(--theme-bg-input-focus);
+  --text-main: var(--theme-text-main);
 
   /* --- Topbar 适配 --- */
-  /* 让 ui.js 生成的顶部栏也变黑 */
-  --topbar-fg: var(--neutral-800);
-  --topbar-fg-muted: var(--neutral-600);
+  --topbar-fg: var(--theme-text-main);
+  --topbar-fg-muted: var(--theme-text-muted);
 }
 
 /* [第3步]：微调特定组件在暗色模式下的表现 */
 
 /* 表格：表头和悬停行 */
 body.dashboard-theme .modern-table thead {
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--theme-table-header-bg);
 }
 body.dashboard-theme .modern-table tbody tr:hover {
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--theme-table-row-hover);
 }
 body.dashboard-theme .table-container {
-  background: var(--neutral-100);
-  border-color: var(--neutral-200);
+  background: var(--theme-bg-card);
+  border-color: var(--theme-border);
 }
 
-/* 按钮：次要按钮去白底 */
+/* 按钮：次要按钮 */
 body.dashboard-theme .btn-secondary {
-  background: rgba(255, 255, 255, 0.05);
-  border-color: var(--neutral-200);
-  color: var(--neutral-800);
+  background: var(--theme-bg-hover);
+  border-color: var(--theme-border);
+  color: var(--theme-text-main);
 }
 body.dashboard-theme .btn-secondary:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: #fff;
+  background: var(--theme-bg-active);
+  color: var(--theme-text-main);
 }
 
 /* 下拉菜单选项：防止在某些浏览器中出现白底 */
 body.dashboard-theme select option {
-  background: var(--neutral-100);
-  color: var(--neutral-800);
+  background: var(--theme-bg-card);
+  color: var(--theme-text-main);
 }
 
 /* 渠道编辑模态框中的内联select（筛选下拉框） */
 body.dashboard-theme select {
-  background: var(--input-bg);
-  color: var(--neutral-800);
+  background: var(--theme-bg-input);
+  color: var(--theme-text-main);
 }
 
 /* API Key 输入框暗色主题适配 */
 body.dashboard-theme .inline-key-input {
-  background: var(--input-bg);
-  color: var(--neutral-800);
+  background: var(--theme-bg-input);
+  color: var(--theme-text-main);
 }
 
 body.dashboard-theme .inline-key-input:focus {
-  background: var(--input-focus-bg);
+  background: var(--theme-bg-input-focus);
 }
 
 /* 模态框 */
 body.dashboard-theme .modal-content {
-  background: var(--neutral-100);
-  border-color: var(--neutral-200);
+  background: var(--theme-modal-bg);
+  border-color: var(--theme-border);
 }
 
 /* 玻璃卡片在暗色模式下的适配 */
@@ -3765,14 +3750,14 @@ body.dashboard-theme .glass-card {
 
 /* 统计卡片在暗色模式下的适配 */
 body.dashboard-theme .summary-card {
-  background: var(--neutral-100);
-  border-color: var(--neutral-200);
+  background: var(--theme-bg-card);
+  border-color: var(--theme-border);
 }
 
 /* 渠道卡片在暗色模式下的适配 */
 body.dashboard-theme .channel-card {
-  background: var(--neutral-100);
-  border-color: var(--neutral-200);
+  background: var(--theme-bg-card);
+  border-color: var(--theme-border);
 }
 
 /* Hero头部在暗色模式下的适配 */
@@ -3783,19 +3768,19 @@ body.dashboard-theme .hero-header {
 
 /* 时间范围选择器按钮在暗色模式下的适配 */
 body.dashboard-theme .time-range-btn.active {
-  background: var(--primary-600);
-  color: #ffffff;
+  background: var(--theme-accent);
+  color: var(--theme-text-inverse);
 }
 
 /* Token表格文字对比度优化 */
 body.dashboard-theme .token-table td {
-  color: var(--neutral-800);
+  color: var(--theme-text-main);
 }
 
 body.dashboard-theme .metric-value {
-  color: var(--neutral-900);
+  color: var(--theme-text-main);
 }
 
 body.dashboard-theme .metric-label {
-  color: var(--neutral-600);
+  color: var(--theme-text-muted);
 }
