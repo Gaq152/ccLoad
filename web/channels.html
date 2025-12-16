@@ -142,12 +142,31 @@
         </div>
 
         <div class="form-group">
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <label class="form-label" for="channelUrl">API URL *</label>
-            <input type="url" id="channelUrl" class="form-input" placeholder="https://api.anthropic.com/v1/messages" required style="flex: 1;">
-            <button type="button" id="manageEndpointsBtn" class="btn btn-secondary btn-sm" onclick="openEndpointModalFromEdit()" style="padding: 5px 10px; font-size: 12px; display: none; white-space: nowrap;" title="管理多个API端点并测速">
-              ⚡ 管理端点
-            </button>
+          <!-- API URL 标签行 -->
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <label class="form-label" style="margin: 0;">
+              API URL * <span class="models-hint" style="margin-left: 8px; margin-top: 0;">共 <span id="inlineEndpointCount">1</span> 个端点</span>
+            </label>
+            <div style="display: flex; gap: 6px;">
+              <button type="button" class="btn btn-secondary btn-sm" onclick="addInlineEndpoint()" style="padding: 5px 10px; font-size: 12px;">
+                + 添加端点
+              </button>
+              <button type="button" id="manageEndpointsBtn" class="btn btn-secondary btn-sm" onclick="openEndpointModalFromEdit()" style="padding: 5px 10px; font-size: 12px; display: none; white-space: nowrap;" title="测速与高级管理">
+                ⚡ 测速
+              </button>
+            </div>
+          </div>
+
+          <!-- 隐藏的input用于表单验证 -->
+          <input type="hidden" id="channelUrl" required>
+
+          <!-- 端点表格容器 -->
+          <div id="inlineEndpointContainer" style="max-height: 150px; overflow-y: auto; border: 1px solid var(--neutral-200); border-radius: 8px; background: var(--card-bg);">
+            <table style="width: 100%; border-collapse: collapse;">
+              <tbody id="inlineEndpointTableBody">
+                <!-- 端点行将动态插入 -->
+              </tbody>
+            </table>
           </div>
         </div>
 
@@ -494,6 +513,28 @@
     </tr>
   </template>
 
+  <!-- 内联端点行模板 -->
+  <template id="tpl-inline-endpoint-row">
+    <tr data-endpoint-index="{{index}}">
+      <td style="padding: 6px 10px; width: 40px;">
+        <span style="color: var(--neutral-600); font-weight: 500; font-size: 13px;">{{displayIndex}}</span>
+      </td>
+      <td style="padding: 6px 10px;">
+        <input
+          type="url"
+          value="{{url}}"
+          class="inline-endpoint-input"
+          data-index="{{index}}"
+          placeholder="https://api.anthropic.com"
+          style="width: 100%; padding: 5px 8px; border: 1px solid var(--neutral-300); border-radius: 6px; font-family: 'Monaco', 'Menlo', 'Courier New', monospace; font-size: 13px; transition: all 0.2s; background: var(--input-bg); color: var(--text-main, var(--neutral-800));"
+        >
+      </td>
+      <td style="padding: 6px 10px; width: 50px; text-align: center;">
+        <button type="button" class="inline-endpoint-delete-btn" data-index="{{index}}" title="删除" style="width: 24px; height: 24px; border: none; background: transparent; color: var(--neutral-400); font-size: 16px; cursor: pointer; border-radius: 4px; display: {{deleteDisplay}};">×</button>
+      </td>
+    </tr>
+  </template>
+
   <template id="tpl-cooldown-badge">
     <span style="color: #dc2626; font-size: 12px; font-weight: 500; background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%); padding: 2px 8px; border-radius: 4px; border: 1px solid #fca5a5; white-space: nowrap;">⚠️ 冷却中·{{text}}</span>
   </template>
@@ -679,6 +720,7 @@
   <script src="/web/assets/js/channels-data.js"></script>
   <script src="/web/assets/js/channels-import-export.js"></script>
   <script src="/web/assets/js/channels-keys.js"></script>
+  <script src="/web/assets/js/channels-inline-endpoints.js"></script>
   <script src="/web/assets/js/channels-modals.js"></script>
   <script src="/web/assets/js/channels-endpoints.js"></script>
   <script src="/web/assets/js/channels-test.js"></script>
