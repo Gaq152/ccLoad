@@ -1282,8 +1282,14 @@ body {
   border: 1px solid var(--neutral-300);
   border-radius: var(--radius-base);
   font-size: 13px;
+  color: var(--neutral-800);
   background: var(--input-bg);
   transition: all var(--duration-fast);
+}
+
+.filter-select option {
+  background-color: var(--neutral-100);
+  color: var(--neutral-800);
 }
 
 .filter-input:focus,
@@ -1503,6 +1509,7 @@ body {
   border-radius: 6px;
   font-size: 0.875rem;
   background: var(--input-bg);
+  color: var(--neutral-800); /* 暗色主题文字颜色 */
   transition: all 0.2s;
   margin-bottom: 8px;
 }
@@ -3509,8 +3516,28 @@ body.dashboard-theme {
 
   /* --- [关键] 覆盖功能色 --- */
   /* 让深蓝色在黑底上更亮一点 */
+  --primary-50:  rgba(59, 130, 246, 0.15);
   --primary-500: #3b82f6;
   --primary-600: var(--dash-accent-blue);
+  --primary-700: #60a5fa;
+
+  /* 成功色（暗色主题适配） */
+  --success-50:  rgba(16, 185, 129, 0.15);
+  --success-200: rgba(16, 185, 129, 0.35);
+  --success-700: #34d399;
+
+  /* 警告色（暗色主题适配） */
+  --warning-50:  rgba(245, 158, 11, 0.15);
+  --warning-700: #fbbf24;
+
+  /* 错误色（暗色主题适配） */
+  --error-50:  rgba(239, 68, 68, 0.15);
+  --error-200: rgba(239, 68, 68, 0.35);
+  --error-700: #f87171;
+
+  /* 次要色（暗色主题适配） */
+  --secondary-50:  rgba(99, 102, 241, 0.15);
+  --secondary-700: #818cf8;
 
   /* --- [关键] 覆盖玻璃态变量 --- */
   /* 让 .glass-card 变成"暗色玻璃" */
