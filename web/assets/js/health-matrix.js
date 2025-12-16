@@ -245,10 +245,11 @@ function renderServiceGroup(gridId, data) {
     const availText = ch.availability.toFixed(1);
     const latencyText = ch.currentLatency > 0 ? `${ch.currentLatency}ms` : '–';
     const uniqueId = getChannelUniqueId(ch);
+    const serviceType = (ch.service || 'cc').toLowerCase();
 
     return `
       <div class="health-card ${statusClass}" data-channel-id="${ch.channelId || ''}">
-        <button class="hide-channel-btn" onclick="hideChannel('${uniqueId}', '${escapeHtml(ch.channelName).replace(/'/g, "\\'")}')" title="隐藏此渠道">
+        <button class="hide-channel-btn" onclick="hideChannel('${uniqueId}', '${escapeHtml(ch.channelName).replace(/'/g, "\\'")}', '${serviceType}')" title="隐藏此渠道">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24M1 1l22 22"/>
           </svg>
@@ -473,7 +474,10 @@ function setupHealthMatrixRefreshButton() {
   }
 }
 
-// ============ 渠道隐藏功能 ============
+// ============ 渠道隐藏功能（Gemini 优化：CC/CX 分类） ============
+
+// 当前隐藏管理 Tab
+let currentHiddenTab = 'cc';
 
 // 获取渠道唯一ID（始终使用channelName，确保稳定性）
 function getChannelUniqueId(channel) {
@@ -487,12 +491,19 @@ function isChannelHidden(channel) {
 }
 
 // 从localStorage加载隐藏列表
+// 数据结构：Map<id, { name: string, service: 'cc' | 'cx' }>
 function loadHiddenChannels() {
   try {
     const saved = localStorage.getItem('ccload_hidden_channels');
     if (saved) {
       const data = JSON.parse(saved);
       hiddenChannels = new Map(data);
+      // 兼容旧数据：如果 value 是字符串，转换为新结构
+      for (const [id, value] of hiddenChannels) {
+        if (typeof value === 'string') {
+          hiddenChannels.set(id, { name: value, service: 'cc' });
+        }
+      }
     }
   } catch (e) {
     console.error('加载隐藏列表失败:', e);
@@ -510,20 +521,61 @@ function saveHiddenChannels() {
 }
 
 // 隐藏渠道（全局函数，供HTML onclick调用）
-window.hideChannel = function(id, name) {
-  hiddenChannels.set(id, name);
+// 新增 service 参数
+window.hideChannel = function(id, name, service) {
+  const svc = (service || 'cc').toLowerCase();
+  hiddenChannels.set(id, { name, service: svc });
   saveHiddenChannels();
   // 重新渲染
   renderHealthMatrix(healthData);
 };
 
 // 恢复渠道（全局函数，供HTML onclick调用）
+// 新增动画效果
 window.restoreChannel = function(id) {
-  hiddenChannels.delete(id);
+  // 找到对应的 DOM 元素并添加动画
+  const item = document.querySelector(`.hidden-item[data-id="${id}"]`);
+  if (item) {
+    item.classList.add('removing');
+    setTimeout(() => {
+      hiddenChannels.delete(id);
+      saveHiddenChannels();
+      renderHealthMatrix(healthData);
+      renderHiddenList();
+    }, 250);
+  } else {
+    hiddenChannels.delete(id);
+    saveHiddenChannels();
+    renderHealthMatrix(healthData);
+    renderHiddenList();
+  }
+};
+
+// 恢复所有隐藏渠道（全局函数）
+window.restoreAllHidden = function() {
+  if (hiddenChannels.size === 0) return;
+  if (!confirm('确定要恢复所有隐藏渠道吗？')) return;
+
+  hiddenChannels.clear();
   saveHiddenChannels();
-  // 重新渲染健康矩阵和隐藏列表
   renderHealthMatrix(healthData);
   renderHiddenList();
+  window.closeHiddenManager();
+};
+
+// Tab 切换（全局函数）
+window.switchHiddenTab = function(tab) {
+  currentHiddenTab = tab;
+
+  // 更新按钮状态
+  document.querySelectorAll('.hidden-tab-btn').forEach(btn => btn.classList.remove('active'));
+  const targetBtn = document.getElementById(`hidden-tab-btn-${tab}`);
+  if (targetBtn) targetBtn.classList.add('active');
+
+  // 更新面板可见性
+  document.querySelectorAll('.hidden-list-panel').forEach(panel => panel.classList.remove('active'));
+  const targetPanel = document.getElementById(`hidden-list-${tab}`);
+  if (targetPanel) targetPanel.classList.add('active');
 };
 
 // 打开隐藏管理模态框（全局函数，供HTML onclick调用）
@@ -531,6 +583,7 @@ window.openHiddenManager = function() {
   const modal = document.getElementById('hidden-channels-modal');
   if (modal) {
     renderHiddenList();
+    switchHiddenTab('cc'); // 默认显示 CC Tab
     modal.classList.add('show');
   }
 };
@@ -543,24 +596,57 @@ window.closeHiddenManager = function() {
   }
 };
 
-// 渲染已隐藏渠道列表
+// 渲染已隐藏渠道列表（按 CC/CX 分类）
 function renderHiddenList() {
-  const listEl = document.getElementById('hidden-channels-list');
-  if (!listEl) return;
+  const listElCC = document.getElementById('hidden-list-cc');
+  const listElCX = document.getElementById('hidden-list-cx');
+  const countCC = document.getElementById('hidden-count-cc');
+  const countCX = document.getElementById('hidden-count-cx');
 
-  if (hiddenChannels.size === 0) {
-    listEl.innerHTML = '<div class="hidden-empty">暂无隐藏渠道</div>';
-    return;
+  if (!listElCC || !listElCX) return;
+
+  // 分类数据
+  const items = { cc: [], cx: [] };
+
+  for (const [id, data] of hiddenChannels) {
+    // 兼容旧数据结构
+    const name = typeof data === 'string' ? data : data.name;
+    const service = (typeof data === 'string' ? 'cc' : data.service).toLowerCase();
+
+    if (items[service]) {
+      items[service].push({ id, name });
+    } else {
+      items.cc.push({ id, name }); // 异常数据归入 cc
+    }
   }
 
-  listEl.innerHTML = Array.from(hiddenChannels.entries()).map(([id, name]) => {
-    return `
-      <div class="hidden-item">
-        <span class="name">${escapeHtml(name)}</span>
-        <button class="dash-btn" onclick="restoreChannel('${id}')">恢复</button>
+  // 更新徽章计数
+  if (countCC) countCC.textContent = items.cc.length;
+  if (countCX) countCX.textContent = items.cx.length;
+
+  // 渲染函数
+  const generateListHTML = (list, serviceType) => {
+    if (list.length === 0) {
+      return `
+        <div class="hidden-empty">
+          该分类下暂无隐藏渠道
+          <div class="hidden-empty-hint">在主界面点击卡片右上角的隐藏图标可将其移入此处</div>
+        </div>
+      `;
+    }
+    // 按名称排序
+    list.sort((a, b) => a.name.localeCompare(b.name));
+
+    return list.map(item => `
+      <div class="hidden-item" data-id="${escapeHtml(item.id)}">
+        <span class="name" title="${escapeHtml(item.id)}">${escapeHtml(item.name)}</span>
+        <button class="dash-btn" onclick="restoreChannel('${escapeHtml(item.id).replace(/'/g, "\\'")}')">恢复</button>
       </div>
-    `;
-  }).join('');
+    `).join('');
+  };
+
+  listElCC.innerHTML = generateListHTML(items.cc, 'cc');
+  listElCX.innerHTML = generateListHTML(items.cx, 'cx');
 }
 
 // 设置隐藏管理按钮

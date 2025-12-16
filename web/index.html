@@ -171,15 +171,35 @@
 
   <!-- 隐藏渠道管理模态框 -->
   <div id="hidden-channels-modal" class="modal">
-    <div class="modal-content" style="max-width: 500px;">
+    <div class="modal-content" style="max-width: 520px;">
       <div class="modal-header">
-        <h3 class="modal-title">已隐藏渠道</h3>
+        <h3 class="modal-title">已隐藏渠道管理</h3>
         <button class="close-btn" onclick="closeHiddenManager()">&times;</button>
       </div>
       <div class="modal-body">
-        <div id="hidden-channels-list" class="hidden-list">
-          <!-- JS 动态填充 -->
+        <!-- Tab 导航 -->
+        <div class="hidden-tabs">
+          <button class="hidden-tab-btn active" onclick="switchHiddenTab('cc')" id="hidden-tab-btn-cc">
+            CC (Claude) <span class="hidden-badge" id="hidden-count-cc">0</span>
+          </button>
+          <button class="hidden-tab-btn" onclick="switchHiddenTab('cx')" id="hidden-tab-btn-cx">
+            CX (OpenAI) <span class="hidden-badge" id="hidden-count-cx">0</span>
+          </button>
         </div>
+
+        <!-- 列表容器 -->
+        <div class="hidden-list-container">
+          <div id="hidden-list-cc" class="hidden-list-panel active">
+            <!-- JS 动态渲染 CC 列表 -->
+          </div>
+          <div id="hidden-list-cx" class="hidden-list-panel">
+            <!-- JS 动态渲染 CX 列表 -->
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
+        <button class="text-btn danger" onclick="restoreAllHidden()">全部恢复</button>
+        <button class="dash-btn primary" onclick="closeHiddenManager()">完成</button>
       </div>
     </div>
   </div>
