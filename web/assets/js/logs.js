@@ -1,10 +1,15 @@
     let currentLogsPage = 1;
-    let logsPageSize = 15;
+    let logsPageSize = 20;
     let totalLogsPages = 1;
     let totalLogs = 0;
     let currentChannelType = 'all'; // 当前选中的渠道类型
     let authTokens = []; // 令牌列表
     let defaultTestContent = 'sonnet 4.0的发布日期是什么'; // 默认测试内容（从设置加载）
+
+    // SSE 实时日志缓冲区（混合分页模式）
+    let realtimeBuffer = []; // SSE 推送的新日志缓冲区
+    const BUFFER_MAX_SIZE = 500; // 缓冲区最大容量
+    let hasNewLogs = false; // 是否有新日志（用于非第一页提示）
 
     // 从 URL 提取域名部分（用于日志显示）
     function extractUrlHost(url) {
@@ -42,51 +47,94 @@
         const statusCode = document.getElementById('f_status')?.value?.trim() || '';
         const authTokenId = document.getElementById('f_auth_token')?.value?.trim() || '';
 
-        const params = new URLSearchParams({
-          range,
-          limit: logsPageSize.toString(),
-          offset: ((currentLogsPage - 1) * logsPageSize).toString()
-        });
+        let finalData = [];
+        let serverTotal = 0;
 
-        if (channelId) params.set('channel_id', channelId);
-        if (channelName) params.set('channel_name_like', channelName);
-        if (model) params.set('model_like', model);
-        if (statusCode) params.set('status_code', statusCode);
-        if (authTokenId) params.set('auth_token_id', authTokenId);
+        // 混合分页模式：第一页使用缓冲区 + 服务端，其他页纯服务端
+        if (currentLogsPage === 1) {
+          // 第一页：从 realtimeBuffer 取数据
+          const fromBuffer = realtimeBuffer.slice(0, logsPageSize);
+          const needFromServer = logsPageSize - fromBuffer.length;
 
-        // 添加渠道类型筛选
-        if (currentChannelType && currentChannelType !== 'all') {
-          params.set('channel_type', currentChannelType);
-        }
-        
-        const res = await fetchWithAuth('/admin/errors?' + params.toString());
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          if (needFromServer > 0) {
+            // 需要从服务端补齐
+            const params = new URLSearchParams({
+              range,
+              limit: needFromServer.toString(),
+              offset: '0'
+            });
 
-        const response = await res.json();
-        const result = response.success ? response.data : response;
-        const data = result.data || result || [];
+            if (channelId) params.set('channel_id', channelId);
+            if (channelName) params.set('channel_name_like', channelName);
+            if (model) params.set('model_like', model);
+            if (statusCode) params.set('status_code', statusCode);
+            if (authTokenId) params.set('auth_token_id', authTokenId);
+            if (currentChannelType && currentChannelType !== 'all') {
+              params.set('channel_type', currentChannelType);
+            }
 
-        // 精确计算总页数（基于后端返回的total字段）
-        if (result.total !== undefined) {
-          totalLogs = result.total;
-          totalLogsPages = Math.ceil(totalLogs / logsPageSize) || 1;
-        } else {
-          // 降级方案：后端未返回total时使用旧逻辑
-          if (data.length === logsPageSize) {
-            totalLogsPages = Math.max(currentLogsPage + 1, totalLogsPages);
-          } else if (data.length < logsPageSize && currentLogsPage === 1) {
-            totalLogsPages = 1;
-          } else if (data.length < logsPageSize) {
-            totalLogsPages = currentLogsPage;
+            const res = await fetchWithAuth('/admin/errors?' + params.toString());
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+            const response = await res.json();
+            const result = response.success ? response.data : response;
+            const serverData = result.data || result || [];
+            serverTotal = result.total || 0;
+
+            // 合并缓冲区和服务端数据
+            finalData = [...fromBuffer, ...serverData];
+          } else {
+            // 缓冲区数据已足够
+            finalData = fromBuffer;
           }
+
+          // 总日志数 = 缓冲区 + 服务端
+          totalLogs = realtimeBuffer.length + serverTotal;
+          totalLogsPages = Math.ceil(totalLogs / logsPageSize) || 1;
+
+          // 清除"有新日志"标记
+          hasNewLogs = false;
+          hideNewLogsBadge();
+
+        } else {
+          // 其他页：纯服务端分页，offset 需要减去缓冲区长度
+          const effectiveOffset = (currentLogsPage - 1) * logsPageSize - realtimeBuffer.length;
+          const serverOffset = Math.max(effectiveOffset, 0);
+
+          const params = new URLSearchParams({
+            range,
+            limit: logsPageSize.toString(),
+            offset: serverOffset.toString()
+          });
+
+          if (channelId) params.set('channel_id', channelId);
+          if (channelName) params.set('channel_name_like', channelName);
+          if (model) params.set('model_like', model);
+          if (statusCode) params.set('status_code', statusCode);
+          if (authTokenId) params.set('auth_token_id', authTokenId);
+          if (currentChannelType && currentChannelType !== 'all') {
+            params.set('channel_type', currentChannelType);
+          }
+
+          const res = await fetchWithAuth('/admin/errors?' + params.toString());
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+          const response = await res.json();
+          const result = response.success ? response.data : response;
+          finalData = result.data || result || [];
+          serverTotal = result.total || 0;
+
+          // 总日志数 = 缓冲区 + 服务端
+          totalLogs = realtimeBuffer.length + serverTotal;
+          totalLogsPages = Math.ceil(totalLogs / logsPageSize) || 1;
         }
 
         // 从日志列表初始化 lastReceivedLogTimeMs，确保 SSE 重连时能正确恢复
-        syncLastReceivedFromList(data);
+        syncLastReceivedFromList(finalData);
 
         updatePagination();
-        renderLogs(data);
-        updateStats(data);
+        renderLogs(finalData);
+        updateStats(finalData);
 
       } catch (error) {
         console.error('加载日志失败:', error);
@@ -1063,6 +1111,54 @@
       }
     }
 
+    // 显示"有新日志"提示
+    function showNewLogsBadge(count) {
+      let badge = document.getElementById('newLogsBadge');
+      if (!badge) {
+        // 创建提示元素
+        badge = document.createElement('div');
+        badge.id = 'newLogsBadge';
+        badge.style.cssText = `
+          position: fixed;
+          top: 80px;
+          right: 20px;
+          background: var(--primary-600);
+          color: white;
+          padding: 12px 20px;
+          border-radius: 8px;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+          cursor: pointer;
+          z-index: 1000;
+          font-size: 14px;
+          font-weight: 500;
+          transition: all 0.3s ease;
+        `;
+        badge.addEventListener('click', () => {
+          currentLogsPage = 1;
+          load();
+        });
+        badge.addEventListener('mouseenter', () => {
+          badge.style.transform = 'translateY(-2px)';
+          badge.style.boxShadow = '0 6px 16px rgba(0,0,0,0.2)';
+        });
+        badge.addEventListener('mouseleave', () => {
+          badge.style.transform = 'translateY(0)';
+          badge.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+        });
+        document.body.appendChild(badge);
+      }
+      badge.textContent = `有 ${count} 条新日志，点击查看`;
+      badge.style.display = 'block';
+    }
+
+    // 隐藏"有新日志"提示
+    function hideNewLogsBadge() {
+      const badge = document.getElementById('newLogsBadge');
+      if (badge) {
+        badge.style.display = 'none';
+      }
+    }
+
     function connectSSE() {
       if (sseEventSource) {
         sseEventSource.close();
@@ -1114,22 +1210,34 @@
           }
           displayedLogIds.add(logKey);
 
-          // 限制去重集合大小，防止内存泄漏
-          if (displayedLogIds.size > 500) {
-            const iterator = displayedLogIds.values();
-            for (let i = 0; i < 100; i++) {
-              displayedLogIds.delete(iterator.next().value);
-            }
-          }
-
           // 更新最后接收时间（毫秒，用于重连恢复）
           if (logTimeMs > lastReceivedLogTimeMs) {
             lastReceivedLogTimeMs = logTimeMs;
           }
 
-          prependLogEntry(entry);
+          // 插入到实时缓冲区
+          realtimeBuffer.unshift(entry);
+
+          // 缓冲区溢出处理：超过最大容量时删除最旧的日志
+          if (realtimeBuffer.length > BUFFER_MAX_SIZE) {
+            const dropped = realtimeBuffer.pop();
+            // 从去重集合中删除被丢弃的日志
+            const droppedTimeMs = extractLogTimeMs(dropped);
+            const droppedKey = `${dropped.id || ''}-${droppedTimeMs}-${dropped.channel_id || 0}-${dropped.status_code || 0}`;
+            displayedLogIds.delete(droppedKey);
+          }
+
+          // 更新计数器
           realtimeLogCount++;
           updateRealtimeStatus(`+${realtimeLogCount}`, true);
+
+          // 如果在第一页，刷新显示（会重新获取 totalLogs）；否则显示"有新日志"提示
+          if (currentLogsPage === 1) {
+            load();
+          } else {
+            hasNewLogs = true;
+            showNewLogsBadge(realtimeLogCount);
+          }
         } catch (err) {
           console.error('[SSE] 解析日志失败:', err);
         }
@@ -1183,123 +1291,6 @@
       }
     }
 
-    // 在表格顶部插入新日志条目
-    function prependLogEntry(entry) {
-      const tbody = document.getElementById('tbody');
-      if (!tbody) return;
-
-      // 检查是否有空状态/加载状态行，如果有则清除
-      const firstRow = tbody.querySelector('tr');
-      if (firstRow && (firstRow.querySelector('.empty-state') || firstRow.querySelector('.loading-state'))) {
-        tbody.innerHTML = '';
-      }
-
-      // 构建日志行数据（与 renderLogs 中的逻辑一致）
-      const clientIPDisplay = entry.client_ip ?
-        escapeHtml(entry.client_ip) :
-        '<span style="color: var(--neutral-400);">-</span>';
-
-      const configInfo = entry.channel_name ||
-        (entry.channel_id ? `渠道 #${entry.channel_id}` :
-         (entry.message === 'exhausted backends' ? '系统（所有渠道失败）' :
-          entry.message === 'no available upstream (all cooled or none)' ? '系统（无可用渠道）' : '系统'));
-      const apiUrlDisplay = entry.api_base_url ?
-        `<div style="font-size: 0.8em; color: var(--neutral-500); margin-top: 2px;" title="${escapeHtml(entry.api_base_url)}">${escapeHtml(extractUrlHost(entry.api_base_url))}</div>` : '';
-      const configDisplay = entry.channel_id ?
-        `<a class="channel-link" href="/web/channels.html?id=${entry.channel_id}#channel-${entry.channel_id}">${escapeHtml(entry.channel_name||'')} <small>(#${entry.channel_id})</small></a>${apiUrlDisplay}` :
-        `<span style="color: var(--neutral-500);">${escapeHtml(configInfo)}</span>`;
-
-      const statusClass = (entry.status_code >= 200 && entry.status_code < 300) ?
-        'status-success' : 'status-error';
-
-      const modelDisplay = entry.model ?
-        `<span class="model-tag">${escapeHtml(entry.model)}</span>` :
-        '<span style="color: var(--neutral-500);">-</span>';
-
-      const hasDuration = entry.duration !== undefined && entry.duration !== null;
-      const durationDisplay = hasDuration ?
-        `<span style="color: var(--neutral-700);">${entry.duration.toFixed(3)}</span>` :
-        '<span style="color: var(--neutral-500);">-</span>';
-
-      const streamFlag = entry.is_streaming ?
-        '<span class="stream-flag">流</span>' :
-        '<span class="stream-flag placeholder">流</span>';
-
-      let responseTimingDisplay;
-      if (entry.is_streaming) {
-        const hasFirstByte = entry.first_byte_time !== undefined && entry.first_byte_time !== null;
-        const firstByteDisplay = hasFirstByte ?
-          `<span style="color: var(--success-600);">${entry.first_byte_time.toFixed(3)}</span>` :
-          '<span style="color: var(--neutral-500);">-</span>';
-        responseTimingDisplay = `
-          <span style="display: inline-flex; align-items: center; justify-content: flex-end; gap: 4px; white-space: nowrap;">
-            ${firstByteDisplay}
-            <span style="color: var(--neutral-400);">/</span>
-            ${durationDisplay}
-          </span>
-          ${streamFlag}
-        `;
-      } else {
-        responseTimingDisplay = `
-          <span style="display: inline-flex; align-items: center; justify-content: flex-end; gap: 4px; white-space: nowrap;">
-            ${durationDisplay}
-          </span>
-          ${streamFlag}
-        `;
-      }
-
-      let apiKeyDisplay = '';
-      if (entry.api_key_used) {
-        apiKeyDisplay = `<code style="font-size: 0.9em; color: var(--neutral-600);">${escapeHtml(entry.api_key_used)}</code>`;
-      } else {
-        apiKeyDisplay = '<span style="color: var(--neutral-500);">-</span>';
-      }
-
-      const tokenValue = (value, color) => {
-        if (value === undefined || value === null || value === 0) {
-          return '';
-        }
-        return `<span class="token-metric-value" style="color: ${color};">${value.toLocaleString()}</span>`;
-      };
-      const inputTokensDisplay = tokenValue(entry.input_tokens, 'var(--neutral-700)');
-      const outputTokensDisplay = tokenValue(entry.output_tokens, 'var(--neutral-700)');
-      const cacheReadDisplay = tokenValue(entry.cache_read_input_tokens, 'var(--success-600)');
-      const cacheCreationDisplay = tokenValue(entry.cache_creation_input_tokens, 'var(--primary-600)');
-
-      const costDisplay = entry.cost ?
-        `<span style="color: var(--warning-600); font-weight: 500;">${formatCost(entry.cost)}</span>` :
-        '';
-
-      const rowEl = TemplateEngine.render('tpl-log-row', {
-        time: formatTime(entry.time_ms || entry.time),
-        clientIPDisplay,
-        modelDisplay,
-        configDisplay,
-        apiKeyDisplay,
-        statusClass,
-        statusCode: entry.status_code,
-        responseTimingDisplay,
-        inputTokensDisplay,
-        outputTokensDisplay,
-        cacheReadDisplay,
-        cacheCreationDisplay,
-        costDisplay,
-        message: entry.message || ''
-      });
-
-      if (rowEl) {
-        // 添加高亮动画类
-        rowEl.classList.add('realtime-new');
-        // 插入到表格顶部
-        tbody.insertBefore(rowEl, tbody.firstChild);
-        // 更新统计
-        totalLogs++;
-        const displayedCountEl = document.getElementById('displayedCount');
-        const totalCountEl = document.getElementById('totalCount');
-        if (displayedCountEl) displayedCountEl.textContent = parseInt(displayedCountEl.textContent || '0') + 1;
-        if (totalCountEl) totalCountEl.textContent = totalLogs;
-      }
-    }
 
     // 页面可见性监听（后台标签页断开 SSE，节省资源）
     document.addEventListener('visibilitychange', () => {
