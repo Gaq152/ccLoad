@@ -16,8 +16,10 @@ import (
 
 // EndpointRequest 端点请求结构
 type EndpointRequest struct {
-	URL      string `json:"url"`
-	IsActive bool   `json:"is_active"`
+	URL        string `json:"url"`
+	IsActive   bool   `json:"is_active"`
+	LatencyMs  *int   `json:"latency_ms,omitempty"`  // 保留延迟数据
+	StatusCode *int   `json:"status_code,omitempty"` // 保留状态码
 }
 
 // EndpointsUpdateRequest 批量更新端点请求
@@ -95,10 +97,12 @@ func (s *Server) handleUpdateEndpoints(c *gin.Context) {
 	hasActive := false
 	for i, ep := range req.Endpoints {
 		endpoints[i] = model.ChannelEndpoint{
-			ChannelID: channelID,
-			URL:       ep.URL,
-			IsActive:  ep.IsActive,
-			SortOrder: i,
+			ChannelID:  channelID,
+			URL:        ep.URL,
+			IsActive:   ep.IsActive,
+			LatencyMs:  ep.LatencyMs,  // 保留延迟数据
+			StatusCode: ep.StatusCode, // 保留状态码
+			SortOrder:  i,
 		}
 		if ep.IsActive {
 			hasActive = true

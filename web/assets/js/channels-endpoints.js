@@ -363,6 +363,15 @@
       // 更新渠道卡片上的延迟勋章
       updateChannelLatencyBadge(currentChannelId, endpointsData);
 
+      // 刷新渠道列表以确保延迟数据同步
+      if (typeof invalidateChannelsCache === 'function') {
+        invalidateChannelsCache();
+      }
+      if (typeof loadChannels === 'function') {
+        const channelType = (typeof filters !== 'undefined' && filters.channelType) || 'all';
+        loadChannels(channelType, true);
+      }
+
     } catch (err) {
       console.error('测速失败:', err);
       showError('测速失败: ' + err.message);
@@ -392,7 +401,9 @@
         body: JSON.stringify({
           endpoints: endpointsData.map(ep => ({
             url: ep.url,
-            is_active: ep.is_active
+            is_active: ep.is_active,
+            latency_ms: ep.latency_ms,      // 保留延迟数据
+            status_code: ep.status_code     // 保留状态码
           })),
           auto_select_endpoint: autoSelect
         })
