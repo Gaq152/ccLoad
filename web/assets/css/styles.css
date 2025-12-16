@@ -2645,22 +2645,31 @@ body {
 
 /* =================================================================
    Grafana 风格仪表盘样式 (Dashboard Theme)
+   映射到统一主题系统 (theme.css)
    ================================================================= */
 
 body.dashboard-theme {
-  --dash-bg: #111217;
-  --dash-panel-bg: #181b1f;
-  --dash-border: #2c3235;
-  --dash-text-main: #dce1e6;
-  --dash-text-muted: #8e95a3;
-  --dash-accent-blue: #5794f2;
-  --dash-accent-green: #73bf69;
-  --dash-accent-yellow: #f2cc0c;
-  --dash-accent-red: #f2495c;
+  /* 映射旧变量到新主题变量（向后兼容） */
+  --dash-bg: var(--theme-bg-body);
+  --dash-panel-bg: var(--theme-bg-card);
+  --dash-border: var(--theme-border);
+  --dash-text-main: var(--theme-text-main);
+  --dash-text-muted: var(--theme-text-muted);
+  --dash-accent: var(--theme-accent);
+  --dash-accent-blue: var(--theme-accent);
+  --dash-accent-green: var(--theme-success);
+  --dash-accent-yellow: var(--theme-warning);
+  --dash-accent-red: var(--theme-error);
 
-  background-color: var(--dash-bg);
+  /* 额外的兼容变量 */
+  --card-bg: var(--theme-bg-card);
+  --input-bg: var(--theme-bg-input);
+  --input-focus-bg: var(--theme-bg-input-focus);
+  --text-main: var(--theme-text-main);
+
+  background-color: var(--theme-bg-body);
   background-image: none;
-  color: var(--dash-text-main);
+  color: var(--theme-text-main);
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
   min-height: 100vh;
   overflow-x: hidden;
