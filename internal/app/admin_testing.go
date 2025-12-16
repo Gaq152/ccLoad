@@ -152,6 +152,8 @@ func (s *Server) HandleChannelTest(c *gin.Context) {
 		// 记录冷却决策结果到测试响应中
 		var actionStr string
 		switch action {
+		case cooldown.ActionRetrySameChannel:
+			actionStr = "retry_same_channel_no_cooldown"
 		case cooldown.ActionRetryKey:
 			actionStr = "key_cooldown_applied"
 		case cooldown.ActionRetryChannel:

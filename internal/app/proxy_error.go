@@ -53,6 +53,10 @@ func (s *Server) handleProxyError(ctx context.Context, cfg *model.Config, keyInd
 
 	// 根据冷却管理器的决策执行相应动作
 	switch action {
+	case cooldown.ActionRetrySameChannel:
+		// 网络抖动：不冷却，直接重试同渠道（不刷新缓存）
+		return action, true
+
 	case cooldown.ActionRetryKey:
 		// Key级错误：立即刷新相关缓存
 		s.invalidateChannelRelatedCache(cfg.ID)
@@ -100,14 +104,18 @@ func (s *Server) handleNetworkError(
 		}, false, false
 	}
 
-	// 修复首字节超时不切换渠道的问题
-	// 当 handleProxyError 返回 ActionRetryChannel 时，应该立即切换到下一个渠道
-	// 而不是继续尝试当前渠道的其他Key
-	if action == cooldown.ActionRetryChannel {
-		return nil, false, true // 切换到下一个渠道
+	// 根据 action 决定重试策略
+	switch action {
+	case cooldown.ActionRetrySameChannel:
+		// 网络抖动：直接重试同渠道（不冷却，继续尝试同渠道的其他 Key）
+		return nil, true, false
+	case cooldown.ActionRetryChannel:
+		// 渠道级错误：切换到下一个渠道
+		return nil, false, true
+	default:
+		// Key级错误：继续重试同渠道的下一个 Key
+		return nil, true, false
 	}
-
-	return nil, true, false // 继续重试下一个Key
 }
 
 type tokenStatsUpdate struct {
@@ -352,9 +360,16 @@ func (s *Server) handleProxyErrorResponse(
 		}, false, false
 	}
 
-	if action == cooldown.ActionRetryChannel {
-		return nil, false, true // 切换到下一个渠道
+	// 根据 action 决定重试策略
+	switch action {
+	case cooldown.ActionRetrySameChannel:
+		// 网络抖动：直接重试同渠道
+		return nil, true, false
+	case cooldown.ActionRetryChannel:
+		// 渠道级错误：切换到下一个渠道
+		return nil, false, true
+	default:
+		// Key级错误：继续重试同渠道的下一个 Key
+		return nil, true, false
 	}
-
-	return nil, true, false // 继续重试下一个Key
 }

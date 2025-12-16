@@ -61,6 +61,8 @@ const (
 	ErrorLevelChannel
 	// ErrorLevelClient 客户端错误：不应该冷却，直接返回给客户端
 	ErrorLevelClient
+	// ErrorLevelRetry 网络抖动：不冷却，直接重试同渠道（502/503/504等临时性网关错误）
+	ErrorLevelRetry
 )
 
 // classifyHTTPStatus 分类HTTP状态码，返回错误级别
@@ -82,14 +84,16 @@ var statusCodeClassification = map[int]ErrorLevel{
 	403: ErrorLevelKey, // Forbidden - 默认Key级，需结合响应体分析
 	429: ErrorLevelKey, // Too Many Requests - Key限流
 
-	// 渠道级错误：服务器端问题
-	500: ErrorLevelChannel, // Internal Server Error
-	502: ErrorLevelChannel, // Bad Gateway
-	503: ErrorLevelChannel, // Service Unavailable
-	504: ErrorLevelChannel, // Gateway Timeout
-	520: ErrorLevelChannel, // Cloudflare: Unknown Error
-	521: ErrorLevelChannel, // Cloudflare: Web Server Is Down
-	524: ErrorLevelChannel, // Cloudflare: A Timeout Occurred
+	// 渠道级错误：服务器内部问题
+	500: ErrorLevelChannel, // Internal Server Error - 服务器内部错误，需要冷却
+
+	// 网络抖动：临时性网关错误，优先重试同渠道
+	502: ErrorLevelRetry, // Bad Gateway - 网关错误，可能是临时问题
+	503: ErrorLevelRetry, // Service Unavailable - 服务暂时不可用
+	504: ErrorLevelRetry, // Gateway Timeout - 网关超时
+	520: ErrorLevelRetry, // Cloudflare: Unknown Error
+	521: ErrorLevelRetry, // Cloudflare: Web Server Is Down
+	524: ErrorLevelRetry, // Cloudflare: A Timeout Occurred
 
 	// 自定义内部状态码
 	StatusFirstByteTimeout: ErrorLevelChannel, // 598 上游首字节超时
@@ -347,14 +351,14 @@ func ClassifyError(err error) (statusCode int, errorLevel ErrorLevel, shouldRetr
 
 	// 快速路径3：统一处理其它 DeadlineExceeded，默认视为上游超时
 	if errors.Is(err, context.DeadlineExceeded) {
-		return 504, ErrorLevelChannel, true // Gateway Timeout，触发渠道切换
+		return 504, ErrorLevelRetry, true // Gateway Timeout，重试同渠道
 	}
 
 	// 快速路径4：检测net.Error的超时场景
 	var netErr net.Error
 	if errors.As(err, &netErr) {
 		if netErr.Timeout() {
-			return 504, ErrorLevelChannel, true // Gateway Timeout，可重试
+			return 504, ErrorLevelRetry, true // Gateway Timeout，重试同渠道
 		}
 	}
 

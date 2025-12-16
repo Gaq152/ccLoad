@@ -215,13 +215,13 @@ func TestClassifyHTTPStatus(t *testing.T) {
 		{429, ErrorLevelKey, "Key级限流"},
 		// 499 HTTP响应应触发渠道级重试
 		{499, ErrorLevelChannel, "499来自HTTP响应时，说明上游API返回，应重试其他渠道"},
-		{500, ErrorLevelChannel, "渠道级错误"},
-		{502, ErrorLevelChannel, "渠道级错误"},
-		{503, ErrorLevelChannel, "渠道级错误"},
-		{504, ErrorLevelChannel, "渠道级错误"},
-		{520, ErrorLevelChannel, "520 Web Server Returned an Unknown Error - 渠道级错误"},
-		{521, ErrorLevelChannel, "521 Web Server Is Down - 渠道级错误"},
-		{524, ErrorLevelChannel, "524 A Timeout Occurred - 渠道级错误"},
+		{500, ErrorLevelChannel, "500 服务器内部错误 - 渠道级"},
+		{502, ErrorLevelRetry, "502 Bad Gateway - 网络抖动，重试同渠道"},
+		{503, ErrorLevelRetry, "503 Service Unavailable - 网络抖动，重试同渠道"},
+		{504, ErrorLevelRetry, "504 Gateway Timeout - 网络抖动，重试同渠道"},
+		{520, ErrorLevelRetry, "520 Cloudflare Error - 网络抖动，重试同渠道"},
+		{521, ErrorLevelRetry, "521 Web Server Is Down - 网络抖动，重试同渠道"},
+		{524, ErrorLevelRetry, "524 A Timeout Occurred - 网络抖动，重试同渠道"},
 	}
 
 	for _, tt := range tests {
@@ -256,9 +256,9 @@ func TestClassifyError_ContextCanceled(t *testing.T) {
 			name:           "context_deadline_exceeded",
 			err:            context.DeadlineExceeded,
 			expectedStatus: 504,
-			expectedLevel:  ErrorLevelChannel,
+			expectedLevel:  ErrorLevelRetry,
 			expectedRetry:  true,
-			reason:         "上游超时（context.DeadlineExceeded）应返回504+ErrorLevelChannel，可重试其他渠道",
+			reason:         "上游超时（context.DeadlineExceeded）应返回504+ErrorLevelRetry，重试同渠道",
 		},
 	}
 

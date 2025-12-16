@@ -129,36 +129,47 @@ func TestHandleError_ChannelLevelError(t *testing.T) {
 
 	cfg := createTestChannel(t, store, "test-channel-error")
 
-	testCases := []struct {
+	// 500 是真正的渠道级错误，需要冷却
+	t.Run("500内部错误", func(t *testing.T) {
+		_ = store.ResetChannelCooldown(ctx, cfg.ID)
+		action, err := manager.HandleError(ctx, cfg.ID, -1, 500, []byte(`{"error":"internal server error"}`), false, nil)
+		if err != nil {
+			t.Errorf("HandleError failed: %v", err)
+		}
+		if action != ActionRetryChannel {
+			t.Errorf("Expected ActionRetryChannel for 500, got %v", action)
+		}
+		channelCfg, _ := store.GetConfig(ctx, cfg.ID)
+		if channelCfg.CooldownUntil == 0 || time.Unix(channelCfg.CooldownUntil, 0).Before(time.Now()) {
+			t.Errorf("Channel should be cooled down for status 500")
+		}
+	})
+
+	// 502/503/504 是网络抖动，应该重试同渠道，不冷却
+	retryCases := []struct {
 		name       string
 		statusCode int
 		errorBody  []byte
 	}{
-		{"500内部错误", 500, []byte(`{"error":"internal server error"}`)},
 		{"502网关错误", 502, []byte(`{"error":"bad gateway"}`)},
 		{"503服务不可用", 503, []byte(`{"error":"service unavailable"}`)},
 		{"504网关超时", 504, []byte(`{"error":"gateway timeout"}`)},
 	}
 
-	for _, tc := range testCases {
+	for _, tc := range retryCases {
 		t.Run(tc.name, func(t *testing.T) {
-			// 先重置冷却
 			_ = store.ResetChannelCooldown(ctx, cfg.ID)
-
 			action, err := manager.HandleError(ctx, cfg.ID, -1, tc.statusCode, tc.errorBody, false, nil)
-
 			if err != nil {
 				t.Errorf("HandleError failed: %v", err)
 			}
-
-			if action != ActionRetryChannel {
-				t.Errorf("Expected ActionRetryChannel for %d, got %v", tc.statusCode, action)
+			if action != ActionRetrySameChannel {
+				t.Errorf("Expected ActionRetrySameChannel for %d (网络抖动), got %v", tc.statusCode, action)
 			}
-
-			// 验证渠道被冷却
+			// 验证渠道没有被冷却
 			channelCfg, _ := store.GetConfig(ctx, cfg.ID)
-			if channelCfg.CooldownUntil == 0 || time.Unix(channelCfg.CooldownUntil, 0).Before(time.Now()) {
-				t.Errorf("Channel should be cooled down for status %d", tc.statusCode)
+			if channelCfg.CooldownUntil != 0 && time.Unix(channelCfg.CooldownUntil, 0).After(time.Now()) {
+				t.Errorf("Channel should NOT be cooled down for status %d (网络抖动)", tc.statusCode)
 			}
 		})
 	}
@@ -386,8 +397,9 @@ func TestHandleError_EdgeCases(t *testing.T) {
 		if err != nil {
 			t.Errorf("Should handle empty error body: %v", err)
 		}
-		if action != ActionRetryChannel {
-			t.Error("Should classify 503 as channel-level")
+		// 503 是网络抖动，应该重试同渠道
+		if action != ActionRetrySameChannel {
+			t.Error("Should classify 503 as retry-level (网络抖动)")
 		}
 	})
 }
