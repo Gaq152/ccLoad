@@ -32,18 +32,6 @@ function invalidateChannelsCache() {
   }
 }
 
-async function loadChannelStatsRange() {
-  try {
-    const resp = await fetchWithAuth('/admin/settings/channel_stats_range');
-    const data = await resp.json();
-    if (data.success && data.data?.value) {
-      channelStatsRange = data.data.value;
-    }
-  } catch (e) {
-    console.error('加载统计范围设置失败', e);
-  }
-}
-
 async function loadChannelStatsFields() {
   try {
     const resp = await fetchWithAuth('/admin/settings/channel_stats_fields');

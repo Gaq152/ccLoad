@@ -127,19 +127,6 @@ function setupFilterListeners() {
     filterChannels();
   });
 
-  // 筛选按钮：手动触发筛选
-  document.getElementById('btn_filter').addEventListener('click', () => {
-    // 收集当前输入框的值
-    filters.search = document.getElementById('searchInput').value;
-    filters.id = document.getElementById('idFilter').value;
-
-    // 保存筛选条件
-    if (typeof saveChannelsFilters === 'function') saveChannelsFilters();
-
-    // 执行筛选
-    filterChannels();
-  });
-
   // 回车键触发筛选
   ['searchInput', 'idFilter'].forEach(id => {
     const el = document.getElementById(id);

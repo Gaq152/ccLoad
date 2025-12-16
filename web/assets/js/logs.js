@@ -443,9 +443,6 @@
         load();
       });
 
-      // 事件监听
-      document.getElementById('btn_filter').addEventListener('click', applyFilter);
-
       // 输入框自动筛选（防抖）
       const debouncedFilter = debounce(applyFilter, 500);
       ['f_id', 'f_name', 'f_model', 'f_status'].forEach(id => {

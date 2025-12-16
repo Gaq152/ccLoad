@@ -49,15 +49,27 @@
 // ============================================================
 (function () {
   const NAVS = [
-    { key: 'index', label: '概览', href: '/web/index.html', icon: iconHome },
-    { key: 'channels', label: '渠道管理', href: '/web/channels.html', icon: iconSettings },
-    { key: 'tokens', label: 'API令牌', href: '/web/tokens.html', icon: iconKey },
+    { key: 'index', label: '概览', href: '/web/index.html', icon: iconHome, required: true },
+    { key: 'channels', label: '渠道管理', href: '/web/channels.html', icon: iconSettings, required: true },
+    { key: 'tokens', label: 'API令牌', href: '/web/tokens.html', icon: iconKey, required: true },
     { key: 'stats', label: '调用统计', href: '/web/stats.html', icon: iconBars },
-    { key: 'trend', label: '请求趋势', href: '/web/trend.html', icon: iconTrend },
-    { key: 'logs', label: '日志', href: '/web/logs.html', icon: iconAlert },
+    { key: 'trends', label: '请求趋势', href: '/web/trend.html', icon: iconTrend },
+    { key: 'logs', label: '日志', href: '/web/logs.html', icon: iconAlert, required: true },
     { key: 'model-test', label: '模型测试', href: '/web/model-test.html', icon: iconTest },
-    { key: 'settings', label: '设置', href: '/web/settings.html', icon: iconCog },
+    { key: 'settings', label: '设置', href: '/web/settings.html', icon: iconCog, required: true },
   ];
+
+  // 获取导航栏可见页面配置
+  async function getVisiblePages() {
+    try {
+      const resp = await fetchWithAuth('/admin/settings/nav_visible_pages');
+      if (!resp.ok) return null;
+      const data = await resp.json();
+      // API 返回格式: { success: true, data: { key, value, ... } }
+      const setting = data.success ? data.data : data;
+      return (setting.value || '').split(',').map(s => s.trim()).filter(Boolean);
+    } catch { return null; }
+  }
 
   function h(tag, attrs = {}, children = []) {
     const el = document.createElement(tag);
@@ -115,7 +127,7 @@
     return token && (!expiry || Date.now() <= parseInt(expiry));
   }
 
-  function buildTopbar(active) {
+  function buildTopbar(active, visiblePages) {
     const bar = h('header', { class: 'topbar' });
     const left = h('div', { class: 'topbar-left' }, [
       h('div', { class: 'brand' }, [
@@ -123,9 +135,11 @@
         h('div', { class: 'brand-text' }, 'Claude Code & Codex Proxy')
       ])
     ]);
+    // 过滤导航项：必选项始终显示，可选项根据配置显示
+    const filteredNavs = NAVS.filter(n => n.required || !visiblePages || visiblePages.includes(n.key));
     const nav = h('nav', { class: 'topnav' }, [
-      ...NAVS.map(n => h('a', {
-        class: `topnav-link ${n.key === active ? 'active' : ''}`,
+      ...filteredNavs.map(n => h('a', {
+        class: `topnav-link ${n.key === active || (n.key === 'trends' && active === 'trend') ? 'active' : ''}`,
         href: n.href
       }, [n.icon(), h('span', {}, n.label)]) )
     ]);
@@ -185,7 +199,7 @@
     }
   }
 
-  window.initTopbar = function initTopbar(activeKey) {
+  window.initTopbar = async function initTopbar(activeKey) {
     document.body.classList.add('top-layout');
     const app = document.querySelector('.app-container') || document.body;
     // 隐藏侧边栏与移动按钮
@@ -194,8 +208,11 @@
     const mobileBtn = document.getElementById('mobile-menu-btn');
     if (mobileBtn) mobileBtn.style.display = 'none';
 
+    // 获取可见页面配置
+    const visiblePages = await getVisiblePages();
+
     // 插入顶部条
-    const topbar = buildTopbar(activeKey);
+    const topbar = buildTopbar(activeKey, visiblePages);
     document.body.appendChild(topbar);
 
     // 背景动效
