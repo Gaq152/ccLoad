@@ -647,7 +647,7 @@ body {
 .toggle-group {
   display: inline-flex;
   gap: 2px;
-  background: rgba(255, 255, 255, 0.25);
+  background: var(--glass-bg);
   padding: 2px;
   border-radius: 10px;
   border: 1px solid rgba(255, 255, 255, 0.3);
@@ -665,7 +665,7 @@ body {
   user-select: none;
   transition: all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
   border: none;
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
   position: relative;
   overflow: hidden;
   letter-spacing: -0.01em;
@@ -675,13 +675,13 @@ body {
   justify-content: center;
   min-height: 32px;
 }
-.toggle-btn:hover { 
+.toggle-btn:hover {
   color: rgba(0, 0, 0, 0.85);
-  background: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.1);
   transform: scale(1.02);
 }
 .toggle-btn.active {
-  background: rgba(255, 255, 255, 0.95);
+  background: var(--card-bg);
   color: #4f46e5;
   font-weight: 650;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15), 0 1px 3px rgba(0, 0, 0, 0.1);
@@ -699,7 +699,7 @@ body {
 .time-range-selector {
   display: inline-flex;
   gap: 0;
-  background: #ffffff;
+  background: var(--card-bg);
   padding: 4px;
   border-radius: 8px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
@@ -826,7 +826,7 @@ body {
   border: 2px solid var(--neutral-200);
   border-radius: var(--radius-lg);
   font-size: var(--text-base);
-  background: rgba(255, 255, 255, 0.9);
+  background: var(--input-bg);
   backdrop-filter: blur(8px);
   transition: all var(--duration-fast) var(--timing-function);
 }
@@ -836,7 +836,7 @@ body {
   border-color: var(--primary-500);
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
   transform: translateY(-1px);
-  background: white;
+  background: var(--input-focus-bg);
 }
 
 .form-input::placeholder {
@@ -1258,27 +1258,31 @@ body {
 
 .filter-controls {
   display: flex;
-  gap: 12px;
+  gap: 8px; /* 紧凑间距 */
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap; /* 强制单行，不换行 */
+  overflow-x: auto; /* 屏幕过窄时横向滚动 */
+  padding-bottom: 4px; /* 预留滚动条空间 */
 }
 
 .filter-group {
-  flex: 1;
-  /* min-width: 200px; */
+  flex: 0 1 auto; /* 允许基于内容适度收缩 */
+  min-width: 0; /* 允许压缩 */
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px; /* 缩小标签和输入框间距 */
 }
 
 .filter-input,
 .filter-select {
-  flex: 1;
-  padding: var(--space-2) var(--space-3);
+  flex: 0 0 auto; /* 宽度由inline style控制 */
+  min-width: 40px; /* 绝对底线 */
+  padding: 4px 6px; /* 紧凑内边距 */
+  height: 32px; /* 统一高度 */
   border: 1px solid var(--neutral-300);
   border-radius: var(--radius-base);
-  font-size: var(--text-sm);
-  background: rgba(255, 255, 255, 0.9);
+  font-size: 13px;
+  background: var(--input-bg);
   transition: all var(--duration-fast);
 }
 
@@ -1290,19 +1294,34 @@ body {
 }
 
 .filter-label {
-  flex-shrink: 0;
-  font-size: var(--text-xs);
+  flex-shrink: 0; /* 标签绝不压缩 */
+  font-size: 12px;
   font-weight: 500;
   color: var(--neutral-600);
   white-space: nowrap;
-  margin-right: 4px;
+  margin-right: 0; /* 通过gap控制间距 */
 }
 
 .filter-info {
-  margin-left: auto;
+  margin-left: auto; /* 靠右对齐 */
   font-size: var(--text-sm);
   color: var(--neutral-600);
   white-space: nowrap;
+  flex-shrink: 0; /* 绝不被压缩 */
+}
+
+/* 实时开关容器（最后一个 filter-group）：固定宽度，不参与伸缩 */
+.filter-controls > .filter-group:last-child {
+  flex: 0 0 auto;
+  min-width: auto;
+  white-space: nowrap;
+  flex-shrink: 0; /* 绝不被挤压 */
+  margin-left: auto; /* 靠右对齐 */
+}
+
+/* Toggle开关本体：强制不收缩 */
+.toggle-switch {
+  flex-shrink: 0;
 }
 
 /* ===== 表格组件 ===== */
@@ -1310,7 +1329,7 @@ body {
   overflow-x: auto;
   border-radius: var(--radius-lg);
   border: 1px solid var(--neutral-200);
-  background: rgba(255, 255, 255, 0.9);
+  background: var(--card-bg);
 }
 
 .modern-table {
@@ -1349,7 +1368,7 @@ body {
 }
 
 .btn-icon {
-  background: white;
+  background: var(--card-bg);
   border: 1px solid var(--neutral-300);
   color: var(--neutral-600);
   padding: 6px 10px;
@@ -1483,7 +1502,7 @@ body {
   border: 1px solid var(--neutral-300);
   border-radius: 6px;
   font-size: 0.875rem;
-  background: white;
+  background: var(--input-bg);
   transition: all 0.2s;
   margin-bottom: 8px;
 }
@@ -1828,7 +1847,7 @@ body {
   right: 0;
   min-width: 250px;
   max-width: 350px;
-  background: white;
+  background: var(--card-bg);
   border: 1px solid var(--neutral-200);
   border-radius: var(--radius-md);
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
@@ -1891,7 +1910,7 @@ body {
   height: 16px;
   border: 1.5px solid var(--neutral-300);
   border-radius: 3px;
-  background: white;
+  background: var(--input-bg);
   cursor: pointer;
   position: relative;
   transition: all 0.2s;
@@ -2004,7 +2023,7 @@ body {
 }
 
 .login-container {
-  background: rgba(255, 255, 255, 0.96);
+  background: var(--glass-bg);
   backdrop-filter: blur(20px) saturate(180%);
   border: 1px solid rgba(0, 0, 0, 0.06);
   border-radius: var(--radius-2xl);
@@ -2251,7 +2270,7 @@ body {
 }
 
 .features-showcase {
-  background: rgba(255, 255, 255, 0.96);
+  background: var(--glass-bg);
   backdrop-filter: blur(16px) saturate(180%);
   border: 1px solid rgba(0, 0, 0, 0.06);
   border-radius: var(--radius-2xl);
@@ -3467,6 +3486,15 @@ body.dashboard-theme .app-container {
 
 body.dashboard-theme {
   /* --- [关键] 覆盖标准中性色 (Inverted Scale) --- */
+
+  /* 定义暗色主题基础变量 */
+  --dash-bg: #0f1115;
+  --dash-panel-bg: #181b1f;
+  --dash-border: #2d333b;
+  --dash-text-main: #e6edf3;
+  --dash-text-muted: #7d8590;
+  --dash-accent-blue: #3b82f6;
+
   /* 将原本的 50(浅)->900(深) 反转为 50(深)->900(浅) */
   --neutral-50:  var(--dash-bg);       /* 全局背景 */
   --neutral-100: var(--dash-panel-bg); /* 卡片/容器背景 */
@@ -3556,4 +3584,29 @@ body.dashboard-theme .summary-card {
 body.dashboard-theme .channel-card {
   background: var(--neutral-100);
   border-color: var(--neutral-200);
+}
+
+/* Hero头部在暗色模式下的适配 */
+body.dashboard-theme .hero-header {
+  background: var(--glass-bg);
+  border-color: var(--glass-border);
+}
+
+/* 时间范围选择器按钮在暗色模式下的适配 */
+body.dashboard-theme .time-range-btn.active {
+  background: var(--primary-600);
+  color: #ffffff;
+}
+
+/* Token表格文字对比度优化 */
+body.dashboard-theme .token-table td {
+  color: var(--neutral-800);
+}
+
+body.dashboard-theme .metric-value {
+  color: var(--neutral-900);
+}
+
+body.dashboard-theme .metric-label {
+  color: var(--neutral-600);
 }

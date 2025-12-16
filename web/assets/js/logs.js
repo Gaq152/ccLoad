@@ -554,9 +554,9 @@
           second: '2-digit'
         });
 
-        // 返回格式：相对时间存在时显示 "相对时间 · 绝对时间"
+        // 返回格式：时间点在前，相对时间在后 "绝对时间 · 相对时间"
         if (relativeTime) {
-          return `<span style="color: var(--primary-600); font-weight: 500;">${relativeTime}</span> <span style="color: var(--neutral-400); font-size: 0.85em;">· ${absoluteTime}</span>`;
+          return `<span style="color: var(--primary-600); font-weight: 500;">${absoluteTime}</span> <span style="color: var(--neutral-400); font-size: 0.85em;">· ${relativeTime}</span>`;
         }
         return absoluteTime;
       } catch (e) {
