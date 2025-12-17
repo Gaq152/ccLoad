@@ -155,7 +155,7 @@ async function runModelTests() {
     row.querySelector('.cache-create').textContent = '-';
     row.querySelector('.response').textContent = '等待中...';
     row.querySelector('.response').title = '';
-    row.style.background = '';
+    row.classList.remove('row-success', 'row-error');
   });
 
   let completed = 0;
@@ -176,7 +176,7 @@ async function runModelTests() {
       row.querySelector('.duration').textContent = data.duration_ms ? `${data.duration_ms}ms` : '-';
 
       if (data.success) {
-        row.style.background = 'rgba(16, 185, 129, 0.1)';
+        row.classList.add('row-success');
         const usage = data.api_response?.usage || {};
         row.querySelector('.input-tokens').textContent = usage.input_tokens || usage.prompt_tokens || '-';
         row.querySelector('.output-tokens').textContent = usage.output_tokens || usage.completion_tokens || '-';
@@ -191,13 +191,13 @@ async function runModelTests() {
         row.querySelector('.response').textContent = respText || '成功';
         row.querySelector('.response').title = respText || '成功';
       } else {
-        row.style.background = 'rgba(239, 68, 68, 0.1)';
+        row.classList.add('row-error');
         const errMsg = data.error || '测试失败';
         row.querySelector('.response').textContent = errMsg;
         row.querySelector('.response').title = errMsg;
       }
     } catch (e) {
-      row.style.background = 'rgba(239, 68, 68, 0.1)';
+      row.classList.add('row-error');
       row.querySelector('.duration').textContent = '-';
       row.querySelector('.response').textContent = '请求失败';
       row.querySelector('.response').title = e.message;
@@ -219,7 +219,7 @@ async function runModelTests() {
   // 测试完成后只选中失败的行
   document.querySelectorAll('#model-test-tbody tr[data-model]').forEach(row => {
     const cb = row.querySelector('.model-checkbox');
-    cb.checked = row.style.background.includes('239, 68, 68');
+    cb.checked = row.classList.contains('row-error');
   });
   document.getElementById('selectAllCheckbox').checked = false;
 }

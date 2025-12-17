@@ -75,9 +75,9 @@ function markMultiselectChanged(key) {
   const row = container.closest('tr');
   const currentValue = getMultiselectValue(key);
   if (currentValue !== originalSettings[key]) {
-    row.style.background = 'rgba(59, 130, 246, 0.08)';
+    row.classList.add('row-highlight');
   } else {
-    row.style.background = '';
+    row.classList.remove('row-highlight');
   }
 }
 
@@ -167,9 +167,9 @@ function markChanged(input) {
   }
 
   if (currentValue !== originalSettings[key]) {
-    row.style.background = 'rgba(59, 130, 246, 0.08)';
+    row.classList.add('row-highlight');
   } else {
-    row.style.background = '';
+    row.classList.remove('row-highlight');
   }
 }
 

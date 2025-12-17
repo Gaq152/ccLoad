@@ -4,14 +4,11 @@ function highlightFromHash() {
   const el = document.getElementById(`channel-${m[1]}`);
   if (!el) return;
   el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  const prev = el.style.boxShadow;
-  el.style.transition = 'box-shadow 0.3s ease, background 0.3s ease';
-  el.style.boxShadow = '0 0 0 3px rgba(59,130,246,0.35), 0 10px 25px rgba(59,130,246,0.20)';
-  el.style.background = 'rgba(59,130,246,0.06)';
+  // 使用 CSS 动画类替代内联样式
+  el.classList.add('input-highlight-anim');
   setTimeout(() => {
-    el.style.boxShadow = prev || '';
-    el.style.background = '';
-  }, 1600);
+    el.classList.remove('input-highlight-anim');
+  }, 2000);
 }
 
 // 从URL参数获取目标渠道ID，查询其类型并返回
