@@ -194,7 +194,7 @@
       height: 24px;
       border: none;
       background: transparent;
-      color: var(--neutral-400);
+      color: var(--error-500);
       font-size: 18px;
       cursor: pointer;
       border-radius: 4px;
@@ -207,7 +207,7 @@
 
     .endpoint-delete-btn:hover {
       background-color: var(--error-50);
-      color: var(--error-600);
+      color: var(--error-700);
     }
 
     /* 端点管理按钮（渠道卡片中） */

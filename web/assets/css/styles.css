@@ -140,8 +140,15 @@ body {
 
 /* 选择文本颜色 */
 ::selection {
-  background-color: var(--primary-200);
-  color: var(--primary-800);
+  background-color: rgba(59, 130, 246, 0.3);
+  color: inherit;
+}
+
+/* 输入框内文本选中 */
+input::selection,
+textarea::selection {
+  background-color: rgba(59, 130, 246, 0.3);
+  color: inherit;
 }
 
 /* ===== 动画和关键帧 ===== */
@@ -1376,6 +1383,19 @@ body {
   background: var(--neutral-50);
   border-color: var(--neutral-400);
   color: var(--neutral-700);
+}
+
+/* 图标按钮的危险样式（删除按钮） */
+.btn-icon.btn-danger {
+  background: transparent;
+  border-color: var(--error-300);
+  color: var(--error-600);
+}
+
+.btn-icon.btn-danger:hover {
+  background: var(--error-50);
+  border-color: var(--error-400);
+  color: var(--error-700);
 }
 
 .add-channel-btn {
