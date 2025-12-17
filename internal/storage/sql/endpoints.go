@@ -52,10 +52,12 @@ func (s *SQLStore) ListEndpoints(ctx context.Context, channelID int64) ([]model.
 
 // GetActiveEndpoint 获取渠道的激活端点
 func (s *SQLStore) GetActiveEndpoint(ctx context.Context, channelID int64) (*model.ChannelEndpoint, error) {
+	// 按 sort_order 和 id 排序，确保多个 active 时返回确定的结果
 	query := `
 		SELECT id, channel_id, url, is_active, latency_ms, status_code, last_test_at, sort_order, created_at
 		FROM channel_endpoints
 		WHERE channel_id = ? AND is_active = 1
+		ORDER BY sort_order ASC, id ASC
 		LIMIT 1
 	`
 	row := s.db.QueryRowContext(ctx, query, channelID)
@@ -116,6 +118,8 @@ func (s *SQLStore) SaveEndpoints(ctx context.Context, channelID int64, endpoints
 			INSERT INTO channel_endpoints (channel_id, url, is_active, latency_ms, status_code, last_test_at, sort_order, created_at)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		`
+		// 记录 active 端点的 URL，用于同步到 channels.url
+		var activeURL string
 		for i, ep := range endpoints {
 			var latencyMs, statusCode any = nil, nil
 			if ep.LatencyMs != nil {
@@ -126,6 +130,20 @@ func (s *SQLStore) SaveEndpoints(ctx context.Context, channelID int64, endpoints
 			}
 			_, err = tx.ExecContext(ctx, insertQuery,
 				channelID, ep.URL, ep.IsActive, latencyMs, statusCode, ep.LastTestAt, i, now,
+			)
+			if err != nil {
+				return err
+			}
+			if ep.IsActive {
+				activeURL = ep.URL
+			}
+		}
+
+		// 同步更新 channels.url（以 active 端点为准）
+		if activeURL != "" {
+			_, err = tx.ExecContext(ctx,
+				"UPDATE channels SET url = ?, updated_at = ? WHERE id = ?",
+				activeURL, now, channelID,
 			)
 			if err != nil {
 				return err
@@ -262,6 +280,55 @@ func (s *SQLStore) SelectFastestEndpoint(ctx context.Context, channelID int64) e
 
 	// 设置为激活端点
 	return s.SetActiveEndpoint(ctx, channelID, fastestID)
+}
+
+// SyncActiveEndpointURL 同步更新 active endpoint 的 URL（当 channels.url 变更时调用）
+// 如果没有端点，则创建一个新的端点
+func (s *SQLStore) SyncActiveEndpointURL(ctx context.Context, channelID int64, newURL string) error {
+	if newURL == "" {
+		return nil
+	}
+
+	// 获取当前 active endpoint
+	activeEp, err := s.GetActiveEndpoint(ctx, channelID)
+	if err != nil {
+		return err
+	}
+
+	if activeEp != nil {
+		// 存在 active endpoint，更新其 URL
+		if activeEp.URL != newURL {
+			_, err = s.db.ExecContext(ctx,
+				"UPDATE channel_endpoints SET url = ? WHERE id = ?",
+				newURL, activeEp.ID,
+			)
+			return err
+		}
+		return nil
+	}
+
+	// 没有端点，检查是否有任何端点
+	endpoints, err := s.ListEndpoints(ctx, channelID)
+	if err != nil {
+		return err
+	}
+
+	if len(endpoints) == 0 {
+		// 没有任何端点，创建一个新的
+		now := time.Now().Unix()
+		_, err = s.db.ExecContext(ctx, `
+			INSERT INTO channel_endpoints (channel_id, url, is_active, sort_order, created_at)
+			VALUES (?, ?, 1, 0, ?)
+		`, channelID, newURL, now)
+		return err
+	}
+
+	// 有端点但没有 active，更新第一个为 active 并更新其 URL
+	firstEp := endpoints[0]
+	_, err = s.db.ExecContext(ctx, `
+		UPDATE channel_endpoints SET url = ?, is_active = 1 WHERE id = ?
+	`, newURL, firstEp.ID)
+	return err
 }
 
 // GetChannelsWithAutoSelect 获取所有开启自动选择且有端点的渠道ID列表

@@ -250,7 +250,7 @@ async function toggleChannel(id, enabled) {
   }
 }
 
-function copyChannel(id, name) {
+async function copyChannel(id, name) {
   const channel = channels.find(c => c.id === id);
   if (!channel) return;
 
@@ -261,11 +261,33 @@ function copyChannel(id, name) {
   document.getElementById('modalTitle').textContent = '复制渠道';
   document.getElementById('channelName').value = copiedName;
 
-  // 设置端点（使用原渠道URL）
+  // 获取源渠道的端点列表并复制
+  let endpointUrls = [channel.url]; // 默认使用渠道URL
+  try {
+    const res = await fetchWithAuth(`/admin/channels/${id}/endpoints`);
+    if (res.ok) {
+      const data = await res.json();
+      // API 返回格式: {data: [...], auto_select_endpoint: bool}
+      const endpoints = Array.isArray(data) ? data : (data.data || []);
+      if (endpoints.length > 0) {
+        // 确保 active 端点在首位（保持原渠道的 active 优先级）
+        const sorted = [...endpoints].sort((a, b) => {
+          if (a.is_active && !b.is_active) return -1;
+          if (!a.is_active && b.is_active) return 1;
+          return (a.sort_order || 0) - (b.sort_order || 0);
+        });
+        endpointUrls = sorted.map(ep => ep.url);
+      }
+    }
+  } catch (e) {
+    console.error('获取源渠道端点失败，使用默认URL', e);
+  }
+
+  // 设置端点（使用完整的端点列表）
   if (typeof setInlineEndpoints === 'function') {
-    setInlineEndpoints([channel.url]);
+    setInlineEndpoints(endpointUrls);
   } else {
-    document.getElementById('channelUrl').value = channel.url;
+    document.getElementById('channelUrl').value = endpointUrls[0] || channel.url;
   }
 
   // 复制模式隐藏"测速"按钮（复制是新建操作）

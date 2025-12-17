@@ -225,6 +225,13 @@ func (s *SQLStore) UpdateConfig(ctx context.Context, id int64, upd *model.Config
 		return nil, err
 	}
 
+	// 同步更新 active endpoint 的 URL（确保 channels.url 与 channel_endpoints 一致）
+	if url != "" {
+		if err := s.SyncActiveEndpointURL(ctx, id, url); err != nil {
+			log.Printf("[WARN] 同步端点URL失败 (channel=%d): %v", id, err)
+		}
+	}
+
 	// 同步更新 channel_models 索引表（性能优化：去规范化）
 	// 先删除旧的模型索引
 	if _, err := s.db.ExecContext(ctx, `
