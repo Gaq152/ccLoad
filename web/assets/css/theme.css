@@ -244,3 +244,50 @@ html.theme-transition *::after {
   50% { transform: rotate(180deg) scale(0.8); }
   100% { transform: rotate(360deg) scale(1); }
 }
+
+/* === JS 交互状态工具类 === */
+
+/* 表格行高亮状态 */
+.row-highlight {
+  background-color: rgba(59, 130, 246, 0.08) !important;
+}
+.row-success {
+  background-color: rgba(16, 185, 129, 0.1) !important;
+}
+.row-error {
+  background-color: rgba(239, 68, 68, 0.1) !important;
+}
+
+/* UI 阴影脉冲效果 (用于 ui.js) */
+.shadow-pulse-success {
+  box-shadow: 0 6px 28px rgba(16, 185, 129, 0.25) !important;
+  border-color: var(--theme-success) !important;
+}
+.shadow-pulse-error {
+  box-shadow: 0 6px 28px rgba(239, 68, 68, 0.25) !important;
+  border-color: var(--theme-error) !important;
+}
+
+[data-theme="light"] .shadow-pulse-success {
+  box-shadow: 0 6px 28px rgba(16, 185, 129, 0.18) !important;
+}
+[data-theme="light"] .shadow-pulse-error {
+  box-shadow: 0 6px 28px rgba(239, 68, 68, 0.18) !important;
+}
+
+/* 输入框高亮动画 (用于 channels-init.js) */
+.input-highlight-anim {
+  animation: anim-highlight-pulse 2s ease-out;
+}
+
+@keyframes anim-highlight-pulse {
+  0% {
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.35),
+                0 10px 25px rgba(59, 130, 246, 0.20);
+    background-color: rgba(59, 130, 246, 0.06);
+  }
+  100% {
+    box-shadow: none;
+    background-color: transparent;
+  }
+}

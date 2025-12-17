@@ -271,12 +271,12 @@
       el.style.background = 'var(--success-50)';
       el.style.color = 'var(--success-600)';
       el.style.borderColor = 'var(--success-500)';
-      el.style.boxShadow = '0 6px 28px rgba(16,185,129,0.18)';
+      el.classList.add('shadow-pulse-success');
     } else if (type === 'error') {
       el.style.background = 'var(--error-50)';
       el.style.color = 'var(--error-600)';
       el.style.borderColor = 'var(--error-500)';
-      el.style.boxShadow = '0 6px 28px rgba(239,68,68,0.18)';
+      el.classList.add('shadow-pulse-error');
     } else if (type === 'info') {
       el.style.background = 'var(--info-50)';
       el.style.color = 'var(--neutral-800)';
