@@ -2,7 +2,7 @@ function inlineCooldownBadge(c) {
   const ms = c.cooldown_remaining_ms || 0;
   if (!ms || ms <= 0) return '';
   const text = humanizeMS(ms);
-  return ` <span style="color: #dc2626; font-size: 0.875rem; font-weight: 500; background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%); padding: 2px 8px; border-radius: 4px; border: 1px solid #fca5a5;">⚠️ 冷却中·${text}</span>`;
+  return ` <span style="color: var(--theme-badge-error-text); font-size: 0.875rem; font-weight: 500; background: var(--theme-badge-error-bg-gradient); padding: 2px 8px; border-radius: 4px; border: 1px solid var(--theme-badge-error-border);">⚠️ 冷却中·${text}</span>`;
 }
 
 function buildLatencyBadge(latencyMs, statusCode) {
@@ -11,24 +11,24 @@ function buildLatencyBadge(latencyMs, statusCode) {
   let color, bgColor, borderColor, text;
   if (latencyMs < 0) {
     // 超时/失败
-    color = '#dc2626';
-    bgColor = '#fee2e2';
-    borderColor = '#fca5a5';
+    color = 'var(--theme-badge-error-text)';
+    bgColor = 'var(--theme-badge-error-bg)';
+    borderColor = 'var(--theme-badge-error-border)';
     text = '超时';
   } else if (latencyMs < 500) {
-    color = '#16a34a';
-    bgColor = '#dcfce7';
-    borderColor = '#86efac';
+    color = 'var(--theme-badge-success-text)';
+    bgColor = 'var(--theme-badge-success-bg)';
+    borderColor = 'var(--theme-badge-success-border)';
     text = `${latencyMs}ms`;
   } else if (latencyMs < 1000) {
-    color = '#ca8a04';
-    bgColor = '#fef9c3';
-    borderColor = '#fde047';
+    color = 'var(--theme-badge-warning-text)';
+    bgColor = 'var(--theme-badge-warning-bg)';
+    borderColor = 'var(--theme-badge-warning-border)';
     text = `${latencyMs}ms`;
   } else {
-    color = '#dc2626';
-    bgColor = '#fee2e2';
-    borderColor = '#fca5a5';
+    color = 'var(--theme-badge-error-text)';
+    bgColor = 'var(--theme-badge-error-bg)';
+    borderColor = 'var(--theme-badge-error-border)';
     text = `${latencyMs}ms`;
   }
 
@@ -134,27 +134,27 @@ function getChannelTypeConfig(channelType) {
   const configs = {
     'anthropic': {
       text: 'Claude',
-      color: '#8b5cf6',
-      bgColor: '#f3e8ff',
-      borderColor: '#c4b5fd'
+      color: 'var(--theme-badge-purple-text)',
+      bgColor: 'var(--theme-badge-purple-bg)',
+      borderColor: 'var(--theme-badge-purple-border)'
     },
     'codex': {
       text: 'Codex',
-      color: '#059669',
-      bgColor: '#d1fae5',
-      borderColor: '#6ee7b7'
+      color: 'var(--theme-badge-success-text)',
+      bgColor: 'var(--theme-badge-success-bg)',
+      borderColor: 'var(--theme-badge-success-border)'
     },
     'openai': {
       text: 'OpenAI',
-      color: '#10b981',
-      bgColor: '#d1fae5',
-      borderColor: '#6ee7b7'
+      color: 'var(--theme-badge-success-text)',
+      bgColor: 'var(--theme-badge-success-bg)',
+      borderColor: 'var(--theme-badge-success-border)'
     },
     'gemini': {
       text: 'Gemini',
-      color: '#2563eb',
-      bgColor: '#dbeafe',
-      borderColor: '#93c5fd'
+      color: 'var(--theme-badge-info-text)',
+      bgColor: 'var(--theme-badge-info-bg)',
+      borderColor: 'var(--theme-badge-info-border)'
     }
   };
   const type = (channelType || '').toLowerCase();

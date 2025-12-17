@@ -216,13 +216,13 @@ function initKeyTableEventDelegation() {
     if (btn) {
       const action = btn.dataset.action;
       if (action === 'test') {
-        btn.style.background = '#eff6ff';
-        btn.style.borderColor = '#93c5fd';
-        btn.style.color = '#3b82f6';
+        btn.style.background = 'var(--theme-btn-test-hover-bg)';
+        btn.style.borderColor = 'var(--theme-btn-test-hover-border)';
+        btn.style.color = 'var(--theme-btn-test-hover-text)';
       } else if (action === 'delete') {
-        btn.style.background = '#fef2f2';
-        btn.style.borderColor = '#fca5a5';
-        btn.style.color = '#dc2626';
+        btn.style.background = 'var(--theme-btn-delete-hover-bg)';
+        btn.style.borderColor = 'var(--theme-btn-delete-hover-border)';
+        btn.style.color = 'var(--theme-btn-delete-hover-text)';
       }
     }
   });
@@ -230,9 +230,9 @@ function initKeyTableEventDelegation() {
   tbody.addEventListener('mouseout', (e) => {
     const btn = e.target.closest('.key-action-btn');
     if (btn) {
-      btn.style.background = 'white';
-      btn.style.borderColor = 'var(--neutral-200)';
-      btn.style.color = 'var(--neutral-500)';
+      btn.style.background = 'var(--theme-bg-card)';
+      btn.style.borderColor = 'var(--theme-border)';
+      btn.style.color = 'var(--theme-text-muted)';
     }
   });
 }
@@ -503,17 +503,17 @@ function updateBatchDeleteButton() {
     btn.disabled = false;
     btn.textContent = `删除选中 (${count})`;
     btn.style.cursor = 'pointer';
-    btn.style.background = 'linear-gradient(135deg, #fef2f2 0%, #fecaca 100%)';
-    btn.style.borderColor = '#fca5a5';
-    btn.style.color = '#dc2626';
+    btn.style.background = 'var(--theme-btn-delete-active-bg-gradient)';
+    btn.style.borderColor = 'var(--theme-btn-delete-hover-border)';
+    btn.style.color = 'var(--theme-btn-delete-hover-text)';
     btn.style.fontWeight = '600';
   } else {
     btn.disabled = true;
     btn.textContent = '删除选中';
     btn.style.cursor = 'not-allowed';
-    btn.style.background = 'white';
-    btn.style.borderColor = 'var(--neutral-300)';
-    btn.style.color = 'var(--neutral-500)';
+    btn.style.background = 'var(--theme-bg-card)';
+    btn.style.borderColor = 'var(--theme-border)';
+    btn.style.color = 'var(--theme-text-muted)';
     btn.style.fontWeight = '500';
   }
 }

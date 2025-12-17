@@ -60,6 +60,43 @@
   /* 图标颜色 */
   --theme-icon-default: #8e95a3;
   --theme-icon-hover: #dce1e6;
+
+  /* 徽章语义色 (Dark Mode: 深色半透明背景 + 亮色文字) */
+  --theme-badge-error-bg: rgba(220, 38, 38, 0.2);
+  --theme-badge-error-bg-gradient: linear-gradient(135deg, rgba(220, 38, 38, 0.2) 0%, rgba(185, 28, 28, 0.2) 100%);
+  --theme-badge-error-text: #fca5a5;
+  --theme-badge-error-border: rgba(220, 38, 38, 0.5);
+
+  --theme-badge-success-bg: rgba(22, 163, 74, 0.2);
+  --theme-badge-success-text: #86efac;
+  --theme-badge-success-border: rgba(22, 163, 74, 0.5);
+
+  --theme-badge-warning-bg: rgba(202, 138, 4, 0.2);
+  --theme-badge-warning-text: #fde047;
+  --theme-badge-warning-border: rgba(202, 138, 4, 0.5);
+
+  --theme-badge-info-bg: rgba(37, 99, 235, 0.2);
+  --theme-badge-info-text: #93c5fd;
+  --theme-badge-info-border: rgba(37, 99, 235, 0.5);
+
+  --theme-badge-purple-bg: rgba(139, 92, 246, 0.2);
+  --theme-badge-purple-text: #c4b5fd;
+  --theme-badge-purple-border: rgba(139, 92, 246, 0.5);
+
+  /* Toast 渐变 */
+  --theme-toast-success-bg: linear-gradient(135deg, rgba(16, 185, 129, 0.9) 0%, rgba(5, 150, 105, 0.9) 100%);
+  --theme-toast-error-bg: linear-gradient(135deg, rgba(239, 68, 68, 0.9) 0%, rgba(220, 38, 38, 0.9) 100%);
+  --theme-toast-info-bg: linear-gradient(135deg, rgba(59, 130, 246, 0.9) 0%, rgba(37, 99, 235, 0.9) 100%);
+
+  /* 按钮交互状态 */
+  --theme-btn-test-hover-bg: rgba(59, 130, 246, 0.15);
+  --theme-btn-test-hover-border: rgba(59, 130, 246, 0.5);
+  --theme-btn-test-hover-text: #93c5fd;
+
+  --theme-btn-delete-hover-bg: rgba(239, 68, 68, 0.15);
+  --theme-btn-delete-hover-border: rgba(239, 68, 68, 0.5);
+  --theme-btn-delete-hover-text: #fca5a5;
+  --theme-btn-delete-active-bg-gradient: linear-gradient(135deg, rgba(239, 68, 68, 0.2) 0%, rgba(185, 28, 28, 0.2) 100%);
 }
 
 /* === Light Mode === */
@@ -118,6 +155,43 @@
   /* 图标颜色 */
   --theme-icon-default: #6b7280;
   --theme-icon-hover: #1f2937;
+
+  /* 徽章语义色 (Light Mode: 浅色背景 + 深色文字) */
+  --theme-badge-error-bg: #fee2e2;
+  --theme-badge-error-bg-gradient: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+  --theme-badge-error-text: #dc2626;
+  --theme-badge-error-border: #fca5a5;
+
+  --theme-badge-success-bg: #dcfce7;
+  --theme-badge-success-text: #16a34a;
+  --theme-badge-success-border: #86efac;
+
+  --theme-badge-warning-bg: #fef9c3;
+  --theme-badge-warning-text: #ca8a04;
+  --theme-badge-warning-border: #fde047;
+
+  --theme-badge-info-bg: #dbeafe;
+  --theme-badge-info-text: #2563eb;
+  --theme-badge-info-border: #93c5fd;
+
+  --theme-badge-purple-bg: #f3e8ff;
+  --theme-badge-purple-text: #8b5cf6;
+  --theme-badge-purple-border: #c4b5fd;
+
+  /* Toast 渐变 */
+  --theme-toast-success-bg: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  --theme-toast-error-bg: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  --theme-toast-info-bg: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+
+  /* 按钮交互状态 */
+  --theme-btn-test-hover-bg: #eff6ff;
+  --theme-btn-test-hover-border: #93c5fd;
+  --theme-btn-test-hover-text: #3b82f6;
+
+  --theme-btn-delete-hover-bg: #fef2f2;
+  --theme-btn-delete-hover-border: #fca5a5;
+  --theme-btn-delete-hover-text: #dc2626;
+  --theme-btn-delete-active-bg-gradient: linear-gradient(135deg, #fef2f2 0%, #fecaca 100%);
 }
 
 /* === 过渡动画 === */
