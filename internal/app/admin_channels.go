@@ -175,6 +175,19 @@ func (s *Server) handleCreateChannel(c *gin.Context) {
 		}
 	}
 
+	// 为新渠道创建默认端点记录（确保 channel_endpoints 表同步）
+	if created.URL != "" {
+		defaultEndpoint := model.ChannelEndpoint{
+			ChannelID: created.ID,
+			URL:       created.URL,
+			IsActive:  true,
+			SortOrder: 0,
+		}
+		if err := s.store.SaveEndpoints(c.Request.Context(), created.ID, []model.ChannelEndpoint{defaultEndpoint}); err != nil {
+			log.Printf("[WARN] 创建渠道默认端点失败 (channel=%d): %v", created.ID, err)
+		}
+	}
+
 	// 新增、删除或更新渠道后，失效缓存保持一致性
 	s.invalidateChannelRelatedCache(created.ID)
 

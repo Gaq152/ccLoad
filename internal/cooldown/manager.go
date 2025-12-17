@@ -158,7 +158,7 @@ func (m *Manager) HandleError(
 	}
 
 	// 4. 根据错误级别执行冷却
-	log.Printf("[COOLDOWN] 最终决策: 错误级别=%s, 准备执行冷却", errorLevelName(errLevel))
+	log.Printf("[COOLDOWN] 最终决策: 错误级别=%s, 进入执行分支", errorLevelName(errLevel))
 
 	switch errLevel {
 	case util.ErrorLevelRetry:
