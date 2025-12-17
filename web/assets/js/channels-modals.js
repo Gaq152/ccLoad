@@ -176,9 +176,17 @@ async function saveChannel(event) {
       channelId = result.data?.id || result.id;
     }
 
-    // 保存多端点（如果有多个）
-    if (channelId && endpoints.length > 1 && typeof saveEndpointsToServer === 'function') {
+    // 保存端点（始终同步端点表，确保数据一致性）
+    if (channelId && endpoints.length > 0 && typeof saveEndpointsToServer === 'function') {
       await saveEndpointsToServer(channelId);
+    }
+
+    // 立即更新本地 channels 数组，确保再次打开编辑框时显示最新数据
+    if (editingChannelId) {
+      const ch = channels.find(c => c.id === editingChannelId);
+      if (ch) {
+        Object.assign(ch, formData);
+      }
     }
 
     closeModal();

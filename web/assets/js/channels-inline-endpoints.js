@@ -194,8 +194,8 @@
    */
   async function saveEndpointsToServer(channelId) {
     const validUrls = getInlineEndpoints();
-    if (validUrls.length <= 1) {
-      // 只有一个端点时不需要调用端点API（主URL已保存到渠道）
+    if (validUrls.length === 0) {
+      // 没有端点时跳过
       return true;
     }
 
