@@ -4,6 +4,13 @@
     // 当前选中的时间范围(默认为本日)
     let currentTimeRange = 'today';
 
+    // 抽屉状态
+    let drawerMode = 'create'; // 'create' 或 'edit'
+    let editingTokenId = null;
+
+    // 缓存渠道列表
+    let allChannels = [];
+
     document.addEventListener('DOMContentLoaded', () => {
       // 初始化时间范围选择器
       initTimeRangeSelector();
@@ -14,12 +21,9 @@
       // 初始化事件委托
       initEventDelegation();
 
-      document.getElementById('tokenExpiry').addEventListener('change', (e) => {
-        document.getElementById('customExpiryContainer').style.display =
-          e.target.value === 'custom' ? 'block' : 'none';
-      });
-      document.getElementById('editTokenExpiry').addEventListener('change', (e) => {
-        document.getElementById('editCustomExpiryContainer').style.display =
+      // 抽屉过期时间选择器
+      document.getElementById('drawerExpiryType').addEventListener('change', (e) => {
+        document.getElementById('drawerCustomExpiryContainer').style.display =
           e.target.value === 'custom' ? 'block' : 'none';
       });
     });
@@ -50,25 +54,19 @@
       container.addEventListener('click', (e) => {
         const target = e.target;
 
-        // 处理渠道配置按钮
-        if (target.classList.contains('btn-channels')) {
-          const row = target.closest('tr');
+        // 处理编辑按钮（支持点击SVG图标）
+        const editBtn = target.closest('.btn-edit');
+        if (editBtn) {
+          const row = editBtn.closest('tr');
           const tokenId = row ? parseInt(row.dataset.tokenId) : null;
-          if (tokenId) showChannelsModal(tokenId);
+          if (tokenId) openDrawer('edit', tokenId);
           return;
         }
 
-        // 处理编辑按钮
-        if (target.classList.contains('btn-edit')) {
-          const row = target.closest('tr');
-          const tokenId = row ? parseInt(row.dataset.tokenId) : null;
-          if (tokenId) editToken(tokenId);
-          return;
-        }
-
-        // 处理删除按钮
-        if (target.classList.contains('btn-delete')) {
-          const row = target.closest('tr');
+        // 处理删除按钮（支持点击SVG图标）
+        const deleteBtn = target.closest('.btn-delete');
+        if (deleteBtn) {
+          const row = deleteBtn.closest('tr');
           const tokenId = row ? parseInt(row.dataset.tokenId) : null;
           if (tokenId) deleteToken(tokenId);
           return;
@@ -358,9 +356,16 @@
           <td style="text-align: center;">${nonStreamAvgHtml}</td>
           <td style="color: var(--neutral-600);">${lastUsed}</td>
           <td>
-            <button class="btn btn-secondary btn-channels" style="padding: 4px 12px; font-size: 13px; margin-right: 4px;" title="渠道配置">渠道</button>
-            <button class="btn btn-secondary btn-edit" style="padding: 4px 12px; font-size: 13px; margin-right: 4px;">编辑</button>
-            <button class="btn btn-danger btn-delete" style="padding: 4px 12px; font-size: 13px;">删除</button>
+            <div class="action-btn-group">
+              <button class="btn-action btn-edit">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                编辑
+              </button>
+              <button class="btn-action delete btn-delete">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                删除
+              </button>
+            </div>
           </td>
         </tr>
       `;
@@ -372,29 +377,98 @@
       return { class: 'active', text: '正常' };
     }
 
-    function showCreateModal() {
-      document.getElementById('tokenDescription').value = '';
-      document.getElementById('tokenExpiry').value = 'never';
-      document.getElementById('tokenActive').checked = true;
-      document.getElementById('customExpiryContainer').style.display = 'none';
-      document.getElementById('createModal').style.display = 'block';
+    // ============================================================================
+    // 抽屉面板功能（2025-12 重构）
+    // ============================================================================
+
+    /**
+     * 打开抽屉面板
+     * @param {string} mode - 'create' 或 'edit'
+     * @param {number} tokenId - 编辑模式时的令牌ID
+     */
+    async function openDrawer(mode, tokenId = null) {
+      drawerMode = mode;
+      editingTokenId = tokenId;
+
+      // 重置表单
+      document.getElementById('drawerForm').reset();
+      document.getElementById('drawerTokenId').value = '';
+      document.getElementById('drawerCustomExpiryContainer').style.display = 'none';
+
+      if (mode === 'create') {
+        // 创建模式
+        document.getElementById('drawerTitle').textContent = '创建令牌';
+        document.getElementById('drawerSaveBtn').textContent = '创建令牌';
+        document.getElementById('drawerActive').checked = true;
+        document.getElementById('drawerExpiryType').value = 'never';
+
+        // 显示渠道配置部分（创建时也可以配置）
+        document.getElementById('drawerChannelSection').style.display = 'block';
+
+        // 默认不允许所有渠道（需要用户手动选择）
+        document.getElementById('drawerAllChannels').checked = false;
+        document.getElementById('drawerChannelsListWrapper').style.display = 'block';
+
+        await loadDrawerChannelsForCreate();
+      } else {
+        // 编辑模式
+        document.getElementById('drawerTitle').textContent = '编辑令牌';
+        document.getElementById('drawerSaveBtn').textContent = '保存配置';
+
+        // 加载令牌数据
+        const token = allTokens.find(t => t.id === tokenId);
+        if (token) {
+          document.getElementById('drawerTokenId').value = tokenId;
+          document.getElementById('drawerDescription').value = token.description;
+          document.getElementById('drawerActive').checked = token.is_active;
+
+          // 设置过期时间
+          if (!token.expires_at) {
+            document.getElementById('drawerExpiryType').value = 'never';
+          } else {
+            document.getElementById('drawerExpiryType').value = 'custom';
+            document.getElementById('drawerCustomExpiryContainer').style.display = 'block';
+            const date = new Date(token.expires_at);
+            document.getElementById('drawerCustomExpiry').value = date.toISOString().slice(0, 16);
+          }
+        }
+
+        // 显示渠道配置部分
+        document.getElementById('drawerChannelSection').style.display = 'block';
+        await loadDrawerChannels(tokenId);
+      }
+
+      // 显示遮罩层和抽屉
+      document.getElementById('drawerOverlay').classList.add('show');
+      document.getElementById('configDrawer').classList.add('open');
     }
 
-    function closeCreateModal() {
-      document.getElementById('createModal').style.display = 'none';
+    /**
+     * 关闭抽屉面板
+     */
+    function closeDrawer() {
+      document.getElementById('drawerOverlay').classList.remove('show');
+      document.getElementById('configDrawer').classList.remove('open');
+      drawerMode = 'create';
+      editingTokenId = null;
     }
 
-    async function createToken() {
-      const description = document.getElementById('tokenDescription').value.trim();
+    /**
+     * 保存抽屉数据
+     */
+    async function saveDrawerData() {
+      const description = document.getElementById('drawerDescription').value.trim();
       if (!description) {
         showToast('请输入描述', 'error');
         return;
       }
-      const expiryType = document.getElementById('tokenExpiry').value;
+
+      // 解析过期时间
+      const expiryType = document.getElementById('drawerExpiryType').value;
       let expiresAt = null;
       if (expiryType !== 'never') {
         if (expiryType === 'custom') {
-          const customDate = document.getElementById('customExpiry').value;
+          const customDate = document.getElementById('drawerCustomExpiry').value;
           if (!customDate) {
             showToast('请选择过期时间', 'error');
             return;
@@ -405,27 +479,213 @@
           expiresAt = Date.now() + days * 24 * 60 * 60 * 1000;
         }
       }
-      const isActive = document.getElementById('tokenActive').checked;
-      try {
-        const response = await fetchWithAuth(`${API_BASE}/auth-tokens`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ description, expires_at: expiresAt, is_active: isActive })
-        });
-        if (!response.ok) throw new Error('创建失败');
-        const data = await response.json();
 
-        closeCreateModal();
-        document.getElementById('newTokenValue').value = data.data.token;
-        document.getElementById('tokenResultModal').style.display = 'block';
-        loadTokens();
-        showToast('令牌创建成功', 'success');
+      const isActive = document.getElementById('drawerActive').checked;
+
+      try {
+        if (drawerMode === 'create') {
+          // 创建令牌
+          const response = await fetchWithAuth(`${API_BASE}/auth-tokens`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ description, expires_at: expiresAt, is_active: isActive })
+          });
+          if (!response.ok) throw new Error('创建失败');
+          const data = await response.json();
+          const newTokenId = data.data.id;
+
+          // 保存渠道配置
+          await saveDrawerChannels(newTokenId);
+
+          closeDrawer();
+          // 显示新令牌
+          document.getElementById('newTokenValue').value = data.data.token;
+          document.getElementById('tokenResultModal').style.display = 'block';
+          loadTokens();
+          showToast('令牌创建成功', 'success');
+        } else {
+          // 更新令牌
+          const tokenId = editingTokenId;
+          const response = await fetchWithAuth(`${API_BASE}/auth-tokens/${tokenId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ description, is_active: isActive, expires_at: expiresAt })
+          });
+          if (!response.ok) throw new Error('更新失败');
+
+          // 保存渠道配置
+          await saveDrawerChannels(tokenId);
+
+          closeDrawer();
+          loadTokens();
+          showToast('更新成功', 'success');
+        }
       } catch (error) {
-        console.error('创建令牌失败:', error);
-        showToast('创建失败: ' + error.message, 'error');
+        console.error('保存失败:', error);
+        showToast('保存失败: ' + error.message, 'error');
       }
+    }
+
+    /**
+     * 加载抽屉中的渠道配置（编辑模式）
+     */
+    async function loadDrawerChannels(tokenId) {
+      const listContainer = document.getElementById('drawerChannelsList');
+      listContainer.innerHTML = '<div class="channels-loading">加载中...</div>';
+      updateDrawerChannelCount(0);
+
+      try {
+        // 并行加载渠道列表和令牌配置
+        const [channelsRes, configRes] = await Promise.all([
+          fetchWithAuth(`${API_BASE}/channels`),
+          fetchWithAuth(`${API_BASE}/auth-tokens/${tokenId}/channels`)
+        ]);
+
+        if (!channelsRes.ok) throw new Error('加载渠道列表失败');
+        if (!configRes.ok) throw new Error('加载令牌渠道配置失败');
+
+        const channelsData = await channelsRes.json();
+        const configData = await configRes.json();
+
+        allChannels = channelsData.data || [];
+        const config = configData.data || {};
+
+        // 设置全部渠道开关
+        const allChannelsToggle = document.getElementById('drawerAllChannels');
+        allChannelsToggle.checked = config.all_channels !== false;
+
+        // 渲染渠道列表
+        renderDrawerChannelsList(config.channel_ids || []);
+
+        // 根据开关状态显示/隐藏渠道列表
+        toggleDrawerChannelsList();
+      } catch (error) {
+        console.error('加载渠道配置失败:', error);
+        listContainer.innerHTML = `<div class="channels-error">加载失败: ${error.message}</div>`;
+      }
+    }
+
+    /**
+     * 加载抽屉中的渠道配置（创建模式）
+     * 默认：不允许所有渠道，需要用户手动选择
+     */
+    async function loadDrawerChannelsForCreate() {
+      const listContainer = document.getElementById('drawerChannelsList');
+      listContainer.innerHTML = '<div class="channels-loading">加载中...</div>';
+      updateDrawerChannelCount(0);
+
+      try {
+        const channelsRes = await fetchWithAuth(`${API_BASE}/channels`);
+        if (!channelsRes.ok) throw new Error('加载渠道列表失败');
+
+        const channelsData = await channelsRes.json();
+        allChannels = channelsData.data || [];
+
+        // 渲染渠道列表（无选中项，需要用户手动选择）
+        renderDrawerChannelsList([]);
+      } catch (error) {
+        console.error('加载渠道列表失败:', error);
+        listContainer.innerHTML = `<div class="channels-error">加载失败: ${error.message}</div>`;
+      }
+    }
+
+    /**
+     * 渲染抽屉中的渠道列表
+     */
+    function renderDrawerChannelsList(selectedIds) {
+      const container = document.getElementById('drawerChannelsList');
+
+      if (allChannels.length === 0) {
+        container.innerHTML = '<div class="channels-empty">暂无渠道</div>';
+        updateDrawerChannelCount(0);
+        return;
+      }
+
+      const selectedSet = new Set(selectedIds);
+      let html = '';
+
+      allChannels.forEach(channel => {
+        const isChecked = selectedSet.has(channel.id);
+        const statusClass = channel.enabled ? 'enabled' : 'disabled';
+        const statusText = channel.enabled ? '启用' : '禁用';
+        const selectedClass = isChecked ? ' selected' : '';
+
+        html += `
+          <label class="channel-item${selectedClass}" data-channel-id="${channel.id}">
+            <span class="channel-checkbox">
+              <input type="checkbox" value="${channel.id}" ${isChecked ? 'checked' : ''} onchange="updateDrawerChannelSelection(this)">
+              <span class="checkmark"></span>
+            </span>
+            <span class="channel-info">
+              <span class="channel-name">${escapeHtml(channel.name)}</span>
+              <span class="channel-status ${statusClass}">${statusText}</span>
+            </span>
+            <span class="channel-type">${channel.channel_type || 'anthropic'}</span>
+          </label>
+        `;
+      });
+
+      container.innerHTML = html;
+      updateDrawerChannelCount(selectedIds.length);
+    }
+
+    /**
+     * 切换抽屉渠道列表显示
+     */
+    function toggleDrawerChannelsList() {
+      const allChannelsChecked = document.getElementById('drawerAllChannels').checked;
+      const wrapper = document.getElementById('drawerChannelsListWrapper');
+      wrapper.style.display = allChannelsChecked ? 'none' : 'block';
+    }
+
+    /**
+     * 更新抽屉渠道选择状态
+     */
+    function updateDrawerChannelSelection(checkbox) {
+      const channelItem = checkbox.closest('.channel-item');
+      if (checkbox.checked) {
+        channelItem.classList.add('selected');
+      } else {
+        channelItem.classList.remove('selected');
+      }
+      // 更新计数
+      const checkedCount = document.querySelectorAll('#drawerChannelsList input[type="checkbox"]:checked').length;
+      updateDrawerChannelCount(checkedCount);
+    }
+
+    /**
+     * 更新抽屉渠道数量徽章
+     */
+    function updateDrawerChannelCount(count) {
+      const badge = document.getElementById('drawerChannelCount');
+      if (badge) badge.textContent = count;
+    }
+
+    /**
+     * 保存抽屉中的渠道配置
+     */
+    async function saveDrawerChannels(tokenId) {
+      const allChannelsChecked = document.getElementById('drawerAllChannels').checked;
+      const checkboxes = document.querySelectorAll('#drawerChannelsList input[type="checkbox"]:checked');
+      const channelIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
+
+      const response = await fetchWithAuth(`${API_BASE}/auth-tokens/${tokenId}/channels`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          all_channels: allChannelsChecked,
+          channel_ids: channelIds
+        })
+      });
+
+      if (!response.ok) throw new Error('保存渠道配置失败');
+    }
+
+    /**
+     * 显示创建令牌抽屉
+     */
+    function showCreateModal() {
+      openDrawer('create');
     }
 
     function copyToken() {
@@ -440,71 +700,41 @@
       document.getElementById('newTokenValue').value = '';
     }
 
-    function editToken(id) {
-      const token = allTokens.find(t => t.id === id);
-      if (!token) return;
-      document.getElementById('editTokenId').value = id;
-      document.getElementById('editTokenDescription').value = token.description;
-      document.getElementById('editTokenActive').checked = token.is_active;
-      if (!token.expires_at) {
-        document.getElementById('editTokenExpiry').value = 'never';
-      } else {
-        document.getElementById('editTokenExpiry').value = 'custom';
-        document.getElementById('editCustomExpiryContainer').style.display = 'block';
-        const date = new Date(token.expires_at);
-        document.getElementById('editCustomExpiry').value = date.toISOString().slice(0, 16);
-      }
-      document.getElementById('editModal').style.display = 'block';
+    // 待删除的令牌ID
+    let deletingTokenId = null;
+
+    /**
+     * 显示删除确认对话框
+     */
+    function deleteToken(id) {
+      deletingTokenId = id;
+      const modal = document.getElementById('deleteConfirmModal');
+      requestAnimationFrame(() => {
+        modal.classList.add('active');
+      });
     }
 
-    function closeEditModal() {
-      document.getElementById('editModal').style.display = 'none';
+    /**
+     * 关闭删除确认对话框
+     */
+    function closeDeleteConfirmModal() {
+      const modal = document.getElementById('deleteConfirmModal');
+      modal.classList.remove('active');
+      deletingTokenId = null;
     }
 
-    async function updateToken() {
-      const id = document.getElementById('editTokenId').value;
-      const description = document.getElementById('editTokenDescription').value.trim();
-      const isActive = document.getElementById('editTokenActive').checked;
-      const expiryType = document.getElementById('editTokenExpiry').value;
-      let expiresAt = null;
-      if (expiryType !== 'never') {
-        if (expiryType === 'custom') {
-          const customDate = document.getElementById('editCustomExpiry').value;
-          if (!customDate) {
-            showToast('请选择过期时间', 'error');
-            return;
-          }
-          expiresAt = new Date(customDate).getTime();
-        } else {
-          const days = parseInt(expiryType);
-          expiresAt = Date.now() + days * 24 * 60 * 60 * 1000;
-        }
-      }
+    /**
+     * 确认删除令牌
+     */
+    async function confirmDeleteToken() {
+      if (!deletingTokenId) return;
+
       try {
-        const response = await fetchWithAuth(`${API_BASE}/auth-tokens/${id}`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ description, is_active: isActive, expires_at: expiresAt })
-        });
-        if (!response.ok) throw new Error('更新失败');
-        closeEditModal();
-        loadTokens();
-        showToast('更新成功', 'success');
-      } catch (error) {
-        console.error('更新失败:', error);
-        showToast('更新失败: ' + error.message, 'error');
-      }
-    }
-
-    async function deleteToken(id) {
-      if (!confirm('确定要删除此令牌吗?删除后无法恢复。')) return;
-      try {
-        const response = await fetchWithAuth(`${API_BASE}/auth-tokens/${id}`, {
+        const response = await fetchWithAuth(`${API_BASE}/auth-tokens/${deletingTokenId}`, {
           method: 'DELETE'
         });
         if (!response.ok) throw new Error('删除失败');
+        closeDeleteConfirmModal();
         loadTokens();
         showToast('删除成功', 'success');
       } catch (error) {
@@ -528,150 +758,6 @@
         toast.style.animation = 'slideOut 0.3s ease-out';
         setTimeout(() => toast.remove(), 300);
       }, 3000);
-    }
-
-    // ============================================================================
-    // 渠道配置功能（2025-12新增）
-    // ============================================================================
-
-    // 缓存渠道列表
-    let allChannels = [];
-
-    // 显示渠道配置对话框
-    async function showChannelsModal(tokenId) {
-      document.getElementById('channelsTokenId').value = tokenId;
-      document.getElementById('channelsModal').style.display = 'block';
-      document.getElementById('channelsList').innerHTML = '<div class="channels-loading">加载中...</div>';
-      updateChannelCountBadge(0);
-
-      try {
-        // 并行加载渠道列表和令牌配置
-        const [channelsRes, configRes] = await Promise.all([
-          fetchWithAuth(`${API_BASE}/channels`),
-          fetchWithAuth(`${API_BASE}/auth-tokens/${tokenId}/channels`)
-        ]);
-
-        if (!channelsRes.ok) throw new Error('加载渠道列表失败');
-        if (!configRes.ok) throw new Error('加载令牌渠道配置失败');
-
-        const channelsData = await channelsRes.json();
-        const configData = await configRes.json();
-
-        allChannels = channelsData.data || [];
-        const config = configData.data || {};
-
-        // 设置全部渠道复选框
-        document.getElementById('allChannelsCheckbox').checked = config.all_channels !== false;
-
-        // 渲染渠道列表
-        renderChannelsList(config.channel_ids || []);
-
-        // 根据 all_channels 状态显示/隐藏渠道列表
-        toggleChannelsList();
-      } catch (error) {
-        console.error('加载渠道配置失败:', error);
-        document.getElementById('channelsList').innerHTML = `<div class="channels-error">加载失败: ${error.message}</div>`;
-      }
-    }
-
-    // 渲染渠道列表（Gemini 优化样式）
-    function renderChannelsList(selectedIds) {
-      const container = document.getElementById('channelsList');
-
-      if (allChannels.length === 0) {
-        container.innerHTML = '<div class="channels-empty">暂无渠道</div>';
-        updateChannelCountBadge(0);
-        return;
-      }
-
-      const selectedSet = new Set(selectedIds);
-      let html = '';
-
-      allChannels.forEach(channel => {
-        const isChecked = selectedSet.has(channel.id);
-        const statusClass = channel.enabled ? 'enabled' : 'disabled';
-        const statusText = channel.enabled ? '启用' : '禁用';
-        const selectedClass = isChecked ? ' selected' : '';
-
-        html += `
-          <label class="channel-item${selectedClass}" data-channel-id="${channel.id}">
-            <span class="channel-checkbox">
-              <input type="checkbox" value="${channel.id}" ${isChecked ? 'checked' : ''} onchange="updateChannelSelection(this)">
-              <span class="checkmark"></span>
-            </span>
-            <span class="channel-info">
-              <span class="channel-name">${escapeHtml(channel.name)}</span>
-              <span class="channel-status ${statusClass}">${statusText}</span>
-            </span>
-            <span class="channel-type">${channel.channel_type || 'anthropic'}</span>
-          </label>
-        `;
-      });
-
-      container.innerHTML = html;
-      updateChannelCountBadge(selectedIds.length);
-    }
-
-    // 更新渠道选择状态（用于样式同步）
-    function updateChannelSelection(checkbox) {
-      const channelItem = checkbox.closest('.channel-item');
-      if (checkbox.checked) {
-        channelItem.classList.add('selected');
-      } else {
-        channelItem.classList.remove('selected');
-      }
-      // 更新计数徽章
-      const checkedCount = document.querySelectorAll('#channelsList input[type="checkbox"]:checked').length;
-      updateChannelCountBadge(checkedCount);
-    }
-
-    // 更新渠道数量徽章
-    function updateChannelCountBadge(count) {
-      const badge = document.getElementById('channelCountBadge');
-      if (badge) {
-        badge.textContent = count;
-      }
-    }
-
-    // 切换渠道列表显示
-    function toggleChannelsList() {
-      const allChannelsChecked = document.getElementById('allChannelsCheckbox').checked;
-      const container = document.getElementById('channelsListContainer');
-      container.style.display = allChannelsChecked ? 'none' : 'block';
-    }
-
-    // 保存令牌渠道配置
-    async function saveTokenChannels() {
-      const tokenId = document.getElementById('channelsTokenId').value;
-      const allChannelsChecked = document.getElementById('allChannelsCheckbox').checked;
-
-      // 获取选中的渠道ID
-      const checkboxes = document.querySelectorAll('#channelsList input[type="checkbox"]:checked');
-      const channelIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
-
-      try {
-        const response = await fetchWithAuth(`${API_BASE}/auth-tokens/${tokenId}/channels`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            all_channels: allChannelsChecked,
-            channel_ids: channelIds
-          })
-        });
-
-        if (!response.ok) throw new Error('保存失败');
-
-        closeChannelsModal();
-        showToast('渠道配置已保存', 'success');
-      } catch (error) {
-        console.error('保存渠道配置失败:', error);
-        showToast('保存失败: ' + error.message, 'error');
-      }
-    }
-
-    // 关闭渠道配置对话框
-    function closeChannelsModal() {
-      document.getElementById('channelsModal').style.display = 'none';
     }
 
     // 初始化顶部导航栏

@@ -66,22 +66,31 @@
     </main>
   </div>
 
-  <!-- 创建令牌对话框 -->
-  <div id="createModal" class="modal">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h2 style="margin: 0; font-size: 18px;">创建API令牌</h2>
-        <button onclick="closeCreateModal()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: var(--neutral-500);">&times;</button>
-      </div>
-      <div class="modal-body">
+  <!-- 抽屉遮罩层 -->
+  <div id="drawerOverlay" class="drawer-overlay" onclick="closeDrawer()"></div>
+
+  <!-- 统一配置抽屉 (创建/编辑共用) -->
+  <div id="configDrawer" class="drawer">
+    <div class="drawer-header">
+      <h3 id="drawerTitle" class="drawer-title">配置令牌</h3>
+      <button class="drawer-close" onclick="closeDrawer()">&times;</button>
+    </div>
+
+    <div class="drawer-body">
+      <form id="drawerForm" onsubmit="return false;">
+        <input type="hidden" id="drawerTokenId">
+
+        <!-- 基本信息部分 -->
+        <div class="section-title">基本信息</div>
+
         <div class="form-group">
-          <label class="form-label">描述 *</label>
-          <input type="text" id="tokenDescription" class="form-input" placeholder="请输入令牌用途描述" required>
+          <label class="form-label">描述 <span style="color:var(--error-500)">*</span></label>
+          <input type="text" id="drawerDescription" class="form-input" placeholder="例如：开发环境测试 Key" required>
         </div>
 
         <div class="form-group">
           <label class="form-label">过期时间</label>
-          <select id="tokenExpiry" class="form-input">
+          <select id="drawerExpiryType" class="form-input">
             <option value="never">永不过期</option>
             <option value="30d">30天后过期</option>
             <option value="90d">90天后过期</option>
@@ -91,21 +100,72 @@
           </select>
         </div>
 
-        <div id="customExpiryContainer" style="display: none;" class="form-group">
-          <label class="form-label">自定义过期时间</label>
-          <input type="datetime-local" id="customExpiry" class="form-input">
+        <div id="drawerCustomExpiryContainer" style="display: none;" class="form-group">
+          <label class="form-label">选择日期时间</label>
+          <input type="datetime-local" id="drawerCustomExpiry" class="form-input">
         </div>
 
         <div class="form-group">
-          <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-            <input type="checkbox" id="tokenActive" checked style="width: 18px; height: 18px;">
-            <span>启用令牌</span>
+          <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;">
+            <input type="checkbox" id="drawerActive" style="width: 18px; height: 18px;">
+            <span style="font-weight: 500;">启用此令牌</span>
           </label>
         </div>
+
+        <!-- 渠道配置部分 (仅在编辑模式显示) -->
+        <div id="drawerChannelSection" style="display: none;">
+          <div class="drawer-divider"></div>
+          <div class="section-title">渠道访问限制</div>
+
+          <div class="form-group">
+            <div class="toggle-row">
+              <div class="toggle-label">
+                <div class="toggle-label-text">允许使用所有渠道</div>
+                <div class="toggle-label-desc">关闭后可指定特定渠道</div>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox" id="drawerAllChannels" onchange="toggleDrawerChannelsList()">
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <div id="drawerChannelsListWrapper" class="form-group">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+              <label class="form-label" style="margin: 0;">选择渠道</label>
+              <span id="drawerChannelCount" class="channel-count-badge">0</span>
+            </div>
+
+            <div id="drawerChannelsList" class="channels-list">
+              <div class="channels-loading">加载中...</div>
+            </div>
+          </div>
+        </div>
+      </form>
+    </div>
+
+    <div class="drawer-footer">
+      <button class="btn btn-secondary" onclick="closeDrawer()">取消</button>
+      <button class="btn btn-primary" onclick="saveDrawerData()" id="drawerSaveBtn">保存配置</button>
+    </div>
+  </div>
+
+  <!-- 删除确认对话框 -->
+  <div id="deleteConfirmModal" class="delete-modal-backdrop">
+    <div class="delete-modal-panel">
+      <!-- 警告图标 -->
+      <div class="delete-modal-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+        </svg>
       </div>
-      <div class="modal-footer">
-        <button onclick="closeCreateModal()" class="btn btn-secondary">取消</button>
-        <button onclick="createToken()" class="btn btn-primary">创建</button>
+      <!-- 文本内容 -->
+      <h3 class="delete-modal-title">删除 API 令牌</h3>
+      <p class="delete-modal-desc">确定要删除此令牌吗？此操作无法撤销，依赖此令牌的应用将无法访问服务。</p>
+      <!-- 按钮 -->
+      <div class="delete-modal-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeDeleteConfirmModal()">取消</button>
+        <button type="button" class="btn btn-danger" onclick="confirmDeleteToken()">确认删除</button>
       </div>
     </div>
   </div>
@@ -141,101 +201,10 @@
     </div>
   </div>
 
-  <!-- 编辑令牌对话框 -->
-  <div id="editModal" class="modal">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h2 style="margin: 0; font-size: 18px;">编辑令牌</h2>
-        <button onclick="closeEditModal()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: var(--neutral-500);">&times;</button>
-      </div>
-      <div class="modal-body">
-        <input type="hidden" id="editTokenId">
-
-        <div class="form-group">
-          <label class="form-label">描述</label>
-          <input type="text" id="editTokenDescription" class="form-input">
-        </div>
-
-        <div class="form-group">
-          <label class="form-label">过期时间</label>
-          <select id="editTokenExpiry" class="form-input">
-            <option value="never">永不过期</option>
-            <option value="30d">30天后过期</option>
-            <option value="90d">90天后过期</option>
-            <option value="180d">180天后过期</option>
-            <option value="365d">1年后过期</option>
-            <option value="custom">自定义...</option>
-          </select>
-        </div>
-
-        <div id="editCustomExpiryContainer" style="display: none;" class="form-group">
-          <label class="form-label">自定义过期时间</label>
-          <input type="datetime-local" id="editCustomExpiry" class="form-input">
-        </div>
-
-        <div class="form-group">
-          <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-            <input type="checkbox" id="editTokenActive" style="width: 18px; height: 18px;">
-            <span>启用令牌</span>
-          </label>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button onclick="closeEditModal()" class="btn btn-secondary">取消</button>
-        <button onclick="updateToken()" class="btn btn-primary">保存</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- 渠道配置对话框 -->
-  <div id="channelsModal" class="modal">
-    <div class="modal-content" style="max-width: 560px;">
-      <div class="modal-header">
-        <h2 style="margin: 0; font-size: 18px;">渠道访问配置</h2>
-        <button onclick="closeChannelsModal()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: var(--neutral-500);">&times;</button>
-      </div>
-      <div class="modal-body">
-        <input type="hidden" id="channelsTokenId">
-
-        <!-- iOS 风格 Toggle Switch -->
-        <div class="form-group">
-          <div class="toggle-row">
-            <div class="toggle-label">
-              <div class="toggle-label-text">允许使用所有渠道</div>
-              <div class="toggle-label-desc">启用后，此令牌可以使用所有可用渠道</div>
-            </div>
-            <label class="toggle-switch">
-              <input type="checkbox" id="allChannelsCheckbox" onchange="toggleChannelsList()">
-              <span class="toggle-slider"></span>
-            </label>
-          </div>
-        </div>
-
-        <!-- 渠道列表区域 -->
-        <div id="channelsListContainer" class="form-group">
-          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-            <label class="form-label" style="margin: 0;">允许使用的渠道</label>
-            <span id="channelCountBadge" class="channel-count-badge">0</span>
-          </div>
-          <div id="channelsList" class="channels-list">
-            <div class="channels-loading">加载中...</div>
-          </div>
-          <p style="font-size: 13px; color: var(--neutral-600); margin-top: 8px;">
-            选择此令牌允许使用的渠道。新建的渠道默认不会自动添加到此列表。
-          </p>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button onclick="closeChannelsModal()" class="btn btn-secondary">取消</button>
-        <button onclick="saveTokenChannels()" class="btn btn-primary">保存</button>
-      </div>
-    </div>
-  </div>
-
   <!-- 模板引擎 -->
   <script src="/web/assets/js/template-engine.js"></script>
 
-  <!-- 令牌行模板 -->
+  <!-- 令牌行模板 (图标+文字按钮) -->
   <template id="tpl-token-row">
     <tr data-token-id="{{id}}">
       <td style="font-weight: 500;">{{description}}</td>
@@ -251,9 +220,16 @@
       <td style="text-align: center;">{{{nonStreamAvgHtml}}}</td>
       <td style="color: var(--neutral-600);">{{lastUsed}}</td>
       <td>
-        <button class="btn btn-secondary btn-channels" style="padding: 4px 12px; font-size: 13px; margin-right: 4px;" title="渠道配置">渠道</button>
-        <button class="btn btn-secondary btn-edit" style="padding: 4px 12px; font-size: 13px; margin-right: 4px;">编辑</button>
-        <button class="btn btn-danger btn-delete" style="padding: 4px 12px; font-size: 13px;">删除</button>
+        <div class="action-btn-group">
+          <button class="btn-action btn-edit">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+            编辑
+          </button>
+          <button class="btn-action delete btn-delete">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+            删除
+          </button>
+        </div>
       </td>
     </tr>
   </template>
