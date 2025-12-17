@@ -220,6 +220,55 @@
       document.getElementById('chart').style.display = 'none';
     }
 
+    // 获取当前主题的图表颜色配置
+    function getChartThemeColors() {
+      const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+      const rootStyle = getComputedStyle(document.documentElement);
+
+      const textMain = rootStyle.getPropertyValue('--theme-text-main').trim() || (isLight ? '#333' : '#ccc');
+      const textMuted = rootStyle.getPropertyValue('--theme-text-subtle').trim() || (isLight ? '#666' : '#999');
+      const border = rootStyle.getPropertyValue('--theme-border').trim() || (isLight ? '#eee' : '#333');
+      const borderLight = rootStyle.getPropertyValue('--theme-border-light').trim() || (isLight ? '#f5f5f5' : '#444');
+      const accent = rootStyle.getPropertyValue('--theme-accent').trim() || '#3b82f6';
+
+      return {
+        legendText: textMuted,
+        legendPageIcon: textMuted,
+        legendPageIconInactive: isLight ? '#ccc' : '#555',
+        axisLine: border,
+        axisLabel: textMuted,
+        splitLine: borderLight,
+        tooltipBg: isLight ? 'rgba(255, 255, 255, 0.95)' : 'rgba(24, 27, 31, 0.95)',
+        tooltipBorder: border,
+        tooltipText: textMain,
+        zoomBorder: border,
+        zoomText: textMuted,
+        zoomFiller: isLight ? 'rgba(59, 130, 246, 0.15)' : 'rgba(87, 148, 242, 0.2)',
+        zoomHandle: accent
+      };
+    }
+
+    // 监听主题变化以更新图表
+    function initThemeObserver() {
+      let themeTimer = null;
+      const observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+          if (mutation.type === 'attributes' && mutation.attributeName === 'data-theme') {
+            if (window.chartInstance) {
+              // 防抖：清除上一次定时器，防止快速切换时多次重绘
+              if (themeTimer) clearTimeout(themeTimer);
+              themeTimer = setTimeout(renderChart, 100);
+            }
+          }
+        });
+      });
+
+      observer.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['data-theme']
+      });
+    }
+
     function renderChart() {
       if (!window.trendData || !window.trendData.length) {
         showError();
@@ -238,6 +287,9 @@
           renderer: 'canvas'
         });
       }
+
+      // 获取当前主题颜色
+      const themeColors = getChartThemeColors();
 
       // 准备时间数据
       const timestamps = window.trendData.map(point => {
@@ -588,17 +640,17 @@
         },
         tooltip: {
           trigger: 'axis',
-          backgroundColor: 'rgba(0, 0, 0, 0.85)',
-          borderColor: 'rgba(255, 255, 255, 0.1)',
+          backgroundColor: themeColors.tooltipBg,
+          borderColor: themeColors.tooltipBorder,
           borderWidth: 1,
           textStyle: {
-            color: '#fff',
+            color: themeColors.tooltipText,
             fontSize: 12
           },
           axisPointer: {
             type: 'cross',
             crossStyle: {
-              color: '#999',
+              color: themeColors.axisLabel,
               width: 1,
               type: 'dashed'
             }
@@ -656,18 +708,18 @@
           top: 10,
           right: 20,
           textStyle: {
-            color: '#666',
+            color: themeColors.legendText,
             fontSize: 11
           },
           itemWidth: 20,
           itemHeight: 8,
           itemGap: 12,
           type: 'scroll',
-          pageIconColor: '#666',
-          pageIconInactiveColor: '#ccc',
+          pageIconColor: themeColors.legendPageIcon,
+          pageIconInactiveColor: themeColors.legendPageIconInactive,
           pageIconSize: 12,
           pageTextStyle: {
-            color: '#666',
+            color: themeColors.legendText,
             fontSize: 10
           }
         },
@@ -684,11 +736,11 @@
           data: timestamps,
           axisLine: {
             lineStyle: {
-              color: '#e5e7eb'
+              color: themeColors.axisLine
             }
           },
           axisLabel: {
-            color: '#6b7280',
+            color: themeColors.axisLabel,
             fontSize: 11,
             rotate: window.currentHours > 24 ? 45 : 0,
             interval: Math.floor(timestamps.length / 10) // 动态间隔
@@ -696,7 +748,7 @@
           splitLine: {
             show: true,
             lineStyle: {
-              color: '#f3f4f6',
+              color: themeColors.splitLine,
               type: 'dashed'
             }
           }
@@ -705,11 +757,11 @@
           type: 'value',
           axisLine: {
             lineStyle: {
-              color: '#e5e7eb'
+              color: themeColors.axisLine
             }
           },
           axisLabel: {
-            color: '#6b7280',
+            color: themeColors.axisLabel,
             fontSize: 11,
             formatter: function(value) {
               if (trendType === 'first_byte' || trendType === 'duration') {
@@ -735,7 +787,7 @@
           },
           splitLine: {
             lineStyle: {
-              color: '#f3f4f6',
+              color: themeColors.splitLine,
               type: 'dashed'
             }
           }
@@ -755,14 +807,14 @@
             start: 0,
             end: 100,
             height: 20,
-            borderColor: '#e5e7eb',
-            fillerColor: 'rgba(59, 130, 246, 0.15)',
+            borderColor: themeColors.zoomBorder,
+            fillerColor: themeColors.zoomFiller,
             handleStyle: {
-              color: '#3b82f6',
-              borderColor: '#3b82f6'
+              color: themeColors.zoomHandle,
+              borderColor: themeColors.zoomHandle
             },
             textStyle: {
-              color: '#6b7280',
+              color: themeColors.zoomText,
               fontSize: 10
             }
           }
@@ -1010,6 +1062,7 @@
     // 页面初始化
     document.addEventListener('DOMContentLoaded', async function() {
       if (window.initTopbar) initTopbar('trend');
+      initThemeObserver();
 
       // ✅ 优先从 URL 参数恢复渠道类型，否则从 localStorage，默认 all
       const urlParams = new URLSearchParams(location.search);
