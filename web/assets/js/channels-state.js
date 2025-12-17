@@ -115,7 +115,7 @@ function updateChannelCooldownBadge(channelId, remainingMs) {
     if (card) card.classList.remove('channel-card-cooldown');
   } else {
     const text = humanizeMS(remainingMs);
-    container.innerHTML = ` <span style="color: #dc2626; font-size: 0.875rem; font-weight: 500; background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%); padding: 2px 8px; border-radius: 4px; border: 1px solid #fca5a5;">⚠️ 冷却中·${text}</span>`;
+    container.innerHTML = ` <span style="color: var(--theme-badge-error-text); font-size: 0.875rem; font-weight: 500; background: var(--theme-badge-error-bg-gradient); padding: 2px 8px; border-radius: 4px; border: 1px solid var(--theme-badge-error-border);">⚠️ 冷却中·${text}</span>`;
   }
 }
 
@@ -129,7 +129,7 @@ function updateKeyTableCooldownDisplay() {
     if (statusCell) {
       if (kc.cooldown_remaining_ms > 0) {
         const text = humanizeMS(kc.cooldown_remaining_ms);
-        statusCell.innerHTML = `<span style="color: #dc2626; font-size: 11px; background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%); padding: 2px 6px; border-radius: 4px; border: 1px solid #fca5a5;">⚠️ 冷却中·${text}</span>`;
+        statusCell.innerHTML = `<span style="color: var(--theme-badge-error-text); font-size: 11px; background: var(--theme-badge-error-bg-gradient); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--theme-badge-error-border);">⚠️ 冷却中·${text}</span>`;
       } else {
         statusCell.innerHTML = '<span style="color: var(--success-600); font-size: 12px;">✓ 正常</span>';
       }
@@ -449,13 +449,13 @@ function showToast(message, type = 'info') {
   }
 
   if (type === 'success') {
-    toast.style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
+    toast.style.background = 'var(--theme-toast-success-bg)';
     toast.style.color = 'white';
   } else if (type === 'error') {
-    toast.style.background = 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)';
+    toast.style.background = 'var(--theme-toast-error-bg)';
     toast.style.color = 'white';
   } else {
-    toast.style.background = 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)';
+    toast.style.background = 'var(--theme-toast-info-bg)';
     toast.style.color = 'white';
   }
 
