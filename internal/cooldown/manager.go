@@ -1,12 +1,14 @@
 package cooldown
 
 import (
+	"context"
+	"log"
+	"strings"
+	"time"
+
 	"ccLoad/internal/model"
 	"ccLoad/internal/storage"
 	"ccLoad/internal/util"
-	"context"
-	"log"
-	"time"
 )
 
 // Action 冷却后的建议行动
@@ -92,13 +94,18 @@ func (m *Manager) HandleError(
 
 	// 1. 区分网络错误和HTTP错误的分类策略
 	if isNetworkError {
-		// [INFO] 网络错误特殊处理: 区分首字节超时、整体超时以及普通网络波动
+		// [INFO] 网络错误特殊处理: 区分首字节超时、整体超时、上游异常以及普通网络波动
 		// util.StatusFirstByteTimeout (598) → 渠道级错误（首字节超时，固定1分钟冷却）
 		// 504 Gateway Timeout → 渠道级错误（上游整体超时）
+		// 空响应/HTTP2流错误等 → 渠道级错误（上游服务异常）
 		// 其他可重试错误(502等) → 默认Key级错误（可能只是单个Key的连接问题）
 		if statusCode == util.StatusFirstByteTimeout || statusCode == 504 {
 			errLevel = util.ErrorLevelChannel
 			log.Printf("[COOLDOWN] 网络错误分类: 状态码=%d → Channel级(首字节超时/整体超时)", statusCode)
+		} else if isUpstreamServiceError(errorBody) {
+			// [FIX] 检测上游服务异常（空响应、HTTP2流错误等），应触发渠道级冷却
+			errLevel = util.ErrorLevelChannel
+			log.Printf("[COOLDOWN] 网络错误分类: 状态码=%d → Channel级(上游服务异常)", statusCode)
 		} else {
 			errLevel = util.ErrorLevelKey
 			log.Printf("[COOLDOWN] 网络错误分类: 状态码=%d → Key级(普通网络波动)", statusCode)
@@ -306,4 +313,45 @@ func (m *Manager) notifyKeyCooldown(ctx context.Context, channelID int64, keyInd
 		}
 	}
 	m.onKeyCooldown(channelID, channelName, keyIndex, until, statusCode)
+}
+
+// isUpstreamServiceError 检测是否为上游服务异常（需要渠道级冷却）
+// 通过分析错误体内容，识别以下场景：
+// - 空响应：上游返回 200 OK 但 Content-Length=0（CDN/代理异常）
+// - HTTP/2 流错误：上游主动关闭连接（服务崩溃/过载）
+// - 连接被拒绝：上游服务不可用
+func isUpstreamServiceError(errorBody []byte) bool {
+	if len(errorBody) == 0 {
+		return false
+	}
+
+	errLower := strings.ToLower(string(errorBody))
+
+	// 空响应检测：上游返回200但body为空
+	// 常见于CDN错误、认证失败、服务异常等
+	if strings.Contains(errLower, "empty response") &&
+		strings.Contains(errLower, "content-length: 0") {
+		return true
+	}
+
+	// HTTP/2 流错误：上游服务器主动关闭流或内部错误
+	// 常见于：负载过高、服务崩溃、CDN超时
+	if strings.Contains(errLower, "http2: response body closed") ||
+		strings.Contains(errLower, "stream error:") {
+		return true
+	}
+
+	// 连接被拒绝：上游服务完全不可用
+	if strings.Contains(errLower, "connection refused") {
+		return true
+	}
+
+	// DNS/路由错误：网络层面不可达
+	if strings.Contains(errLower, "no such host") ||
+		strings.Contains(errLower, "host unreachable") ||
+		strings.Contains(errLower, "no route to host") {
+		return true
+	}
+
+	return false
 }
