@@ -28,6 +28,7 @@ const (
 
 // buildProxyRequest 构建上游代理请求（统一处理URL、Header、认证）
 // 从proxy.go提取，遵循SRP原则
+// codexHeaders: Codex 渠道的额外请求头（非 Codex 渠道传 nil）
 func (s *Server) buildProxyRequest(
 	reqCtx *requestContext,
 	cfg *model.Config,
@@ -36,6 +37,7 @@ func (s *Server) buildProxyRequest(
 	body []byte,
 	hdr http.Header,
 	rawQuery, requestPath string,
+	codexHeaders *CodexExtraHeaders,
 ) (*http.Request, error) {
 	// 1. 构建完整 URL
 	upstreamURL := buildUpstreamURL(cfg, requestPath, rawQuery)
@@ -50,7 +52,13 @@ func (s *Server) buildProxyRequest(
 	copyRequestHeaders(req, hdr)
 
 	// 4. 注入认证头
-	injectAPIKeyHeaders(req, apiKey, requestPath)
+	if codexHeaders != nil {
+		// Codex 渠道使用专用头注入
+		injectCodexHeaders(req, apiKey, codexHeaders)
+	} else {
+		// 其他渠道使用通用头注入
+		injectAPIKeyHeaders(req, apiKey, requestPath)
+	}
 
 	return req, nil
 }
@@ -145,6 +153,13 @@ func (s *Server) handleErrorResponse(
 // streamAndParseResponse 根据Content-Type选择合适的流式传输策略并解析usage
 // 返回: (usageParser, streamErr)
 func streamAndParseResponse(ctx context.Context, body io.ReadCloser, w http.ResponseWriter, contentType string, channelType string, isStreaming bool) (usageParser, error) {
+	// [INFO] Codex 渠道: 需要将 Codex SSE 转换为 OpenAI SSE 格式
+	if channelType == util.ChannelTypeCodex && strings.Contains(contentType, "text/event-stream") {
+		transformer, err := StreamCopyCodexSSE(ctx, body, w)
+		// 使用 codexUsageAdapter 包装 transformer 以实现 usageParser 接口
+		return &codexUsageAdapter{transformer: transformer}, err
+	}
+
 	// SSE流式响应
 	if strings.Contains(contentType, "text/event-stream") {
 		parser := newSSEUsageParser(channelType)
@@ -363,13 +378,14 @@ func (s *Server) handleResponse(
 // 从proxy.go提取，遵循SRP原则
 // 参数新增 apiKey 用于直接传递已选中的API Key（从KeySelector获取）
 // 参数新增 method 用于支持任意HTTP方法（GET、POST、PUT、DELETE等）
-func (s *Server) forwardOnceAsync(ctx context.Context, cfg *model.Config, apiKey string, method string, body []byte, hdr http.Header, rawQuery, requestPath string, w http.ResponseWriter) (*fwResult, float64, error) {
+// 参数新增 codexHeaders 用于 Codex 渠道的额外请求头（非 Codex 渠道传 nil）
+func (s *Server) forwardOnceAsync(ctx context.Context, cfg *model.Config, apiKey string, method string, body []byte, hdr http.Header, rawQuery, requestPath string, w http.ResponseWriter, codexHeaders *CodexExtraHeaders) (*fwResult, float64, error) {
 	// 1. 创建请求上下文（处理超时）
 	reqCtx := s.newRequestContext(ctx, requestPath, body)
 	defer reqCtx.cleanup() // [INFO] 统一清理：定时器 + context（总是安全）
 
 	// 2. 构建上游请求
-	req, err := s.buildProxyRequest(reqCtx, cfg, apiKey, method, body, hdr, rawQuery, requestPath)
+	req, err := s.buildProxyRequest(reqCtx, cfg, apiKey, method, body, hdr, rawQuery, requestPath, codexHeaders)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -441,8 +457,9 @@ func (s *Server) forwardAttempt(
 	}
 
 	// 转发请求（传递实际的API Key字符串）
+	// [INFO] Codex 渠道额外传递 codexHeaders
 	res, duration, err := s.forwardOnceAsync(ctx, cfg, selectedKey, reqCtx.requestMethod,
-		bodyToSend, reqCtx.header, reqCtx.rawQuery, reqCtx.requestPath, w)
+		bodyToSend, reqCtx.header, reqCtx.rawQuery, reqCtx.requestPath, w, reqCtx.codexHeaders)
 
 	// 处理网络错误或异常响应（如空响应）
 	// [INFO] 修复：handleResponse可能返回err即使StatusCode=200（例如Content-Length=0）
@@ -533,6 +550,19 @@ func (s *Server) tryChannelWithKeys(ctx context.Context, cfg *model.Config, reqC
 	// [INFO] 修复：保存重定向后的模型名称，用于日志记录和调试
 	actualModel, bodyToSend := prepareRequestBody(cfg, reqCtx)
 
+	// [INFO] Codex 渠道预处理：转换请求体格式（在 Key 循环外执行，避免重复转换）
+	isCodexChannel := cfg.ChannelType == util.ChannelTypeCodex
+	if isCodexChannel {
+		reqCtx.isCodex = true
+		// 转换请求体到 Codex 格式
+		codexBody, err := TransformCodexRequestBody(bodyToSend)
+		if err != nil {
+			log.Printf("[ERROR] [Codex] 请求体转换失败: %v", err)
+			return nil, fmt.Errorf("codex request transform failed: %w", err)
+		}
+		bodyToSend = codexBody
+	}
+
 	// Key重试循环
 	for range maxKeyRetries {
 		// 选择可用的API Key（直接传入apiKeys，避免重复查询）
@@ -545,10 +575,33 @@ func (s *Server) tryChannelWithKeys(ctx context.Context, cfg *model.Config, reqC
 		// 标记Key为已尝试
 		triedKeys[keyIndex] = true
 
+		// [INFO] Codex 渠道：解析 OAuth Token 并刷新（如果需要）
+		actualKey := selectedKey
+		if isCodexChannel {
+			_, oauthToken, isOAuth := ParseAPIKeyOrOAuth(selectedKey)
+			if !isOAuth {
+				// 不是 OAuth 格式，跳过此 key
+				log.Printf("[WARN] [Codex] Key#%d 不是 OAuth 格式，跳过", keyIndex)
+				continue
+			}
+
+			// 检查并刷新 Token
+			refreshedKey, refreshedToken, err := s.RefreshCodexTokenIfNeeded(ctx, cfg.ID, keyIndex, oauthToken)
+			if err != nil {
+				log.Printf("[ERROR] [Codex] Token 刷新失败: %v", err)
+				continue
+			}
+
+			actualKey = refreshedKey
+			reqCtx.codexToken = refreshedToken
+			// 生成新的请求头（每次请求使用新的 UUID）
+			reqCtx.codexHeaders = NewCodexExtraHeaders(refreshedToken.AccountID)
+		}
+
 		// 单次转发尝试（传递实际的API Key字符串）
 		// [INFO] 修复：传递 actualModel 用于日志记录
 		result, shouldContinue, shouldBreak := s.forwardAttempt(
-			ctx, cfg, keyIndex, selectedKey, reqCtx, actualModel, bodyToSend, w)
+			ctx, cfg, keyIndex, actualKey, reqCtx, actualModel, bodyToSend, w)
 
 		// 如果返回了结果，直接返回
 		if result != nil {

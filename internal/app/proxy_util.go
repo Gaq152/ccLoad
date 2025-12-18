@@ -69,6 +69,11 @@ type proxyRequestContext struct {
 	tokenHash     string // Token哈希值（用于统计，2025-11新增）
 	tokenID       int64  // Token ID（用于日志记录，2025-12新增，0表示未使用token）
 	clientIP      string // 客户端IP地址（用于日志记录，2025-12新增）
+
+	// Codex 专用字段（2025-12新增）
+	isCodex       bool              // 是否为 Codex 渠道
+	codexToken    *CodexOAuthToken  // Codex OAuth Token（解析后）
+	codexHeaders  *CodexExtraHeaders // Codex 额外请求头
 }
 
 // proxyResult 代理请求结果
@@ -486,6 +491,33 @@ func parseTimeout(q map[string][]string, h http.Header) time.Duration {
 // ============================================================================
 // Gemini相关工具函数
 // ============================================================================
+
+// injectCodexHeaders 注入 Codex 特有的请求头
+// 在基础的 Authorization 头之外，注入 Codex API 所需的额外头信息
+func injectCodexHeaders(req *http.Request, apiKey string, headers *CodexExtraHeaders) {
+	// 基础认证头
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+
+	// Codex 特有头
+	if headers != nil {
+		if headers.AccountID != "" {
+			req.Header.Set("chatgpt-account-id", headers.AccountID)
+		}
+		if headers.ConversationID != "" {
+			req.Header.Set("conversation_id", headers.ConversationID)
+		}
+		if headers.SessionID != "" {
+			req.Header.Set("session_id", headers.SessionID)
+		}
+	}
+
+	// Codex CLI 标识（模拟官方客户端）
+	req.Header.Set("version", "0.72.0")
+	req.Header.Set("originator", "codex_cli_rs")
+
+	// SSE 流式响应
+	req.Header.Set("Accept", "text/event-stream")
+}
 
 // formatModelDisplayName 将模型ID转换为友好的显示名称
 func formatModelDisplayName(modelID string) string {

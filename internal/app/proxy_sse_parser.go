@@ -124,8 +124,11 @@ func (p *sseUsageParser) parseBuffer() error {
 
 		if after, ok := strings.CutPrefix(line, "event:"); ok {
 			p.eventType = strings.TrimSpace(after)
-			// [INFO] Anthropic 流结束标志: event: message_stop
-			if p.eventType == "message_stop" {
+			// [INFO] 流结束标志检测
+			// Anthropic: event: message_stop
+			// Codex: event: response.output_text.done 或 event: response.completed
+			switch p.eventType {
+			case "message_stop", "response.output_text.done", "response.completed":
 				p.streamComplete = true
 			}
 		} else if after0, ok0 := strings.CutPrefix(line, "data:"); ok0 {
@@ -290,6 +293,39 @@ func (p *jsonUsageParser) GetLastError() []byte {
 // [INFO] IsStreamComplete 返回false（非流式请求无结束标志概念）
 func (p *jsonUsageParser) IsStreamComplete() bool {
 	return false // JSON解析器不处理流结束标志
+}
+
+// ============================================================================
+// Codex Usage 适配器
+// ============================================================================
+
+// codexUsageAdapter 将 CodexSSETransformer 适配为 usageParser 接口
+type codexUsageAdapter struct {
+	transformer *CodexSSETransformer
+}
+
+func (a *codexUsageAdapter) Feed(_ []byte) error {
+	// Codex transformer 在 StreamCopyCodexSSE 中已经处理了数据
+	// 这里不需要额外处理
+	return nil
+}
+
+func (a *codexUsageAdapter) GetUsage() (inputTokens, outputTokens, cacheRead, cacheCreation int) {
+	if a.transformer == nil {
+		return 0, 0, 0, 0
+	}
+	input, output := a.transformer.GetUsage()
+	return input, output, 0, 0 // Codex 暂不支持缓存统计
+}
+
+func (a *codexUsageAdapter) GetLastError() []byte {
+	return nil // Codex transformer 不处理 error 事件
+}
+
+func (a *codexUsageAdapter) IsStreamComplete() bool {
+	// Codex 流完成由 response.completed 事件标识
+	// transformer 已经发送了 [DONE]，视为完成
+	return true
 }
 
 func (u *usageAccumulator) applyUsage(usage map[string]any, channelType string) {

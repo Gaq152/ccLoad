@@ -109,6 +109,7 @@ func TestBuildProxyRequest(t *testing.T) {
 		http.Header{"User-Agent": []string{"test"}},
 		"",
 		"/v1/messages",
+		nil, // codexHeaders
 	)
 
 	if err != nil {
@@ -242,6 +243,7 @@ func TestForwardOnceAsync_Integration(t *testing.T) {
 			"",
 			"/v1/messages",
 			recorder,
+			nil, // codexHeaders
 		)
 
 		if err != nil {
@@ -274,6 +276,7 @@ func TestForwardOnceAsync_Integration(t *testing.T) {
 			"",
 			"/v1/messages",
 			recorder,
+			nil, // codexHeaders
 		)
 
 		if err != nil {
@@ -364,6 +367,7 @@ func TestClientCancelClosesUpstream(t *testing.T) {
 			"",
 			"/v1/messages",
 			recorder,
+			nil, // codexHeaders
 		)
 		resultChan <- struct {
 			result   *fwResult
@@ -446,6 +450,7 @@ func TestNoGoroutineLeak(t *testing.T) {
 				"",
 				"/v1/messages",
 				recorder,
+				nil, // codexHeaders
 			)
 		}
 
@@ -481,7 +486,7 @@ func TestNoGoroutineLeak(t *testing.T) {
 				cancel()
 			}()
 
-			srv.forwardOnceAsync(ctx, cfg, "sk-test", http.MethodPost, []byte(`{}`), http.Header{}, "", "/v1/messages", recorder)
+			srv.forwardOnceAsync(ctx, cfg, "sk-test", http.MethodPost, []byte(`{}`), http.Header{}, "", "/v1/messages", recorder, nil)
 		}
 
 		runtime.GC()
@@ -518,6 +523,7 @@ func TestNoGoroutineLeak(t *testing.T) {
 				"",
 				"/v1/messages",
 				recorder,
+				nil, // codexHeaders
 			)
 		}
 
