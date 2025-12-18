@@ -3,6 +3,7 @@ async function loadChannels(type = 'all', forceRefresh = false) {
     // 如果不是强制刷新且有缓存，使用缓存
     if (!forceRefresh && channelsCache[type]) {
       channels = channelsCache[type];
+      window.channels = channels; // 暴露到全局
       updateModelOptions();
       filterChannels();
       return;
@@ -16,6 +17,7 @@ async function loadChannels(type = 'all', forceRefresh = false) {
 
     channelsCache[type] = data;
     channels = data;
+    window.channels = data; // 暴露到全局供 QuotaManager 等使用
 
     updateModelOptions();
     filterChannels();
