@@ -32,22 +32,15 @@ func TestChannelRequestValidation_ChannelType(t *testing.T) {
 			wantNormalized: "anthropic",
 		},
 		{
-			name:        "openai 应该通过",
-			channelType: "openai",
-			wantErr:     false,
-			wantNormalized: "openai",
-		},
-		{
 			name:        "gemini 应该通过",
 			channelType: "gemini",
 			wantErr:     false,
 			wantNormalized: "gemini",
 		},
 		{
-			name:        "codex 应该通过",
+			name:        "codex 无 preset 应该拒绝",
 			channelType: "codex",
-			wantErr:     false,
-			wantNormalized: "codex",
+			wantErr:     true,
 		},
 		{
 			name:        "带空格的 anthropic 应该 trim 并通过",
@@ -88,7 +81,12 @@ func TestChannelRequestValidation_ChannelType(t *testing.T) {
 			}
 
 			if tt.wantErr && err != nil {
-				if !strings.Contains(err.Error(), "invalid channel_type") {
+				// codex 无 preset 的错误信息不同
+				if tt.channelType == "codex" {
+					if !strings.Contains(err.Error(), "Codex") {
+						t.Errorf("错误信息应该包含 'Codex', got: %v", err)
+					}
+				} else if !strings.Contains(err.Error(), "invalid channel_type") {
 					t.Errorf("错误信息应该包含 'invalid channel_type', got: %v", err)
 				}
 			}
