@@ -115,7 +115,7 @@
           <div style="display: flex; gap: 12px; align-items: center; justify-content: space-between;">
             <div style="display: flex; align-items: center; gap: 8px; flex: 0 0 auto;">
               <label class="form-label" style="margin: 0; white-space: nowrap;">渠道名称 *</label>
-              <input type="text" id="channelName" class="form-input" required style="width: 200px;">
+              <input type="text" id="channelName" class="form-input" required maxlength="20" style="width: 200px;" placeholder="最多20字符">
             </div>
 
             <div style="display: flex; align-items: center; gap: 20px;">
@@ -305,6 +305,86 @@
             </table>
           </div>
         </div>
+
+        <!-- 用量监控配置（可选） -->
+        <div class="form-group">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <label class="form-label" style="margin: 0; display: flex; align-items: center; gap: 8px;">
+              <span>用量监控（可选）</span>
+              <label class="toggle-switch" style="margin: 0;">
+                <input type="checkbox" id="quotaEnabled" onchange="toggleQuotaConfig()">
+                <span class="toggle-slider"></span>
+              </label>
+            </label>
+            <button type="button" id="quotaTestBtn" class="btn btn-secondary btn-sm" onclick="testQuotaFetch()" style="padding: 5px 10px; font-size: 12px; display: none;">
+              测试获取
+            </button>
+          </div>
+
+          <div id="quotaConfigPanel" style="display: none; padding: 12px; border: 1px solid var(--neutral-200); border-radius: 8px; background: var(--neutral-50);">
+            <!-- 模板选择器 -->
+            <div style="margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px dashed var(--neutral-200);">
+              <label style="font-size: 12px; color: var(--neutral-600); margin-bottom: 4px; display: block;">快速填充模板</label>
+              <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                <button type="button" class="btn btn-secondary btn-sm" onclick="applyQuotaTemplate('newapi')" style="padding: 4px 10px; font-size: 12px;">
+                  NEWAPI
+                </button>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="applyQuotaTemplate('veloera')" style="padding: 4px 10px; font-size: 12px;">
+                  Veloera
+                </button>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="applyQuotaTemplate('oneapi')" style="padding: 4px 10px; font-size: 12px;">
+                  OneAPI
+                </button>
+                <span style="font-size: 11px; color: var(--neutral-400); align-self: center; margin-left: 8px;">选择后请替换占位符</span>
+              </div>
+            </div>
+
+            <div style="display: flex; gap: 12px; margin-bottom: 12px;">
+              <div style="flex: 1;">
+                <label style="font-size: 12px; color: var(--neutral-600); margin-bottom: 4px; display: block;">请求URL *</label>
+                <input type="text" id="quotaUrl" class="form-input" placeholder="https://api.example.com/quota" style="font-size: 13px;">
+              </div>
+              <div style="width: 100px;">
+                <label style="font-size: 12px; color: var(--neutral-600); margin-bottom: 4px; display: block;">方法</label>
+                <select id="quotaMethod" class="form-input" style="font-size: 13px;">
+                  <option value="GET">GET</option>
+                  <option value="POST">POST</option>
+                </select>
+              </div>
+              <div style="width: 120px;">
+                <label style="font-size: 12px; color: var(--neutral-600); margin-bottom: 4px; display: block;">轮询间隔</label>
+                <select id="quotaInterval" class="form-input" style="font-size: 13px;">
+                  <option value="60">1分钟</option>
+                  <option value="300" selected>5分钟</option>
+                  <option value="600">10分钟</option>
+                  <option value="1800">30分钟</option>
+                </select>
+              </div>
+            </div>
+
+            <div style="margin-bottom: 12px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <label style="font-size: 12px; color: var(--neutral-600);">请求头（可选）</label>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="addQuotaHeader()" style="padding: 2px 8px; font-size: 11px;">+ 添加</button>
+              </div>
+              <div id="quotaHeadersContainer" style="max-height: 100px; overflow-y: auto;"></div>
+            </div>
+
+            <div>
+              <label style="font-size: 12px; color: var(--neutral-600); margin-bottom: 4px; display: block;">提取器脚本 * <span style="color: var(--warning-600); font-size: 11px;">(脚本在本地浏览器运行)</span></label>
+              <textarea id="quotaExtractor" class="form-input" rows="6" placeholder="// 提取器函数，返回 {isValid, remaining, unit}
+function(response) {
+    const data = JSON.parse(response);
+    return {
+        isValid: true,
+        remaining: data.credits,
+        unit: 'USD'
+    };
+}" style="font-family: 'Monaco', 'Menlo', 'Consolas', monospace; font-size: 12px; line-height: 1.4;"></textarea>
+            </div>
+          </div>
+        </div>
+
         <div class="form-group">
           <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
             <label class="form-label" style="margin: 0;">
@@ -538,7 +618,7 @@
   </template>
 
   <template id="tpl-cooldown-badge">
-    <span style="color: #dc2626; font-size: 12px; font-weight: 500; background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%); padding: 2px 8px; border-radius: 4px; border: 1px solid #fca5a5; white-space: nowrap;">⚠️ 冷却中·{{text}}</span>
+    <span style="color: var(--theme-badge-error-text); font-size: 11px; font-weight: 600; background: var(--theme-badge-error-bg-gradient); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--theme-badge-error-border); white-space: nowrap; font-family: monospace;">⏱{{text}}</span>
   </template>
 
   <template id="tpl-key-normal-status">
@@ -577,25 +657,49 @@
   <!-- 渠道卡片模板 -->
   <template id="tpl-channel-card">
     <div class="{{cardClasses}}" id="channel-{{id}}" data-channel-id="{{id}}">
-      <div class="flex justify-between items-center">
-        <div style="flex: 1;">
-          <div class="section-title">
-            {{name}} {{{typeBadge}}}
-            <span style="color: var(--neutral-500); font-size: 0.875rem; font-weight: 400;">(ID: {{id}})</span>
-            <span style="color: var(--neutral-600); font-size: 1rem; font-weight: 400; display: inline-block; max-width: 1100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom;" title="{{modelsText}}">模型: {{modelsText}}</span>
-          </div>
-          <div class="text-sm" style="color: var(--neutral-600); margin-top: 4px;">
-            <div class="channel-meta-line">
-              <span>URL: {{url}}<span class="latency-badge-container">{{{latencyBadge}}}</span><button type="button" class="endpoint-manage-btn" data-action="endpoints" data-channel-id="{{id}}" title="管理与测速">⚡ 管理</button> | 优先级: {{priority}} | {{statusText}}<span class="cooldown-badge-container" data-channel-id="{{id}}">{{{cooldownBadge}}}</span></span>
-              {{{statsHtml}}}
-            </div>
-          </div>
+      <div class="channel-row">
+        <!-- 渠道名称（固定宽度，悬浮显示完整名称和模型） -->
+        <div class="channel-col col-name" title="{{name}}&#10;模型: {{modelsText}}">
+          <span class="channel-name-text">{{name}}</span>
+          {{{typeBadge}}}
+          <span class="channel-id">#{{id}}</span>
         </div>
-        <div class="channel-actions">
+        <!-- URL（固定宽度） -->
+        <div class="channel-col col-url" title="{{url}}">
+          <span class="channel-url-text">{{url}}</span>
+        </div>
+        <!-- 延迟（固定宽度） -->
+        <div class="channel-col col-latency">
+          <span class="latency-badge-container">{{{latencyBadge}}}</span>
+        </div>
+        <!-- 管理按钮（固定宽度） -->
+        <div class="channel-col col-manage">
+          <button type="button" class="endpoint-manage-btn" data-action="endpoints" data-channel-id="{{id}}" title="管理与测速">⚡管理</button>
+        </div>
+        <!-- 优先级（固定宽度） -->
+        <div class="channel-col col-priority">
+          <span class="col-label">优先级</span>
+          <span class="col-value">{{priority}}</span>
+        </div>
+        <!-- 状态（固定宽度） -->
+        <div class="channel-col col-status">
+          <span class="col-value {{statusClass}}">{{statusText}}</span>
+          <span class="cooldown-badge-container" data-channel-id="{{id}}">{{{cooldownBadge}}}</span>
+        </div>
+        <!-- 用量（固定宽度） -->
+        <div class="channel-col col-quota">
+          <span class="channel-quota-badge"></span>
+        </div>
+        <!-- 统计数据 -->
+        <div class="channel-col col-stats">
+          {{{statsHtml}}}
+        </div>
+        <!-- 操作按钮 -->
+        <div class="channel-col col-actions">
           <button class="btn-icon channel-action-btn" data-action="edit" data-channel-id="{{id}}" title="编辑">编辑</button>
-          <button class="btn-icon channel-action-btn" data-action="test" data-channel-id="{{id}}" data-channel-name="{{name}}" title="测试API Key">测试</button>
+          <button class="btn-icon channel-action-btn" data-action="test" data-channel-id="{{id}}" data-channel-name="{{name}}" title="测试">测试</button>
           <button class="btn-icon channel-action-btn" data-action="toggle" data-channel-id="{{id}}" data-enabled="{{enabled}}" title="{{toggleTitle}}">{{toggleText}}</button>
-          <button class="btn-icon channel-action-btn" data-action="copy" data-channel-id="{{id}}" data-channel-name="{{name}}" title="复制渠道">复制</button>
+          <button class="btn-icon channel-action-btn" data-action="copy" data-channel-id="{{id}}" data-channel-name="{{name}}" title="复制">复制</button>
           <button class="btn-icon btn-danger channel-action-btn" data-action="delete" data-channel-id="{{id}}" data-channel-name="{{name}}" title="删除">删除</button>
         </div>
       </div>
@@ -724,6 +828,7 @@
   <script src="/web/assets/js/channels-keys.js"></script>
   <script src="/web/assets/js/channels-inline-endpoints.js"></script>
   <script src="/web/assets/js/channels-modals.js"></script>
+  <script src="/web/assets/js/channels-quota.js"></script>
   <script src="/web/assets/js/channels-endpoints.js"></script>
   <script src="/web/assets/js/channels-test.js"></script>
   <script src="/web/assets/js/ui.js"></script>
