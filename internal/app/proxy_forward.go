@@ -575,13 +575,14 @@ func (s *Server) tryChannelWithKeys(ctx context.Context, cfg *model.Config, reqC
 		// 标记Key为已尝试
 		triedKeys[keyIndex] = true
 
-		// [INFO] Codex 渠道：解析 OAuth Token 并刷新（如果需要）
+		// [INFO] Codex 渠道：根据预设类型处理认证
 		actualKey := selectedKey
-		if isCodexChannel {
+		if isCodexChannel && cfg.Preset == "official" {
+			// 官方预设：使用 OAuth Token，需要解析和刷新
 			_, oauthToken, isOAuth := ParseAPIKeyOrOAuth(selectedKey)
 			if !isOAuth {
-				// 不是 OAuth 格式，跳过此 key
-				log.Printf("[WARN] [Codex] Key#%d 不是 OAuth 格式，跳过", keyIndex)
+				// 官方预设必须使用 OAuth 格式
+				log.Printf("[WARN] [Codex] 官方预设 Key#%d 不是 OAuth 格式，跳过", keyIndex)
 				continue
 			}
 
@@ -597,6 +598,7 @@ func (s *Server) tryChannelWithKeys(ctx context.Context, cfg *model.Config, reqC
 			// 生成新的请求头（每次请求使用新的 UUID）
 			reqCtx.codexHeaders = NewCodexExtraHeaders(refreshedToken.AccountID)
 		}
+		// 自定义预设或其他：直接使用普通 API Key，无需特殊处理
 
 		// 单次转发尝试（传递实际的API Key字符串）
 		// [INFO] 修复：传递 actualModel 用于日志记录
