@@ -45,6 +45,8 @@ var basePricing = map[string]ModelPricing{
 	"claude-haiku":  {InputPrice: 1.00, OutputPrice: 5.00},
 
 	// ========== OpenAI GPT系列 ==========
+	"gpt-5.2":        {InputPrice: 1.75, OutputPrice: 14.00},
+	"gpt-5.2-pro":    {InputPrice: 21.00, OutputPrice: 168.00},
 	"gpt-5":          {InputPrice: 1.25, OutputPrice: 10.00},
 	"gpt-5-mini":     {InputPrice: 0.25, OutputPrice: 2.00},
 	"gpt-5-nano":     {InputPrice: 0.05, OutputPrice: 0.40},
@@ -119,10 +121,13 @@ var modelAliases = map[string]string{
 	"claude-3-haiku-latest":      "claude-3-haiku",
 
 	// OpenAI GPT别名
+	"gpt-5.2-codex":              "gpt-5.2",
+	"gpt-5.2-chat-latest":        "gpt-5.2",
 	"gpt-5.1":                    "gpt-5",
 	"gpt-5.1-chat-latest":        "gpt-5",
 	"gpt-5-chat-latest":          "gpt-5",
 	"gpt-5.1-codex":              "gpt-5",
+	"gpt-5.1-codex-max":          "gpt-5",
 	"gpt-5-codex":                "gpt-5",
 	"gpt-5.1-codex-mini":         "gpt-5-mini",
 	"gpt-5-search-api":           "gpt-5",
@@ -351,6 +356,7 @@ func fuzzyMatchModel(model string) (ModelPricing, bool) {
 		"gemini-3-pro", "gemini-1.5-pro", "gemini-1.5-flash",
 
 		// OpenAI GPT系列（更长的前缀优先，避免gpt-4o-legacy被gpt-4o截断）
+		"gpt-5.2-pro", "gpt-5.2", // 5.2系列必须在5.x之前
 		"gpt-5-pro", "gpt-5-nano", "gpt-5-mini", "gpt-5",
 		"gpt-4.1-nano", "gpt-4.1-mini", "gpt-4.1",
 		"gpt-4o-legacy", "gpt-4o-mini", "gpt-4o", // legacy必须在gpt-4o之前
