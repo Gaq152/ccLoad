@@ -23,6 +23,9 @@ type Config struct {
 	AutoSelectEndpoint bool              `json:"auto_select_endpoint"` // 自动选择最快端点
 	Endpoints          []ChannelEndpoint `json:"endpoints,omitempty"`  // 端点列表（查询时填充）
 
+	// 用量监控配置（2025-12新增）
+	QuotaConfig *QuotaConfig `json:"quota_config,omitempty"` // 用量查询配置
+
 	CreatedAt JSONTime `json:"created_at"` // 使用JSONTime确保序列化格式一致（RFC3339）
 	UpdatedAt JSONTime `json:"updated_at"` // 使用JSONTime确保序列化格式一致（RFC3339）
 
@@ -102,4 +105,32 @@ func (k *APIKey) IsCoolingDown(now time.Time) bool {
 type ChannelWithKeys struct {
 	Config  *Config  `json:"config"`
 	APIKeys []APIKey `json:"api_keys"` // 不使用指针避免额外分配
+}
+
+// QuotaConfig 渠道用量查询配置
+// 用于定期从外部API获取渠道的剩余额度/用量信息
+type QuotaConfig struct {
+	Enabled         bool              `json:"enabled"`           // 是否启用用量监控
+	RequestURL      string            `json:"request_url"`       // 请求URL
+	RequestMethod   string            `json:"request_method"`    // HTTP方法: GET/POST
+	RequestHeaders  map[string]string `json:"request_headers"`   // 请求头（如Authorization）
+	RequestBody     string            `json:"request_body"`      // POST请求体（可选）
+	ExtractorScript string            `json:"extractor_script"`  // JS提取器脚本（在前端执行）
+	IntervalSeconds int               `json:"interval_seconds"`  // 轮询间隔（秒），默认300
+}
+
+// GetIntervalSeconds 返回轮询间隔，默认300秒（5分钟）
+func (q *QuotaConfig) GetIntervalSeconds() int {
+	if q.IntervalSeconds <= 0 {
+		return 300
+	}
+	return q.IntervalSeconds
+}
+
+// GetRequestMethod 返回HTTP方法，默认GET
+func (q *QuotaConfig) GetRequestMethod() string {
+	if q.RequestMethod == "" {
+		return "GET"
+	}
+	return q.RequestMethod
 }
