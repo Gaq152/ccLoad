@@ -12,6 +12,54 @@ const CHANNEL_TYPES = [
   { type: 'gemini', name: 'Google' }
 ];
 
+// 缓存配置
+const INDEX_CACHE_KEY = 'index_dashboard_cache_v1';
+const INDEX_CACHE_DURATION = 30; // 30秒
+
+// 从 localStorage 加载缓存
+function loadIndexCache() {
+  try {
+    const stored = localStorage.getItem(INDEX_CACHE_KEY);
+    if (stored) return JSON.parse(stored);
+  } catch (e) {
+    console.warn('[Dashboard] 读取缓存失败:', e);
+  }
+  return null;
+}
+
+// 保存缓存到 localStorage
+function saveIndexCache(timeRange, statsData, channelsData) {
+  try {
+    const cache = {
+      timeRange: timeRange,
+      stats: statsData,
+      channels: channelsData,
+      fetchedAt: Date.now()
+    };
+    localStorage.setItem(INDEX_CACHE_KEY, JSON.stringify(cache));
+  } catch (e) {
+    console.warn('[Dashboard] 保存缓存失败:', e);
+  }
+}
+
+// 检查缓存是否有效
+function isIndexCacheValid(cache, timeRange) {
+  if (!cache || !cache.fetchedAt || cache.timeRange !== timeRange) return false;
+  const elapsed = (Date.now() - cache.fetchedAt) / 1000;
+  return elapsed < INDEX_CACHE_DURATION;
+}
+
+// 获取缓存剩余时间（秒）
+function getIndexCacheRemaining(cache) {
+  if (!cache || !cache.fetchedAt) return 0;
+  const elapsed = (Date.now() - cache.fetchedAt) / 1000;
+  return Math.max(0, Math.floor(INDEX_CACHE_DURATION - elapsed));
+}
+
+// 缓存的数据（用于保存）
+let lastStatsData = null;
+let lastChannelsData = null;
+
 // 格式化数字
 function formatNumber(num) {
   if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
@@ -26,6 +74,7 @@ async function loadStats() {
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const responseData = await response.json();
     const data = responseData.success ? (responseData.data || responseData) : responseData;
+    lastStatsData = data; // 保存用于缓存
     updateStatsDisplay(data);
   } catch (error) {
     console.error('加载统计失败:', error);
@@ -70,6 +119,7 @@ async function loadChannelStatus() {
     if (!response.ok) return;
     const result = await response.json();
     const channels = result.success ? result.data : result;
+    lastChannelsData = channels; // 保存用于缓存
 
     const list = document.getElementById('channel-status-list');
     if (!channels || channels.length === 0) {
@@ -273,7 +323,48 @@ async function refreshAll() {
     loadStats(),
     loadChannelStatus()
   ]);
+  // 保存缓存
+  if (lastStatsData && lastChannelsData) {
+    saveIndexCache(window.currentTimeRange, lastStatsData, lastChannelsData);
+  }
   refreshCountdown = 30;
+}
+
+// 从缓存初始化或刷新
+async function initWithCache() {
+  const cache = loadIndexCache();
+  if (isIndexCacheValid(cache, window.currentTimeRange)) {
+    // 缓存有效，使用缓存数据
+    lastStatsData = cache.stats;
+    lastChannelsData = cache.channels;
+    updateStatsDisplay(cache.stats);
+    renderChannelStatus(cache.channels);
+    refreshCountdown = getIndexCacheRemaining(cache);
+    console.log(`[Dashboard] 使用缓存数据，剩余 ${refreshCountdown}s`);
+  } else {
+    // 缓存无效，重新获取
+    await refreshAll();
+  }
+}
+
+// 渲染渠道状态（从缓存数据）
+function renderChannelStatus(channels) {
+  const list = document.getElementById('channel-status-list');
+  if (!channels || channels.length === 0) {
+    list.innerHTML = '<div class="dash-text-muted" style="padding: 20px; text-align: center;">暂无渠道</div>';
+    return;
+  }
+  list.innerHTML = channels.slice(0, 10).map(ch => {
+    const statusClass = ch.cooldown_remaining_ms > 0 ? 'cooldown' : (ch.enabled ? 'active' : 'error');
+    const statusText = ch.cooldown_remaining_ms > 0 ? '冷却中' : (ch.enabled ? '正常' : '禁用');
+    return `
+      <div class="status-item">
+        <div class="status-icon ${statusClass}"></div>
+        <div class="status-name">${escapeHtml(ch.name)}</div>
+        <div class="status-metric">${statusText}</div>
+      </div>
+    `;
+  }).join('');
 }
 
 // 倒计时
@@ -305,7 +396,8 @@ document.addEventListener('visibilitychange', function() {
   if (document.hidden) {
     if (countdownInterval) clearInterval(countdownInterval);
   } else {
-    refreshAll();
+    // 返回页面时也使用缓存逻辑
+    initWithCache();
     startCountdown();
   }
 });
@@ -315,7 +407,9 @@ document.addEventListener('DOMContentLoaded', async function() {
   if (window.initTopbar) initTopbar('index');
   initTimeRangeButtons();
   connectLogStream();
-  refreshAll();
+  await initWithCache();
+  // 立即更新倒计时显示
+  document.getElementById('refresh-countdown').textContent = refreshCountdown + 's';
   startCountdown();
 
   // 初始化渠道健康矩阵
