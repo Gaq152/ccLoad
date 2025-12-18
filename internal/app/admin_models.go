@@ -21,7 +21,8 @@ import (
 type FetchModelsRequest struct {
 	ChannelType string `json:"channel_type" binding:"required"`
 	URL         string `json:"url" binding:"required"`
-	APIKey      string `json:"api_key" binding:"required"`
+	APIKey      string `json:"api_key"`                       // 普通渠道使用
+	AccessToken string `json:"access_token,omitempty"`        // Codex OAuth 官方预设使用
 }
 
 // FetchModelsResponse 获取模型列表响应
@@ -101,12 +102,28 @@ func (s *Server) HandleFetchModelsPreview(c *gin.Context) {
 	req.ChannelType = strings.TrimSpace(req.ChannelType)
 	req.URL = strings.TrimSpace(req.URL)
 	req.APIKey = strings.TrimSpace(req.APIKey)
-	if req.ChannelType == "" || req.URL == "" || req.APIKey == "" {
-		RespondErrorMsg(c, http.StatusBadRequest, "channel_type、url、api_key为必填字段")
+	req.AccessToken = strings.TrimSpace(req.AccessToken)
+
+	if req.ChannelType == "" || req.URL == "" {
+		RespondErrorMsg(c, http.StatusBadRequest, "channel_type、url为必填字段")
 		return
 	}
 
-	response, err := fetchModelsForConfig(c.Request.Context(), req.ChannelType, req.URL, req.APIKey)
+	// 确定使用哪个认证凭据
+	// Codex 官方预设使用 access_token，其他渠道使用 api_key
+	authKey := req.APIKey
+	if authKey == "" && req.AccessToken != "" {
+		authKey = req.AccessToken
+	}
+
+	// 检查是否需要认证凭据（预定义列表类型不需要）
+	source := determineSource(req.ChannelType)
+	if source == "api" && authKey == "" {
+		RespondErrorMsg(c, http.StatusBadRequest, "该渠道类型需要提供api_key或access_token")
+		return
+	}
+
+	response, err := fetchModelsForConfig(c.Request.Context(), req.ChannelType, req.URL, authKey)
 	if err != nil {
 		// [INFO] 修复：统一返回200，通过success字段区分成功/失败（上游错误是预期内的）
 		c.JSON(http.StatusOK, gin.H{
