@@ -277,8 +277,18 @@ const QuotaManager = {
       }
 
       try {
+        // 解析 body（后端返回的是 JSON 字符串）
+        let responseBody = result.body;
+        if (typeof responseBody === 'string') {
+          try {
+            responseBody = JSON.parse(responseBody);
+          } catch (parseErr) {
+            console.warn(`[QuotaManager] 渠道 ${channelId} body 解析失败，保持原样`);
+          }
+        }
+
         const extractorFn = new Function('response', `return (${extractorScript})(response)`);
-        const quotaData = extractorFn(result.body);
+        const quotaData = extractorFn(responseBody);
 
         if (quotaData) {
           // 更新缓存
