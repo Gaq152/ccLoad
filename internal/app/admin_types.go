@@ -16,7 +16,7 @@ import (
 // ChannelRequest 渠道创建/更新请求结构
 type ChannelRequest struct {
 	Name           string             `json:"name" binding:"required"`
-	APIKey         string             `json:"api_key" binding:"required"`
+	APIKey         string             `json:"api_key"`                // 非官方预设时必填
 	ChannelType    string             `json:"channel_type,omitempty"` // 渠道类型:anthropic, codex, gemini
 	KeyStrategy    string             `json:"key_strategy,omitempty"` // Key使用策略:sequential, round_robin
 	URL            string             `json:"url" binding:"required,url"`
@@ -25,6 +25,15 @@ type ChannelRequest struct {
 	ModelRedirects map[string]string  `json:"model_redirects,omitempty"` // 可选的模型重定向映射
 	Enabled        bool               `json:"enabled"`
 	QuotaConfig    *model.QuotaConfig `json:"quota_config,omitempty"` // 用量监控配置（可选）
+
+	// Codex 预设相关字段（2025-12新增）
+	Preset string `json:"preset,omitempty"` // "official"=官方预设, "custom"=自定义, ""=非Codex渠道
+
+	// OAuth Token 专用字段（仅官方预设使用）
+	AccessToken    string `json:"access_token,omitempty"`
+	IDToken        string `json:"id_token,omitempty"`
+	RefreshToken   string `json:"refresh_token,omitempty"`
+	TokenExpiresAt int64  `json:"token_expires_at,omitempty"` // Unix时间戳
 }
 
 func validateChannelBaseURL(raw string) (string, error) {
@@ -66,9 +75,6 @@ func (cr *ChannelRequest) Validate() error {
 	if strings.TrimSpace(cr.Name) == "" {
 		return fmt.Errorf("name cannot be empty")
 	}
-	if strings.TrimSpace(cr.APIKey) == "" {
-		return fmt.Errorf("api_key cannot be empty")
-	}
 	if len(cr.Models) == 0 {
 		return fmt.Errorf("models cannot be empty")
 	}
@@ -95,6 +101,40 @@ func (cr *ChannelRequest) Validate() error {
 			return fmt.Errorf("invalid channel_type: %q (allowed: anthropic, openai, gemini, codex)", cr.ChannelType)
 		}
 		cr.ChannelType = normalized // 应用标准化结果
+	}
+
+	// [FIX] Codex 预设验证（2025-12新增）
+	// 设计：Codex 渠道必须选择预设类型，官方预设只能用 OAuth，自定义预设只能用 API Key
+	cr.Preset = strings.TrimSpace(cr.Preset)
+	if cr.ChannelType == "codex" {
+		// Codex 渠道必须指定预设
+		if cr.Preset != "official" && cr.Preset != "custom" {
+			return fmt.Errorf("Codex渠道必须选择预设类型 (official 或 custom)")
+		}
+		if cr.Preset == "official" {
+			// 官方预设：必须有 OAuth Token
+			if strings.TrimSpace(cr.AccessToken) == "" {
+				return fmt.Errorf("官方预设必须完成OAuth授权")
+			}
+			// 官方预设不需要 api_key，清空以防误传
+			cr.APIKey = ""
+		} else {
+			// 自定义预设：必须有 API Key
+			if strings.TrimSpace(cr.APIKey) == "" {
+				return fmt.Errorf("自定义预设必须填写API Key")
+			}
+			// 自定义预设不需要 OAuth Token，清空以防误传
+			cr.AccessToken = ""
+			cr.IDToken = ""
+			cr.RefreshToken = ""
+			cr.TokenExpiresAt = 0
+		}
+	} else {
+		// 非 Codex 渠道：必须有 API Key，不使用预设
+		if strings.TrimSpace(cr.APIKey) == "" {
+			return fmt.Errorf("api_key cannot be empty")
+		}
+		cr.Preset = "" // 非 Codex 渠道清空预设
 	}
 
 	// [FIX] key_strategy 白名单校验 + 标准化
@@ -180,6 +220,21 @@ func (cr *ChannelRequest) ToConfig() *model.Config {
 		ModelRedirects: cr.ModelRedirects,
 		Enabled:        cr.Enabled,
 		QuotaConfig:    cr.QuotaConfig, // 用量监控配置
+		Preset:         cr.Preset,      // Codex预设类型
+	}
+}
+
+// ToAPIKey 转换为APIKey结构（支持OAuth Token）
+func (cr *ChannelRequest) ToAPIKey(channelID int64) *model.APIKey {
+	return &model.APIKey{
+		ChannelID:      channelID,
+		KeyIndex:       0,
+		APIKey:         strings.TrimSpace(cr.APIKey),
+		KeyStrategy:    cr.KeyStrategy,
+		AccessToken:    strings.TrimSpace(cr.AccessToken),
+		IDToken:        strings.TrimSpace(cr.IDToken),
+		RefreshToken:   strings.TrimSpace(cr.RefreshToken),
+		TokenExpiresAt: cr.TokenExpiresAt,
 	}
 }
 

@@ -153,25 +153,38 @@ func (s *Server) handleCreateChannel(c *gin.Context) {
 		return
 	}
 
-	// 解析并创建API Keys
-	apiKeys := util.ParseAPIKeys(req.APIKey)
 	keyStrategy := strings.TrimSpace(req.KeyStrategy)
 	if keyStrategy == "" {
 		keyStrategy = model.KeyStrategySequential // 默认策略
 	}
 
 	now := time.Now()
-	for i, key := range apiKeys {
-		apiKey := &model.APIKey{
-			ChannelID:   created.ID,
-			KeyIndex:    i,
-			APIKey:      key,
-			KeyStrategy: keyStrategy,
-			CreatedAt:   model.JSONTime{Time: now},
-			UpdatedAt:   model.JSONTime{Time: now},
-		}
+
+	// 根据预设类型创建 API Key
+	if req.Preset == "official" {
+		// 官方预设：使用 OAuth Token（单个记录）
+		apiKey := req.ToAPIKey(created.ID)
+		apiKey.KeyStrategy = keyStrategy
+		apiKey.CreatedAt = model.JSONTime{Time: now}
+		apiKey.UpdatedAt = model.JSONTime{Time: now}
 		if err := s.store.CreateAPIKey(c.Request.Context(), apiKey); err != nil {
-			log.Printf("[WARN] 创建API Key失败 (channel=%d, index=%d): %v", created.ID, i, err)
+			log.Printf("[WARN] 创建OAuth Token失败 (channel=%d): %v", created.ID, err)
+		}
+	} else {
+		// 自定义预设或其他渠道：解析并创建多个 API Keys
+		apiKeys := util.ParseAPIKeys(req.APIKey)
+		for i, key := range apiKeys {
+			apiKey := &model.APIKey{
+				ChannelID:   created.ID,
+				KeyIndex:    i,
+				APIKey:      key,
+				KeyStrategy: keyStrategy,
+				CreatedAt:   model.JSONTime{Time: now},
+				UpdatedAt:   model.JSONTime{Time: now},
+			}
+			if err := s.store.CreateAPIKey(c.Request.Context(), apiKey); err != nil {
+				log.Printf("[WARN] 创建API Key失败 (channel=%d, index=%d): %v", created.ID, i, err)
+			}
 		}
 	}
 
@@ -240,6 +253,7 @@ func (s *Server) handleGetChannel(c *gin.Context, id int64) {
 		"models":          cfg.Models,
 		"model_redirects": cfg.ModelRedirects,
 		"enabled":         cfg.Enabled,
+		"preset":          cfg.Preset, // Codex预设类型
 		"created_at":      cfg.CreatedAt,
 		"updated_at":      cfg.UpdatedAt,
 	}
@@ -247,12 +261,25 @@ func (s *Server) handleGetChannel(c *gin.Context, id int64) {
 	// 添加key_strategy（从第一个Key获取，所有Key的策略应该相同）
 	if len(apiKeys) > 0 {
 		response["key_strategy"] = apiKeys[0].KeyStrategy
-		// 同时返回API Keys（逗号分隔）
-		apiKeyStrs := make([]string, 0, len(apiKeys))
-		for _, key := range apiKeys {
-			apiKeyStrs = append(apiKeyStrs, key.APIKey)
+
+		// 根据预设类型返回不同的认证信息
+		if cfg.Preset == "official" {
+			// 官方预设：返回 OAuth Token 状态（不返回完整 Token 以保护安全）
+			if apiKeys[0].AccessToken != "" {
+				response["oauth_authorized"] = true
+				response["token_expires_at"] = apiKeys[0].TokenExpiresAt
+			} else {
+				response["oauth_authorized"] = false
+			}
+			response["api_key"] = "" // 官方预设不显示 api_key
+		} else {
+			// 自定义或其他渠道：返回 API Keys（逗号分隔）
+			apiKeyStrs := make([]string, 0, len(apiKeys))
+			for _, key := range apiKeys {
+				apiKeyStrs = append(apiKeyStrs, key.APIKey)
+			}
+			response["api_key"] = strings.Join(apiKeyStrs, ",")
 		}
-		response["api_key"] = strings.Join(apiKeyStrs, ",")
 	} else {
 		response["key_strategy"] = model.KeyStrategySequential // 默认值
 		response["api_key"] = ""
@@ -329,32 +356,9 @@ func (s *Server) handleUpdateChannel(c *gin.Context, id int64) {
 		oldKeys = []*model.APIKey{}
 	}
 
-	newKeys := util.ParseAPIKeys(req.APIKey)
 	keyStrategy := strings.TrimSpace(req.KeyStrategy)
 	if keyStrategy == "" {
 		keyStrategy = model.KeyStrategySequential
-	}
-
-	// 比较Key数量和内容是否变化
-	keyChanged := len(oldKeys) != len(newKeys)
-	if !keyChanged {
-		for i, oldKey := range oldKeys {
-			if i >= len(newKeys) || oldKey.APIKey != newKeys[i] {
-				keyChanged = true
-				break
-			}
-		}
-	}
-
-	// [INFO] 修复 (2025-10-11): 检测策略变化
-	strategyChanged := false
-	if !keyChanged && len(oldKeys) > 0 && len(newKeys) > 0 {
-		// Key内容未变化时，检查策略是否变化
-		oldStrategy := oldKeys[0].KeyStrategy
-		if oldStrategy == "" {
-			oldStrategy = model.KeyStrategySequential
-		}
-		strategyChanged = oldStrategy != keyStrategy
 	}
 
 	upd, err := s.store.UpdateConfig(c.Request.Context(), id, req.ToConfig())
@@ -363,34 +367,89 @@ func (s *Server) handleUpdateChannel(c *gin.Context, id int64) {
 		return
 	}
 
-	// Key或策略变化时更新API Keys
-	if keyChanged {
-		// Key内容/数量变化：删除旧Key并重建
-		_ = s.store.DeleteAllAPIKeys(c.Request.Context(), id)
+	// 根据预设类型处理 API Key 更新
+	if req.Preset == "official" {
+		// 官方预设：检查 OAuth Token 是否变化
+		oauthChanged := false
+		if len(oldKeys) == 0 {
+			oauthChanged = true // 无旧 Key，需要创建
+		} else if len(oldKeys) > 0 {
+			// 检查 Token 是否变化
+			oldKey := oldKeys[0]
+			oauthChanged = oldKey.AccessToken != req.AccessToken ||
+				oldKey.IDToken != req.IDToken ||
+				oldKey.RefreshToken != req.RefreshToken ||
+				oldKey.TokenExpiresAt != req.TokenExpiresAt
+		}
 
-		// 创建新的API Keys
-		now := time.Now()
-		for i, key := range newKeys {
-			apiKey := &model.APIKey{
-				ChannelID:   id,
-				KeyIndex:    i,
-				APIKey:      key,
-				KeyStrategy: keyStrategy,
-				CreatedAt:   model.JSONTime{Time: now},
-				UpdatedAt:   model.JSONTime{Time: now},
-			}
+		if oauthChanged {
+			// 删除旧 Key 并重建
+			_ = s.store.DeleteAllAPIKeys(c.Request.Context(), id)
+
+			now := time.Now()
+			apiKey := req.ToAPIKey(id)
+			apiKey.KeyStrategy = keyStrategy
+			apiKey.CreatedAt = model.JSONTime{Time: now}
+			apiKey.UpdatedAt = model.JSONTime{Time: now}
 			if err := s.store.CreateAPIKey(c.Request.Context(), apiKey); err != nil {
-				log.Printf("[WARN] 创建API Key失败 (channel=%d, index=%d): %v", id, i, err)
+				log.Printf("[WARN] 更新OAuth Token失败 (channel=%d): %v", id, err)
 			}
 		}
-	} else if strategyChanged {
-		// 仅策略变化：高效更新所有Key的策略字段（无需删除重建）
-		now := time.Now()
-		for _, oldKey := range oldKeys {
-			oldKey.KeyStrategy = keyStrategy
-			oldKey.UpdatedAt = model.JSONTime{Time: now}
-			if err := s.store.UpdateAPIKey(c.Request.Context(), oldKey); err != nil {
-				log.Printf("[WARN] 更新API Key策略失败 (channel=%d, index=%d): %v", id, oldKey.KeyIndex, err)
+	} else {
+		// 自定义预设或其他渠道：检查 API Key 是否变化
+		newKeys := util.ParseAPIKeys(req.APIKey)
+
+		// 比较Key数量和内容是否变化
+		keyChanged := len(oldKeys) != len(newKeys)
+		if !keyChanged {
+			for i, oldKey := range oldKeys {
+				if i >= len(newKeys) || oldKey.APIKey != newKeys[i] {
+					keyChanged = true
+					break
+				}
+			}
+		}
+
+		// [INFO] 修复 (2025-10-11): 检测策略变化
+		strategyChanged := false
+		if !keyChanged && len(oldKeys) > 0 && len(newKeys) > 0 {
+			// Key内容未变化时，检查策略是否变化
+			oldStrategy := oldKeys[0].KeyStrategy
+			if oldStrategy == "" {
+				oldStrategy = model.KeyStrategySequential
+			}
+			strategyChanged = oldStrategy != keyStrategy
+		}
+
+		// Key或策略变化时更新API Keys
+		if keyChanged {
+			// Key内容/数量变化：删除旧Key并重建
+			_ = s.store.DeleteAllAPIKeys(c.Request.Context(), id)
+
+			// 创建新的API Keys
+			now := time.Now()
+			for i, key := range newKeys {
+				apiKey := &model.APIKey{
+					ChannelID:   id,
+					KeyIndex:    i,
+					APIKey:      key,
+					KeyStrategy: keyStrategy,
+					CreatedAt:   model.JSONTime{Time: now},
+					UpdatedAt:   model.JSONTime{Time: now},
+				}
+				if err := s.store.CreateAPIKey(c.Request.Context(), apiKey); err != nil {
+					log.Printf("[WARN] 创建API Key失败 (channel=%d, index=%d): %v", id, i, err)
+				}
+			}
+		} else if strategyChanged {
+			// 仅策略变化：高效更新所有Key的策略字段（无需删除重建）
+			now := time.Now()
+			for _, oldKey := range oldKeys {
+				oldKey.KeyStrategy = keyStrategy
+				oldKey.UpdatedAt = model.JSONTime{Time: now}
+				if err := s.store.UpdateAPIKey(c.Request.Context(), oldKey); err != nil {
+					log.Printf("[WARN] 更新API Key策略失败 (channel=%d, index=%d): %v", id, oldKey.KeyIndex, err)
+				}
 			}
 		}
 	}
