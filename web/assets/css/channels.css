@@ -98,6 +98,212 @@
       flex-wrap: wrap;
     }
 
+    /* ============================================================ */
+    /* 渠道卡片单行布局（固定宽度对齐） */
+    /* ============================================================ */
+
+    .channel-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+    }
+
+    .channel-col {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex-shrink: 0;
+      overflow: hidden;
+    }
+
+    /* 渠道名称列 */
+    .col-name {
+      width: 220px;
+      cursor: help;
+    }
+
+    .channel-name-text {
+      font-weight: 600;
+      font-size: 14px;
+      color: var(--neutral-900);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      width: 100px;
+      min-width: 100px;
+    }
+
+    .channel-id {
+      color: var(--neutral-400);
+      font-size: 12px;
+      font-weight: 400;
+      margin-left: auto;
+    }
+
+    /* URL列 */
+    .col-url {
+      width: 220px;
+    }
+
+    .channel-url-text {
+      font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+      font-size: 12px;
+      color: var(--neutral-600);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 220px;
+    }
+
+    /* 延迟列 */
+    .col-latency {
+      width: 70px;
+      justify-content: center;
+    }
+
+    /* 管理按钮列 */
+    .col-manage {
+      width: 60px;
+    }
+
+    .col-manage .endpoint-manage-btn {
+      font-size: 11px;
+      padding: 2px 6px;
+      margin-left: 0;
+    }
+
+    /* 优先级列 */
+    .col-priority {
+      width: 70px;
+    }
+
+    .col-label {
+      font-size: 11px;
+      color: var(--neutral-400);
+    }
+
+    .col-value {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--neutral-700);
+    }
+
+    /* 状态列 */
+    .col-status {
+      width: 100px;
+    }
+
+    .col-status .status-enabled {
+      color: var(--success-600);
+    }
+
+    .col-status .status-disabled {
+      color: var(--neutral-400);
+    }
+
+    /* 用量列（固定宽度） */
+    .col-quota {
+      width: 150px;
+      justify-content: flex-start;
+    }
+
+    .col-quota .channel-quota-badge {
+      font-size: 12px;
+      max-width: 150px;
+    }
+
+    .col-quota .quota-badge {
+      padding: 2px 6px;
+      font-size: 11px;
+      max-width: 85px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .col-quota .quota-refresh-btn {
+      font-size: 12px;
+      padding: 2px 4px;
+      flex-shrink: 0;
+      opacity: 0.7;
+    }
+
+    .col-quota .quota-refresh-btn:hover {
+      opacity: 1;
+    }
+
+    .col-quota .quota-countdown {
+      font-size: 11px;
+      min-width: 40px;
+      flex-shrink: 0;
+      color: var(--neutral-500);
+    }
+
+    /* 统计数据列 */
+    .col-stats {
+      flex: 1;
+      justify-content: flex-end;
+      min-width: 0;
+    }
+
+    .col-stats .channel-stats-inline {
+      margin-right: 0;
+      margin-left: 0;
+      gap: 4px;
+    }
+
+    .col-stats .channel-stat-badge {
+      padding: 2px 6px;
+      font-size: 11px;
+    }
+
+    /* 操作按钮列 */
+    .col-actions {
+      display: flex;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+
+    .col-actions .btn-icon {
+      padding: 4px 8px;
+      font-size: 12px;
+    }
+
+    /* 响应式：中等屏幕 */
+    @media (max-width: 1600px) {
+      .col-name { width: 150px; }
+      .channel-name-text { max-width: 100px; }
+      .col-url { width: 180px; }
+      .channel-url-text { max-width: 180px; }
+    }
+
+    /* 响应式：小屏幕 - 两行布局 */
+    @media (max-width: 1200px) {
+      .channel-row {
+        flex-wrap: wrap;
+        gap: 6px 12px;
+      }
+      .col-name { width: auto; flex: 1; min-width: 150px; }
+      .col-url { width: auto; flex: 1; min-width: 150px; }
+      .col-stats { width: 100%; justify-content: flex-start; }
+      .col-actions { width: 100%; justify-content: flex-end; }
+    }
+
+    /* 响应式：移动端 */
+    @media (max-width: 640px) {
+      .channel-row {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+      .channel-col {
+        width: 100% !important;
+      }
+      .col-actions {
+        justify-content: flex-start;
+        flex-wrap: wrap;
+      }
+    }
+
     .channel-stats-inline {
       display: flex;
       align-items: center;
@@ -105,7 +311,7 @@
       flex-wrap: wrap;
       margin-left: auto;
       justify-content: flex-end;
-      margin-right: 32px;
+      margin-right: 0;
     }
 
     /* ============================================================ */
@@ -296,4 +502,138 @@
   .filter-timer {
     display: none;
   }
+}
+
+/* 用量监控徽章 */
+.channel-quota-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  vertical-align: middle;
+}
+
+.quota-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  font-family: var(--font-family-mono, monospace);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  box-sizing: border-box;
+}
+
+.quota-unit {
+  font-size: 10px;
+  font-weight: 400;
+  opacity: 0.8;
+  margin-left: 1px;
+}
+
+/* 使用 theme 变量确保亮色/暗色主题下都清晰可见 */
+.quota-good {
+  background: var(--theme-badge-success-bg, #dcfce7);
+  color: var(--theme-badge-success-text, #15803d);
+  border: 1px solid var(--theme-badge-success-border, transparent);
+}
+
+.quota-warning {
+  background: var(--theme-badge-warning-bg, #fef3c7);
+  color: var(--theme-badge-warning-text, #b45309);
+  border: 1px solid var(--theme-badge-warning-border, transparent);
+}
+
+.quota-danger {
+  background: var(--theme-badge-error-bg, #fee2e2);
+  color: var(--theme-badge-error-text, #b91c1c);
+  border: 1px solid var(--theme-badge-error-border, transparent);
+}
+
+.quota-error {
+  color: var(--neutral-400);
+  font-size: 11px;
+}
+
+/* 用量刷新按钮 */
+.quota-refresh-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  margin: 0;
+  background-color: var(--neutral-100);
+  border: 1px solid var(--neutral-200);
+  border-radius: 4px;
+  color: var(--neutral-500);
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  user-select: none;
+}
+
+.quota-refresh-btn:hover {
+  background-color: var(--primary-500);
+  border-color: var(--primary-500);
+  color: white;
+  transform: rotate(180deg);
+}
+
+.quota-refresh-btn:active {
+  transform: scale(0.9) rotate(180deg);
+}
+
+/* 用量倒计时 */
+.quota-countdown {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 20px;
+  padding: 0 6px;
+  background-color: var(--neutral-100);
+  border: 1px solid var(--neutral-200);
+  border-radius: 4px;
+  font-size: 10px;
+  color: var(--neutral-500);
+  font-family: var(--font-family-mono, monospace);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  min-width: 48px;
+  transition: all 0.2s ease;
+}
+
+.quota-countdown:hover {
+  border-color: var(--neutral-300);
+  color: var(--neutral-700);
+}
+
+/* 暗色主题适配 */
+html.dark .quota-refresh-btn {
+  background-color: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: var(--neutral-400);
+}
+
+html.dark .quota-refresh-btn:hover {
+  background-color: var(--primary-500);
+  border-color: var(--primary-500);
+  color: white;
+}
+
+html.dark .quota-countdown {
+  background-color: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: var(--neutral-400);
+}
+
+html.dark .quota-countdown:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: var(--neutral-200);
 }
