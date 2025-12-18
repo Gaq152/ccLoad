@@ -815,8 +815,18 @@ async function testQuotaFetch() {
 
     // 执行提取器脚本
     try {
+      // 解析 body（后端返回的是 JSON 字符串）
+      let responseBody = result.body;
+      if (typeof responseBody === 'string') {
+        try {
+          responseBody = JSON.parse(responseBody);
+        } catch (parseErr) {
+          console.warn('body 解析失败，保持原样');
+        }
+      }
+
       const extractorFn = new Function('response', `return (${config.extractor_script})(response)`);
-      const quotaData = extractorFn(result.body);
+      const quotaData = extractorFn(responseBody);
 
       if (quotaData && quotaData.isValid) {
         if (window.showSuccess) {
