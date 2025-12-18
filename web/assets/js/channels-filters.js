@@ -52,6 +52,11 @@ function filterChannels() {
 
   // 渲染完成后，检查并启动冷却倒计时
   checkAndStartCooldownCountdown();
+
+  // 从缓存更新用量徽章（筛选后 DOM 重新渲染，需要重新应用缓存数据）
+  if (window.QuotaManager) {
+    window.QuotaManager.updateBadgesFromCache();
+  }
 }
 
 // Update filter info display
