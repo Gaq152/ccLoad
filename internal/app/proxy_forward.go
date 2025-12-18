@@ -40,7 +40,16 @@ func (s *Server) buildProxyRequest(
 	codexHeaders *CodexExtraHeaders,
 ) (*http.Request, error) {
 	// 1. 构建完整 URL
-	upstreamURL := buildUpstreamURL(cfg, requestPath, rawQuery)
+	var upstreamURL string
+	if codexHeaders != nil {
+		// Codex 官方预设：转换路径格式
+		// 客户端发送 /v1/responses，官方 API 是 /responses
+		codexPath := strings.TrimPrefix(requestPath, "/v1")
+		upstreamURL = strings.TrimRight(cfg.URL, "/") + codexPath
+	} else {
+		// 其他渠道：URL + 请求路径
+		upstreamURL = buildUpstreamURL(cfg, requestPath, rawQuery)
+	}
 
 	// 2. 创建带上下文的请求
 	req, err := buildUpstreamRequest(reqCtx.ctx, method, upstreamURL, body)
