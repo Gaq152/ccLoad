@@ -16,6 +16,7 @@ func DefineChannelsTable() *TableBuilder {
 		Column("rr_key_index INT NOT NULL DEFAULT 0").
 		Column("auto_select_endpoint TINYINT NOT NULL DEFAULT 1"). // 自动选择最快端点（默认开启）
 		Column("quota_config TEXT DEFAULT NULL").                  // 用量监控配置（JSON格式）
+		Column("preset VARCHAR(32) DEFAULT NULL").                 // Codex预设类型：official=官方, custom=自定义
 		Column("created_at BIGINT NOT NULL").
 		Column("updated_at BIGINT NOT NULL").
 		Index("idx_channels_enabled", "enabled").
@@ -30,10 +31,14 @@ func DefineAPIKeysTable() *TableBuilder {
 		Column("id INT PRIMARY KEY AUTO_INCREMENT").
 		Column("channel_id INT NOT NULL").
 		Column("key_index INT NOT NULL").
-		Column("api_key VARCHAR(100) NOT NULL").
+		Column("api_key TEXT NOT NULL").                           // 扩展为TEXT以支持较长的Key
 		Column("key_strategy VARCHAR(32) NOT NULL DEFAULT 'sequential'").
 		Column("cooldown_until BIGINT NOT NULL DEFAULT 0").
 		Column("cooldown_duration_ms BIGINT NOT NULL DEFAULT 0").
+		Column("access_token TEXT DEFAULT NULL").                  // OAuth access_token（官方预设使用）
+		Column("id_token TEXT DEFAULT NULL").                      // OAuth id_token（官方预设使用）
+		Column("refresh_token TEXT DEFAULT NULL").                 // OAuth refresh_token（官方预设使用）
+		Column("token_expires_at BIGINT NOT NULL DEFAULT 0").      // Token过期时间戳（官方预设使用）
 		Column("created_at BIGINT NOT NULL").
 		Column("updated_at BIGINT NOT NULL").
 		Column("UNIQUE KEY uk_channel_key (channel_id, key_index)").

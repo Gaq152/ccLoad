@@ -22,7 +22,7 @@ func (s *SQLStore) ListConfigs(ctx context.Context) ([]*model.Config, error) {
 		SELECT c.id, c.name, c.url, c.priority, c.models, c.model_redirects, c.channel_type, c.enabled,
 		       c.cooldown_until, c.cooldown_duration_ms,
 		       COUNT(k.id) as key_count,
-		       c.rr_key_index, c.auto_select_endpoint, c.quota_config, c.created_at, c.updated_at
+		       c.rr_key_index, c.auto_select_endpoint, c.quota_config, c.preset, c.created_at, c.updated_at
 		FROM channels c
 		LEFT JOIN api_keys k ON c.id = k.channel_id
 		GROUP BY c.id
@@ -46,7 +46,7 @@ func (s *SQLStore) GetConfig(ctx context.Context, id int64) (*model.Config, erro
 		SELECT c.id, c.name, c.url, c.priority, c.models, c.model_redirects, c.channel_type, c.enabled,
 		       c.cooldown_until, c.cooldown_duration_ms,
 		       COUNT(k.id) as key_count,
-		       c.rr_key_index, c.auto_select_endpoint, c.quota_config, c.created_at, c.updated_at
+		       c.rr_key_index, c.auto_select_endpoint, c.quota_config, c.preset, c.created_at, c.updated_at
 		FROM channels c
 		LEFT JOIN api_keys k ON c.id = k.channel_id
 		WHERE c.id = ?
@@ -80,7 +80,7 @@ func (s *SQLStore) GetEnabledChannelsByModel(ctx context.Context, model string) 
                    c.models, c.model_redirects, c.channel_type, c.enabled,
                    c.cooldown_until, c.cooldown_duration_ms,
                    COUNT(k.id) as key_count,
-                   c.rr_key_index, c.auto_select_endpoint, c.quota_config, c.created_at, c.updated_at
+                   c.rr_key_index, c.auto_select_endpoint, c.quota_config, c.preset, c.created_at, c.updated_at
             FROM channels c
             LEFT JOIN api_keys k ON c.id = k.channel_id
             WHERE c.enabled = 1
@@ -97,7 +97,7 @@ func (s *SQLStore) GetEnabledChannelsByModel(ctx context.Context, model string) 
                    c.models, c.model_redirects, c.channel_type, c.enabled,
                    c.cooldown_until, c.cooldown_duration_ms,
                    COUNT(k.id) as key_count,
-                   c.rr_key_index, c.auto_select_endpoint, c.quota_config, c.created_at, c.updated_at
+                   c.rr_key_index, c.auto_select_endpoint, c.quota_config, c.preset, c.created_at, c.updated_at
             FROM channels c
             INNER JOIN channel_models cm ON c.id = cm.channel_id
             LEFT JOIN api_keys k ON c.id = k.channel_id
@@ -130,7 +130,7 @@ func (s *SQLStore) GetEnabledChannelsByType(ctx context.Context, channelType str
 		       c.models, c.model_redirects, c.channel_type, c.enabled,
 		       c.cooldown_until, c.cooldown_duration_ms,
 		       COUNT(k.id) as key_count,
-		       c.rr_key_index, c.auto_select_endpoint, c.quota_config, c.created_at, c.updated_at
+		       c.rr_key_index, c.auto_select_endpoint, c.quota_config, c.preset, c.created_at, c.updated_at
 		FROM channels c
 		LEFT JOIN api_keys k ON c.id = k.channel_id
 		WHERE c.enabled = 1
@@ -163,15 +163,21 @@ func (s *SQLStore) CreateConfig(ctx context.Context, c *model.Config) (*model.Co
 		}
 	}
 
+	// 处理 preset（可选字段，可为NULL）
+	var presetStr *string
+	if c.Preset != "" {
+		presetStr = &c.Preset
+	}
+
 	// 使用GetChannelType确保默认值
 	channelType := c.GetChannelType()
 
 	// 新架构：API Keys 不再存储在 channels 表中
 	res, err := s.db.ExecContext(ctx, `
-		INSERT INTO channels(name, url, priority, models, model_redirects, channel_type, enabled, quota_config, created_at, updated_at)
-		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO channels(name, url, priority, models, model_redirects, channel_type, enabled, quota_config, preset, created_at, updated_at)
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, c.Name, c.URL, c.Priority, modelsStr, modelRedirectsStr, channelType,
-		boolToInt(c.Enabled), quotaConfigStr, nowUnix, nowUnix)
+		boolToInt(c.Enabled), quotaConfigStr, presetStr, nowUnix, nowUnix)
 
 	if err != nil {
 		return nil, err
@@ -226,6 +232,12 @@ func (s *SQLStore) UpdateConfig(ctx context.Context, id int64, upd *model.Config
 		}
 	}
 
+	// 处理 preset（可选字段，可为NULL）
+	var presetStr *string
+	if upd.Preset != "" {
+		presetStr = &upd.Preset
+	}
+
 	// 使用GetChannelType确保默认值
 	channelType := upd.GetChannelType()
 	updatedAtUnix := timeToUnix(time.Now())
@@ -233,10 +245,10 @@ func (s *SQLStore) UpdateConfig(ctx context.Context, id int64, upd *model.Config
 	// 新架构：API Keys 不再存储在 channels 表中，通过单独的 CreateAPIKey/UpdateAPIKey/DeleteAPIKey 管理
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE channels
-		SET name=?, url=?, priority=?, models=?, model_redirects=?, channel_type=?, enabled=?, quota_config=?, updated_at=?
+		SET name=?, url=?, priority=?, models=?, model_redirects=?, channel_type=?, enabled=?, quota_config=?, preset=?, updated_at=?
 		WHERE id=?
 	`, name, url, upd.Priority, modelsStr, modelRedirectsStr, channelType,
-		boolToInt(upd.Enabled), quotaConfigStr, updatedAtUnix, id)
+		boolToInt(upd.Enabled), quotaConfigStr, presetStr, updatedAtUnix, id)
 	if err != nil {
 		return nil, err
 	}
@@ -296,6 +308,12 @@ func (s *SQLStore) ReplaceConfig(ctx context.Context, c *model.Config) (*model.C
 		}
 	}
 
+	// 处理 preset（可选字段，可为NULL）
+	var presetStr *string
+	if c.Preset != "" {
+		presetStr = &c.Preset
+	}
+
 	// 使用GetChannelType确保默认值
 	channelType := c.GetChannelType()
 
@@ -303,8 +321,8 @@ func (s *SQLStore) ReplaceConfig(ctx context.Context, c *model.Config) (*model.C
 	var upsertSQL string
 	if s.IsSQLite() {
 		upsertSQL = `
-			INSERT INTO channels(name, url, priority, models, model_redirects, channel_type, enabled, quota_config, created_at, updated_at)
-			VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			INSERT INTO channels(name, url, priority, models, model_redirects, channel_type, enabled, quota_config, preset, created_at, updated_at)
+			VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT(name) DO UPDATE SET
 				url = excluded.url,
 				priority = excluded.priority,
@@ -313,11 +331,12 @@ func (s *SQLStore) ReplaceConfig(ctx context.Context, c *model.Config) (*model.C
 				channel_type = excluded.channel_type,
 				enabled = excluded.enabled,
 				quota_config = excluded.quota_config,
+				preset = excluded.preset,
 				updated_at = excluded.updated_at`
 	} else {
 		upsertSQL = `
-			INSERT INTO channels(name, url, priority, models, model_redirects, channel_type, enabled, quota_config, created_at, updated_at)
-			VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			INSERT INTO channels(name, url, priority, models, model_redirects, channel_type, enabled, quota_config, preset, created_at, updated_at)
+			VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			ON DUPLICATE KEY UPDATE
 				url = VALUES(url),
 				priority = VALUES(priority),
@@ -326,10 +345,11 @@ func (s *SQLStore) ReplaceConfig(ctx context.Context, c *model.Config) (*model.C
 				channel_type = VALUES(channel_type),
 				enabled = VALUES(enabled),
 				quota_config = VALUES(quota_config),
+				preset = VALUES(preset),
 				updated_at = VALUES(updated_at)`
 	}
 	_, err := s.db.ExecContext(ctx, upsertSQL, c.Name, c.URL, c.Priority, modelsStr, modelRedirectsStr, channelType,
-		boolToInt(c.Enabled), quotaConfigStr, nowUnix, nowUnix)
+		boolToInt(c.Enabled), quotaConfigStr, presetStr, nowUnix, nowUnix)
 	if err != nil {
 		return nil, err
 	}

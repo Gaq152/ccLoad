@@ -79,12 +79,31 @@ func migrate(ctx context.Context, db *sql.DB, dialect Dialect) error {
 				if err := ensureChannelsQuotaConfig(ctx, db); err != nil {
 					return fmt.Errorf("migrate channels.quota_config: %w", err)
 				}
+				if err := ensureChannelsPreset(ctx, db); err != nil {
+					return fmt.Errorf("migrate channels.preset: %w", err)
+				}
 			} else {
 				if err := ensureChannelsAutoSelectEndpointSQLite(ctx, db); err != nil {
 					return fmt.Errorf("migrate channels.auto_select_endpoint: %w", err)
 				}
 				if err := ensureChannelsQuotaConfigSQLite(ctx, db); err != nil {
 					return fmt.Errorf("migrate channels.quota_config: %w", err)
+				}
+				if err := ensureChannelsPresetSQLite(ctx, db); err != nil {
+					return fmt.Errorf("migrate channels.preset: %w", err)
+				}
+			}
+		}
+
+		// 增量迁移：确保api_keys表有OAuth字段（Codex官方预设使用）
+		if tb.Name() == "api_keys" {
+			if dialect == DialectMySQL {
+				if err := ensureAPIKeysOAuthFields(ctx, db); err != nil {
+					return fmt.Errorf("migrate api_keys oauth fields: %w", err)
+				}
+			} else {
+				if err := ensureAPIKeysOAuthFieldsSQLite(ctx, db); err != nil {
+					return fmt.Errorf("migrate api_keys oauth fields: %w", err)
 				}
 			}
 		}
@@ -778,6 +797,213 @@ func initDefaultSettings(ctx context.Context, db *sql.DB, dialect Dialect) error
 	for _, s := range settings {
 		if _, err := db.ExecContext(ctx, query, s.key, s.value, s.valueType, s.desc, s.defaultVal); err != nil {
 			return fmt.Errorf("insert default setting %s: %w", s.key, err)
+		}
+	}
+
+	return nil
+}
+
+// ensureChannelsPreset 确保channels表有preset字段(MySQL增量迁移)
+func ensureChannelsPreset(ctx context.Context, db *sql.DB) error {
+	var count int
+	err := db.QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='channels' AND COLUMN_NAME='preset'",
+	).Scan(&count)
+	if err != nil {
+		return fmt.Errorf("check preset existence: %w", err)
+	}
+
+	if count > 0 {
+		return nil
+	}
+
+	_, err = db.ExecContext(ctx,
+		"ALTER TABLE channels ADD COLUMN preset VARCHAR(32) DEFAULT NULL COMMENT 'Codex预设类型:official=官方,custom=自定义'",
+	)
+	if err != nil {
+		return fmt.Errorf("add preset column: %w", err)
+	}
+
+	return nil
+}
+
+// ensureChannelsPresetSQLite 确保channels表有preset字段(SQLite增量迁移)
+func ensureChannelsPresetSQLite(ctx context.Context, db *sql.DB) error {
+	rows, err := db.QueryContext(ctx, "PRAGMA table_info(channels)")
+	if err != nil {
+		return fmt.Errorf("check table info: %w", err)
+	}
+	defer rows.Close()
+
+	hasColumn := false
+	for rows.Next() {
+		var cid int
+		var name, typ string
+		var notNull, pk int
+		var dfltValue any
+		if err := rows.Scan(&cid, &name, &typ, &notNull, &dfltValue, &pk); err != nil {
+			return fmt.Errorf("scan column info: %w", err)
+		}
+		if name == "preset" {
+			hasColumn = true
+			break
+		}
+	}
+
+	if hasColumn {
+		return nil
+	}
+
+	_, err = db.ExecContext(ctx,
+		"ALTER TABLE channels ADD COLUMN preset TEXT DEFAULT NULL",
+	)
+	if err != nil {
+		return fmt.Errorf("add preset column: %w", err)
+	}
+
+	return nil
+}
+
+// ensureAPIKeysOAuthFields 确保api_keys表有OAuth字段(MySQL增量迁移)
+func ensureAPIKeysOAuthFields(ctx context.Context, db *sql.DB) error {
+	// 检查并添加 access_token 字段
+	var count int
+	err := db.QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='api_keys' AND COLUMN_NAME='access_token'",
+	).Scan(&count)
+	if err != nil {
+		return fmt.Errorf("check access_token existence: %w", err)
+	}
+
+	if count == 0 {
+		_, err = db.ExecContext(ctx,
+			"ALTER TABLE api_keys ADD COLUMN access_token TEXT DEFAULT NULL COMMENT 'OAuth access_token(官方预设使用)'",
+		)
+		if err != nil {
+			return fmt.Errorf("add access_token column: %w", err)
+		}
+	}
+
+	// 检查并添加 id_token 字段
+	err = db.QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='api_keys' AND COLUMN_NAME='id_token'",
+	).Scan(&count)
+	if err != nil {
+		return fmt.Errorf("check id_token existence: %w", err)
+	}
+
+	if count == 0 {
+		_, err = db.ExecContext(ctx,
+			"ALTER TABLE api_keys ADD COLUMN id_token TEXT DEFAULT NULL COMMENT 'OAuth id_token(官方预设使用)'",
+		)
+		if err != nil {
+			return fmt.Errorf("add id_token column: %w", err)
+		}
+	}
+
+	// 检查并添加 refresh_token 字段
+	err = db.QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='api_keys' AND COLUMN_NAME='refresh_token'",
+	).Scan(&count)
+	if err != nil {
+		return fmt.Errorf("check refresh_token existence: %w", err)
+	}
+
+	if count == 0 {
+		_, err = db.ExecContext(ctx,
+			"ALTER TABLE api_keys ADD COLUMN refresh_token TEXT DEFAULT NULL COMMENT 'OAuth refresh_token(官方预设使用)'",
+		)
+		if err != nil {
+			return fmt.Errorf("add refresh_token column: %w", err)
+		}
+	}
+
+	// 检查并添加 token_expires_at 字段
+	err = db.QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='api_keys' AND COLUMN_NAME='token_expires_at'",
+	).Scan(&count)
+	if err != nil {
+		return fmt.Errorf("check token_expires_at existence: %w", err)
+	}
+
+	if count == 0 {
+		_, err = db.ExecContext(ctx,
+			"ALTER TABLE api_keys ADD COLUMN token_expires_at BIGINT NOT NULL DEFAULT 0 COMMENT 'Token过期时间戳(官方预设使用)'",
+		)
+		if err != nil {
+			return fmt.Errorf("add token_expires_at column: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// ensureAPIKeysOAuthFieldsSQLite 确保api_keys表有OAuth字段(SQLite增量迁移)
+func ensureAPIKeysOAuthFieldsSQLite(ctx context.Context, db *sql.DB) error {
+	rows, err := db.QueryContext(ctx, "PRAGMA table_info(api_keys)")
+	if err != nil {
+		return fmt.Errorf("check table info: %w", err)
+	}
+	defer rows.Close()
+
+	hasAccessToken := false
+	hasIDToken := false
+	hasRefreshToken := false
+	hasTokenExpiresAt := false
+
+	for rows.Next() {
+		var cid int
+		var name, typ string
+		var notNull, pk int
+		var dfltValue any
+		if err := rows.Scan(&cid, &name, &typ, &notNull, &dfltValue, &pk); err != nil {
+			return fmt.Errorf("scan column info: %w", err)
+		}
+		switch name {
+		case "access_token":
+			hasAccessToken = true
+		case "id_token":
+			hasIDToken = true
+		case "refresh_token":
+			hasRefreshToken = true
+		case "token_expires_at":
+			hasTokenExpiresAt = true
+		}
+	}
+
+	if !hasAccessToken {
+		_, err = db.ExecContext(ctx,
+			"ALTER TABLE api_keys ADD COLUMN access_token TEXT DEFAULT NULL",
+		)
+		if err != nil {
+			return fmt.Errorf("add access_token column: %w", err)
+		}
+	}
+
+	if !hasIDToken {
+		_, err = db.ExecContext(ctx,
+			"ALTER TABLE api_keys ADD COLUMN id_token TEXT DEFAULT NULL",
+		)
+		if err != nil {
+			return fmt.Errorf("add id_token column: %w", err)
+		}
+	}
+
+	if !hasRefreshToken {
+		_, err = db.ExecContext(ctx,
+			"ALTER TABLE api_keys ADD COLUMN refresh_token TEXT DEFAULT NULL",
+		)
+		if err != nil {
+			return fmt.Errorf("add refresh_token column: %w", err)
+		}
+	}
+
+	if !hasTokenExpiresAt {
+		_, err = db.ExecContext(ctx,
+			"ALTER TABLE api_keys ADD COLUMN token_expires_at INTEGER NOT NULL DEFAULT 0",
+		)
+		if err != nil {
+			return fmt.Errorf("add token_expires_at column: %w", err)
 		}
 	}
 
