@@ -337,7 +337,6 @@
   const modelPlaceholders = {
     'anthropic': 'claude-sonnet-4-5-20250929,claude-opus-4-5-20251101',
     'codex': 'gpt-5,gpt-5.1-codex',
-    'openai': 'gpt-4o,gpt-4-turbo',
     'gemini': 'gemini-3-pro,gemini-2.5-flash'
   };
 
@@ -345,7 +344,6 @@
   const urlPlaceholders = {
     'anthropic': 'https://api.anthropic.com',
     'codex': 'https://api.openai.com',
-    'openai': 'https://api.openai.com',
     'gemini': 'https://generativelanguage.googleapis.com'
   };
 

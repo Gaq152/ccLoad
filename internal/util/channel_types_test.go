@@ -14,11 +14,7 @@ func TestDetectChannelTypeFromPath(t *testing.T) {
 
 		// Codex paths
 		{"Codex Responses", "/v1/responses", ChannelTypeCodex},
-
-		// OpenAI paths
-		{"OpenAI Chat", "/v1/chat/completions", ChannelTypeOpenAI},
-		{"OpenAI Completions", "/v1/completions", ChannelTypeOpenAI},
-		{"OpenAI Embeddings", "/v1/embeddings", ChannelTypeOpenAI},
+		{"Codex Chat Completions", "/v1/chat/completions", ChannelTypeCodex},
 
 		// Gemini paths
 		{"Gemini Stream", "/v1beta/models/gemini-pro:streamGenerateContent", ChannelTypeGemini},
@@ -47,7 +43,6 @@ func TestChannelTypeConstants(t *testing.T) {
 	}{
 		{ChannelTypeAnthropic, "anthropic"},
 		{ChannelTypeCodex, "codex"},
-		{ChannelTypeOpenAI, "openai"},
 		{ChannelTypeGemini, "gemini"},
 	}
 
@@ -77,15 +72,14 @@ func TestMatchTypeConstants(t *testing.T) {
 
 func TestChannelTypesConfiguration(t *testing.T) {
 	// 验证 ChannelTypes 配置使用了正确的常量
-	if len(ChannelTypes) != 4 {
-		t.Errorf("Expected 4 channel types, got %d", len(ChannelTypes))
+	if len(ChannelTypes) != 3 {
+		t.Errorf("Expected 3 channel types, got %d", len(ChannelTypes))
 	}
 
 	// 验证每个配置的 Value 和 MatchType 使用了常量
 	expectedValues := map[string]bool{
 		ChannelTypeAnthropic: true,
 		ChannelTypeCodex:     true,
-		ChannelTypeOpenAI:    true,
 		ChannelTypeGemini:    true,
 	}
 
@@ -115,8 +109,8 @@ func TestIsValidChannelType(t *testing.T) {
 	}{
 		{"anthropic类型", "anthropic", true},
 		{"codex类型", "codex", true},
-		{"openai类型", "openai", true},
 		{"gemini类型", "gemini", true},
+		{"openai类型已移除", "openai", false},
 		{"无效类型", "invalid", false},
 		{"空字符串", "", false},
 		{"大写类型", "ANTHROPIC", false}, // 严格匹配

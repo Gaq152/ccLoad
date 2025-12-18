@@ -8,7 +8,6 @@ let heatmapTooltip = null;
 const CHANNEL_TYPES = [
   { type: 'anthropic', name: 'Claude' },
   { type: 'codex', name: 'Codex' },
-  { type: 'openai', name: 'OpenAI' },
   { type: 'gemini', name: 'Google' }
 ];
 

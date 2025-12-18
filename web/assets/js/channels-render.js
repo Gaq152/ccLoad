@@ -144,12 +144,6 @@ function getChannelTypeConfig(channelType) {
       bgColor: 'var(--theme-badge-success-bg)',
       borderColor: 'var(--theme-badge-success-border)'
     },
-    'openai': {
-      text: 'OpenAI',
-      color: 'var(--theme-badge-success-text)',
-      bgColor: 'var(--theme-badge-success-bg)',
-      borderColor: 'var(--theme-badge-success-border)'
-    },
     'gemini': {
       text: 'Gemini',
       color: 'var(--theme-badge-info-text)',
