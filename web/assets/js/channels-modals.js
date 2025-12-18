@@ -214,7 +214,7 @@ async function saveChannel(event) {
   // Codex 渠道：根据预设类型决定认证方式
   let validKeys;
   if (channelType === 'codex') {
-    preset = document.querySelector('input[name="codexPreset"]:checked')?.value || 'official';
+    preset = document.querySelector('input[name="codexPreset"]:checked')?.value || 'custom';
 
     if (preset === 'official') {
       // 官方预设：使用 OAuth Token
@@ -490,14 +490,30 @@ async function copyChannel(id, name) {
 
   // 初始化渠道类型相关 UI（Codex OAuth 区块）
   initChannelTypeEventListener();
+
+  // Codex 渠道：复制时保留原有预设
+  if (channelType === 'codex') {
+    const sourcePreset = channel.preset || 'custom';
+    const presetRadio = document.querySelector(`input[name="codexPreset"][value="${sourcePreset}"]`);
+    if (presetRadio) {
+      presetRadio.checked = true;
+    }
+  }
+
   handleChannelTypeChange(channelType);
 
-  // Codex 渠道：复制时需要重新配置
+  // Codex 渠道：根据预设类型决定是否需要重新配置
   if (channelType === 'codex') {
-    updateCodexTokenUI(null);
-    toggleCodexAuthMode('oauth');
-    if (window.showWarning) {
-      showWarning('Codex 渠道复制后需要重新配置鉴权');
+    const sourcePreset = channel.preset || 'custom';
+    if (sourcePreset === 'official') {
+      // 官方预设：清空 OAuth Token，需要重新授权
+      updateCodexTokenUI(null);
+      if (window.showWarning) {
+        showWarning('Codex 官方预设复制后需要重新进行 OAuth 授权');
+      }
+    } else {
+      // 自定义预设：API Key 已复制，无需额外操作
+      updateCodexTokenUI(null);
     }
   } else {
     updateCodexTokenUI(null);
@@ -698,7 +714,7 @@ async function fetchModelsFromAPI() {
   let accessToken = '';
 
   if (channelType === 'codex') {
-    const preset = document.querySelector('input[name="codexPreset"]:checked')?.value || 'official';
+    const preset = document.querySelector('input[name="codexPreset"]:checked')?.value || 'custom';
     if (preset === 'official') {
       // Codex 官方预设：从 OAuth Token 获取 access_token
       const tokenJson = document.getElementById('channelApiKey').value;
@@ -1373,13 +1389,13 @@ function handleChannelTypeChange(type) {
     // 显示预设选项
     if (codexPresetContainer) codexPresetContainer.style.display = 'block';
 
-    // 检查是否已选择预设，如果没有则默认选择官方预设
+    // 检查是否已选择预设，如果没有则默认选择自定义预设
     const currentPreset = document.querySelector('input[name="codexPreset"]:checked')?.value;
     if (!currentPreset) {
-      const officialRadio = document.querySelector('input[name="codexPreset"][value="official"]');
-      if (officialRadio) {
-        officialRadio.checked = true;
-        handleCodexPresetChange('official');
+      const customRadio = document.querySelector('input[name="codexPreset"][value="custom"]');
+      if (customRadio) {
+        customRadio.checked = true;
+        handleCodexPresetChange('custom');
       }
     } else {
       // 重新应用当前预设逻辑

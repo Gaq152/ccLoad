@@ -1,6 +1,8 @@
 package testutil
 
 import (
+	"crypto/rand"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -74,11 +76,26 @@ func (t *CodexTester) Build(cfg *model.Config, apiKey string, req *TestChannelRe
 	}
 
 	baseURL := strings.TrimRight(cfg.URL, "/")
-	fullURL := baseURL + "/v1/responses"
+	var fullURL string
 
 	h := make(http.Header)
 	h.Set("Content-Type", "application/json")
 	h.Set("Authorization", "Bearer "+apiKey)
+
+	// [FIX] 根据预设类型选择不同的 URL 路径和请求头
+	if cfg.Preset == "official" {
+		// 官方预设：/responses 路径 + 完整 Codex 请求头
+		fullURL = baseURL + "/responses"
+
+		// 注入 Codex 官方 API 需要的额外请求头
+		h.Set("Openai-Conversation-Id", "conv-test-"+generateUUID())
+		h.Set("Openai-Request-Id", "req-test-"+generateUUID())
+		h.Set("Openai-Sentinel-Chat-Requirements-Token", generateChatToken())
+	} else {
+		// 自定义预设：/v1/responses 路径
+		fullURL = baseURL + "/v1/responses"
+	}
+
 	h.Set("User-Agent", "codex_cli_rs/0.41.0 (Mac OS 26.0.0; arm64) iTerm.app/3.6.1")
 	h.Set("Openai-Beta", "responses=experimental")
 	h.Set("Originator", "codex_cli_rs")
@@ -87,6 +104,19 @@ func (t *CodexTester) Build(cfg *model.Config, apiKey string, req *TestChannelRe
 	}
 
 	return fullURL, h, body, nil
+}
+
+// generateUUID 生成简单的 UUID
+func generateUUID() string {
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:])
+}
+
+// generateChatToken 生成 Codex 需要的 chat requirements token
+func generateChatToken() string {
+	// 这是一个简化的 token，实际可能需要更复杂的生成逻辑
+	return "gAAAAAB" + generateUUID()
 }
 
 // extractCodexResponseText 从Codex响应中提取文本（消除6层嵌套）

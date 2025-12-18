@@ -404,9 +404,22 @@ func (s *SQLStore) DeleteConfig(ctx context.Context, id int64) error {
 		return err
 	}
 
-	// 删除渠道配置（FOREIGN KEY CASCADE 自动级联删除 api_keys 和 key_rr）
-	// 使用事务高阶函数，消除重复代码（DRY原则）
+	// 删除渠道配置及关联数据
+	// [FIX] SQLite 默认不启用外键约束，需要显式删除关联表数据
 	err := s.WithTransaction(ctx, func(tx *sql.Tx) error {
+		// 1. 删除关联的 API Keys
+		if _, err := tx.ExecContext(ctx, `DELETE FROM api_keys WHERE channel_id = ?`, id); err != nil {
+			return fmt.Errorf("delete api_keys: %w", err)
+		}
+		// 2. 删除关联的模型索引
+		if _, err := tx.ExecContext(ctx, `DELETE FROM channel_models WHERE channel_id = ?`, id); err != nil {
+			return fmt.Errorf("delete channel_models: %w", err)
+		}
+		// 3. 删除关联的端点
+		if _, err := tx.ExecContext(ctx, `DELETE FROM channel_endpoints WHERE channel_id = ?`, id); err != nil {
+			return fmt.Errorf("delete channel_endpoints: %w", err)
+		}
+		// 4. 删除渠道本身
 		if _, err := tx.ExecContext(ctx, `DELETE FROM channels WHERE id = ?`, id); err != nil {
 			return fmt.Errorf("delete channel: %w", err)
 		}
