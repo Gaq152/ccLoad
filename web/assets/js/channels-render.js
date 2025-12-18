@@ -2,7 +2,7 @@ function inlineCooldownBadge(c) {
   const ms = c.cooldown_remaining_ms || 0;
   if (!ms || ms <= 0) return '';
   const text = humanizeMS(ms);
-  return ` <span style="color: var(--theme-badge-error-text); font-size: 0.875rem; font-weight: 500; background: var(--theme-badge-error-bg-gradient); padding: 2px 8px; border-radius: 4px; border: 1px solid var(--theme-badge-error-border);">⚠️ 冷却中·${text}</span>`;
+  return ` <span style="color: var(--theme-badge-error-text); font-size: 11px; font-weight: 600; background: var(--theme-badge-error-bg-gradient); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--theme-badge-error-border); font-family: monospace;">⏱${text}</span>`;
 }
 
 function buildLatencyBadge(latencyMs, statusCode) {
@@ -213,6 +213,7 @@ function createChannelCard(channel) {
     latencyBadge: buildLatencyBadge(channel.active_endpoint_latency, channel.active_endpoint_status),
     priority: channel.priority,
     statusText: channel.enabled ? '已启用' : '已禁用',
+    statusClass: channel.enabled ? 'status-enabled' : 'status-disabled',
     cooldownBadge: inlineCooldownBadge(channel),
     statsHtml: statsHtml,
     enabled: channel.enabled,

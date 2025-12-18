@@ -115,7 +115,7 @@ function updateChannelCooldownBadge(channelId, remainingMs) {
     if (card) card.classList.remove('channel-card-cooldown');
   } else {
     const text = humanizeMS(remainingMs);
-    container.innerHTML = ` <span style="color: var(--theme-badge-error-text); font-size: 0.875rem; font-weight: 500; background: var(--theme-badge-error-bg-gradient); padding: 2px 8px; border-radius: 4px; border: 1px solid var(--theme-badge-error-border);">⚠️ 冷却中·${text}</span>`;
+    container.innerHTML = ` <span style="color: var(--theme-badge-error-text); font-size: 11px; font-weight: 600; background: var(--theme-badge-error-bg-gradient); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--theme-badge-error-border); font-family: monospace;">⏱${text}</span>`;
   }
 }
 
@@ -129,7 +129,7 @@ function updateKeyTableCooldownDisplay() {
     if (statusCell) {
       if (kc.cooldown_remaining_ms > 0) {
         const text = humanizeMS(kc.cooldown_remaining_ms);
-        statusCell.innerHTML = `<span style="color: var(--theme-badge-error-text); font-size: 11px; background: var(--theme-badge-error-bg-gradient); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--theme-badge-error-border);">⚠️ 冷却中·${text}</span>`;
+        statusCell.innerHTML = `<span style="color: var(--theme-badge-error-text); font-size: 11px; font-weight: 600; background: var(--theme-badge-error-bg-gradient); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--theme-badge-error-border); font-family: monospace;">⏱${text}</span>`;
       } else {
         statusCell.innerHTML = '<span style="color: var(--success-600); font-size: 12px;">✓ 正常</span>';
       }
