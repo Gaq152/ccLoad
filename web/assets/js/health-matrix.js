@@ -8,6 +8,51 @@ let hiddenChannels = new Map(); // Map<id, name> 存储已隐藏渠道
 let healthMatrixCountdown = 300; // 5分钟倒计时（秒）
 let healthMatrixInterval = null; // 倒计时定时器
 
+// 缓存配置
+const HEALTH_CACHE_KEY = 'health_matrix_cache_v1';
+const HEALTH_CACHE_DURATION = 300; // 5分钟（秒）
+
+// 从 localStorage 加载缓存
+function loadHealthCache() {
+  try {
+    const stored = localStorage.getItem(HEALTH_CACHE_KEY);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (e) {
+    console.warn('[HealthMatrix] 读取缓存失败:', e);
+  }
+  return null;
+}
+
+// 保存缓存到 localStorage
+function saveHealthCache(period, data) {
+  try {
+    const cache = {
+      period: period,
+      data: data,
+      fetchedAt: Date.now()
+    };
+    localStorage.setItem(HEALTH_CACHE_KEY, JSON.stringify(cache));
+  } catch (e) {
+    console.warn('[HealthMatrix] 保存缓存失败:', e);
+  }
+}
+
+// 检查缓存是否有效
+function isHealthCacheValid(cache, period) {
+  if (!cache || !cache.fetchedAt || cache.period !== period) return false;
+  const elapsed = (Date.now() - cache.fetchedAt) / 1000;
+  return elapsed < HEALTH_CACHE_DURATION;
+}
+
+// 获取缓存剩余时间（秒）
+function getHealthCacheRemaining(cache) {
+  if (!cache || !cache.fetchedAt) return 0;
+  const elapsed = (Date.now() - cache.fetchedAt) / 1000;
+  return Math.max(0, Math.floor(HEALTH_CACHE_DURATION - elapsed));
+}
+
 // 初始化渠道健康矩阵
 async function initHealthMatrix() {
   try {
@@ -17,8 +62,19 @@ async function initHealthMatrix() {
     // 加载内部渠道列表（用于映射）
     internalChannels = await loadAllInternalChannels();
 
-    // 加载并渲染健康数据（使用默认周期）
-    await loadAndRenderHealthData(currentPeriod);
+    // 尝试从缓存恢复数据
+    const cache = loadHealthCache();
+    if (isHealthCacheValid(cache, currentPeriod)) {
+      // 缓存有效，使用缓存数据
+      healthData = cache.data;
+      renderHealthMatrix(healthData);
+      // 倒计时从剩余时间开始
+      healthMatrixCountdown = getHealthCacheRemaining(cache);
+      console.log(`[HealthMatrix] 使用缓存数据，剩余 ${healthMatrixCountdown}s`);
+    } else {
+      // 缓存无效，重新获取
+      await loadAndRenderHealthData(currentPeriod);
+    }
 
     // 绑定周期切换按钮
     setupPeriodButtons();
@@ -206,6 +262,9 @@ async function loadAndRenderHealthData(period) {
     // 映射到内部渠道
     healthData = mapToInternalChannels(externalData);
 
+    // 保存到缓存
+    saveHealthCache(period, healthData);
+
     // 渲染矩阵
     renderHealthMatrix(healthData);
   } catch (error) {
@@ -242,7 +301,7 @@ function renderServiceGroup(gridId, data) {
 
   grid.innerHTML = data.map(ch => {
     const statusClass = getStatusClass(ch.availability);
-    const availText = ch.availability.toFixed(1);
+    const availText = ch.availability.toFixed(2);
     const latencyText = ch.currentLatency > 0 ? `${ch.currentLatency}ms` : '–';
     const uniqueId = getChannelUniqueId(ch);
     const serviceType = (ch.service || 'cc').toLowerCase();
@@ -283,6 +342,7 @@ function getStatusClass(availability) {
 }
 
 // 格式化时间段（根据周期）
+// API 返回的 time 是窗口结束时间，如 "07:04" 表示 06:04-07:04 这个小时窗口
 function formatTimeRange(timeStr, period) {
   try {
     // 如果timeStr已经包含" - "，说明已经是时间段格式，直接返回
@@ -291,13 +351,16 @@ function formatTimeRange(timeStr, period) {
     }
 
     if (period === '24h') {
-      // 24小时周期：time格式为"HH:MM"，提取小时部分
+      // 24小时周期：time格式为"HH:MM"，这是窗口结束时间
       const match = String(timeStr).match(/^(\d{1,2}):(\d{2})/);
       if (match) {
-        const hour = parseInt(match[1], 10);
-        const startHour = hour.toString().padStart(2, '0');
-        const endHour = ((hour + 1) % 24).toString().padStart(2, '0');
-        return `${startHour}:00 - ${endHour}:00`;
+        const endHour = parseInt(match[1], 10);
+        const endMinute = match[2];
+        // 计算开始时间（往前推1小时）
+        const startHour = (endHour - 1 + 24) % 24;
+        const startHourStr = startHour.toString().padStart(2, '0');
+        const endHourStr = endHour.toString().padStart(2, '0');
+        return `${startHourStr}:${endMinute} - ${endHourStr}:${endMinute}`;
       }
     } else {
       // 7天/30天周期：尝试解析日期
@@ -311,7 +374,7 @@ function formatTimeRange(timeStr, period) {
       if (!isNaN(date.getTime())) {
         const month = (date.getMonth() + 1).toString().padStart(2, '0');
         const day = date.getDate().toString().padStart(2, '0');
-        return `${month}-${day} 00:00 - 23:59`;
+        return `${month}-${day}`;
       }
     }
 
@@ -347,7 +410,7 @@ function renderTimeline(timeline) {
 
     // 格式化为时间段
     const timeRange = formatTimeRange(point.time, currentPeriod);
-    const tooltip = `${timeRange}\n可用性: ${avail.toFixed(0)}%\n延迟: ${point.latency || 0}ms`;
+    const tooltip = `${timeRange}\n可用性: ${avail.toFixed(2)}%\n延迟: ${point.latency || 0}ms`;
 
     return `<div class="uptime-bar ${barClass}" data-avail="${availLevel}" title="${escapeHtml(tooltip)}"></div>`;
   }).join('');
