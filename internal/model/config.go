@@ -26,6 +26,9 @@ type Config struct {
 	// 用量监控配置（2025-12新增）
 	QuotaConfig *QuotaConfig `json:"quota_config,omitempty"` // 用量查询配置
 
+	// Codex预设类型（2025-12新增）
+	Preset string `json:"preset,omitempty"` // "official"=官方预设, "custom"=自定义, ""=非Codex渠道
+
 	CreatedAt JSONTime `json:"created_at"` // 使用JSONTime确保序列化格式一致（RFC3339）
 	UpdatedAt JSONTime `json:"updated_at"` // 使用JSONTime确保序列化格式一致（RFC3339）
 
@@ -91,6 +94,12 @@ type APIKey struct {
 	// Key级冷却（从key_cooldowns表迁移）
 	CooldownUntil      int64 `json:"cooldown_until"`
 	CooldownDurationMs int64 `json:"cooldown_duration_ms"`
+
+	// OAuth Token 专用字段（仅Codex官方预设使用，2025-12新增）
+	AccessToken    string `json:"access_token,omitempty"`
+	IDToken        string `json:"id_token,omitempty"`
+	RefreshToken   string `json:"refresh_token,omitempty"`
+	TokenExpiresAt int64  `json:"token_expires_at,omitempty"` // Unix时间戳
 
 	CreatedAt JSONTime `json:"created_at"`
 	UpdatedAt JSONTime `json:"updated_at"`

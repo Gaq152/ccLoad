@@ -18,7 +18,9 @@ import (
 func (s *SQLStore) GetAPIKeys(ctx context.Context, channelID int64) ([]*model.APIKey, error) {
 	query := `
 		SELECT id, channel_id, key_index, api_key, key_strategy,
-		       cooldown_until, cooldown_duration_ms, created_at, updated_at
+		       cooldown_until, cooldown_duration_ms,
+		       access_token, id_token, refresh_token, token_expires_at,
+		       created_at, updated_at
 		FROM api_keys
 		WHERE channel_id = ?
 		ORDER BY key_index ASC
@@ -33,6 +35,8 @@ func (s *SQLStore) GetAPIKeys(ctx context.Context, channelID int64) ([]*model.AP
 	for rows.Next() {
 		key := &model.APIKey{}
 		var createdAt, updatedAt int64
+		var accessToken, idToken, refreshToken sql.NullString
+		var tokenExpiresAt int64
 
 		err := rows.Scan(
 			&key.ID,
@@ -42,12 +46,28 @@ func (s *SQLStore) GetAPIKeys(ctx context.Context, channelID int64) ([]*model.AP
 			&key.KeyStrategy,
 			&key.CooldownUntil,
 			&key.CooldownDurationMs,
+			&accessToken,
+			&idToken,
+			&refreshToken,
+			&tokenExpiresAt,
 			&createdAt,
 			&updatedAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("scan api key: %w", err)
 		}
+
+		// 处理可空的 OAuth 字段
+		if accessToken.Valid {
+			key.AccessToken = accessToken.String
+		}
+		if idToken.Valid {
+			key.IDToken = idToken.String
+		}
+		if refreshToken.Valid {
+			key.RefreshToken = refreshToken.String
+		}
+		key.TokenExpiresAt = tokenExpiresAt
 
 		key.CreatedAt = model.JSONTime{Time: unixToTime(createdAt)}
 		key.UpdatedAt = model.JSONTime{Time: unixToTime(updatedAt)}
@@ -65,7 +85,9 @@ func (s *SQLStore) GetAPIKeys(ctx context.Context, channelID int64) ([]*model.AP
 func (s *SQLStore) GetAPIKey(ctx context.Context, channelID int64, keyIndex int) (*model.APIKey, error) {
 	query := `
 		SELECT id, channel_id, key_index, api_key, key_strategy,
-		       cooldown_until, cooldown_duration_ms, created_at, updated_at
+		       cooldown_until, cooldown_duration_ms,
+		       access_token, id_token, refresh_token, token_expires_at,
+		       created_at, updated_at
 		FROM api_keys
 		WHERE channel_id = ? AND key_index = ?
 	`
@@ -73,6 +95,8 @@ func (s *SQLStore) GetAPIKey(ctx context.Context, channelID int64, keyIndex int)
 
 	key := &model.APIKey{}
 	var createdAt, updatedAt int64
+	var accessToken, idToken, refreshToken sql.NullString
+	var tokenExpiresAt int64
 
 	err := row.Scan(
 		&key.ID,
@@ -82,6 +106,10 @@ func (s *SQLStore) GetAPIKey(ctx context.Context, channelID int64, keyIndex int)
 		&key.KeyStrategy,
 		&key.CooldownUntil,
 		&key.CooldownDurationMs,
+		&accessToken,
+		&idToken,
+		&refreshToken,
+		&tokenExpiresAt,
 		&createdAt,
 		&updatedAt,
 	)
@@ -91,6 +119,18 @@ func (s *SQLStore) GetAPIKey(ctx context.Context, channelID int64, keyIndex int)
 		}
 		return nil, fmt.Errorf("query api key: %w", err)
 	}
+
+	// 处理可空的 OAuth 字段
+	if accessToken.Valid {
+		key.AccessToken = accessToken.String
+	}
+	if idToken.Valid {
+		key.IDToken = idToken.String
+	}
+	if refreshToken.Valid {
+		key.RefreshToken = refreshToken.String
+	}
+	key.TokenExpiresAt = tokenExpiresAt
 
 	key.CreatedAt = model.JSONTime{Time: unixToTime(createdAt)}
 	key.UpdatedAt = model.JSONTime{Time: unixToTime(updatedAt)}
@@ -111,12 +151,28 @@ func (s *SQLStore) CreateAPIKey(ctx context.Context, key *model.APIKey) error {
 		key.KeyStrategy = model.KeyStrategySequential
 	}
 
+	// 处理 OAuth 字段（可空）
+	var accessToken, idToken, refreshToken *string
+	if key.AccessToken != "" {
+		accessToken = &key.AccessToken
+	}
+	if key.IDToken != "" {
+		idToken = &key.IDToken
+	}
+	if key.RefreshToken != "" {
+		refreshToken = &key.RefreshToken
+	}
+
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO api_keys (channel_id, key_index, api_key, key_strategy,
-		                      cooldown_until, cooldown_duration_ms, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		                      cooldown_until, cooldown_duration_ms,
+		                      access_token, id_token, refresh_token, token_expires_at,
+		                      created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, key.ChannelID, key.KeyIndex, key.APIKey, key.KeyStrategy,
-		key.CooldownUntil, key.CooldownDurationMs, nowUnix, nowUnix)
+		key.CooldownUntil, key.CooldownDurationMs,
+		accessToken, idToken, refreshToken, key.TokenExpiresAt,
+		nowUnix, nowUnix)
 
 	if err != nil {
 		return fmt.Errorf("insert api key: %w", err)
@@ -141,14 +197,28 @@ func (s *SQLStore) UpdateAPIKey(ctx context.Context, key *model.APIKey) error {
 		key.KeyStrategy = model.KeyStrategySequential
 	}
 
+	// 处理 OAuth 字段（可空）
+	var accessToken, idToken, refreshToken *string
+	if key.AccessToken != "" {
+		accessToken = &key.AccessToken
+	}
+	if key.IDToken != "" {
+		idToken = &key.IDToken
+	}
+	if key.RefreshToken != "" {
+		refreshToken = &key.RefreshToken
+	}
+
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE api_keys
 		SET api_key = ?, key_strategy = ?,
 		    cooldown_until = ?, cooldown_duration_ms = ?,
+		    access_token = ?, id_token = ?, refresh_token = ?, token_expires_at = ?,
 		    updated_at = ?
 		WHERE channel_id = ? AND key_index = ?
 	`, key.APIKey, key.KeyStrategy,
 		key.CooldownUntil, key.CooldownDurationMs,
+		accessToken, idToken, refreshToken, key.TokenExpiresAt,
 		updatedAtUnix, key.ChannelID, key.KeyIndex)
 
 	if err != nil {
@@ -378,7 +448,9 @@ func (s *SQLStore) ImportChannelBatch(ctx context.Context, channels []*model.Cha
 func (s *SQLStore) GetAllAPIKeys(ctx context.Context) (map[int64][]*model.APIKey, error) {
 	query := `
 		SELECT id, channel_id, key_index, api_key, key_strategy,
-		       cooldown_until, cooldown_duration_ms, created_at, updated_at
+		       cooldown_until, cooldown_duration_ms,
+		       access_token, id_token, refresh_token, token_expires_at,
+		       created_at, updated_at
 		FROM api_keys
 		ORDER BY channel_id ASC, key_index ASC
 	`
@@ -392,6 +464,8 @@ func (s *SQLStore) GetAllAPIKeys(ctx context.Context) (map[int64][]*model.APIKey
 	for rows.Next() {
 		key := &model.APIKey{}
 		var createdAt, updatedAt int64
+		var accessToken, idToken, refreshToken sql.NullString
+		var tokenExpiresAt int64
 
 		err := rows.Scan(
 			&key.ID,
@@ -401,12 +475,28 @@ func (s *SQLStore) GetAllAPIKeys(ctx context.Context) (map[int64][]*model.APIKey
 			&key.KeyStrategy,
 			&key.CooldownUntil,
 			&key.CooldownDurationMs,
+			&accessToken,
+			&idToken,
+			&refreshToken,
+			&tokenExpiresAt,
 			&createdAt,
 			&updatedAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("scan api key: %w", err)
 		}
+
+		// 处理可空的 OAuth 字段
+		if accessToken.Valid {
+			key.AccessToken = accessToken.String
+		}
+		if idToken.Valid {
+			key.IDToken = idToken.String
+		}
+		if refreshToken.Valid {
+			key.RefreshToken = refreshToken.String
+		}
+		key.TokenExpiresAt = tokenExpiresAt
 
 		key.CreatedAt = model.JSONTime{Time: unixToTime(createdAt)}
 		key.UpdatedAt = model.JSONTime{Time: unixToTime(updatedAt)}
