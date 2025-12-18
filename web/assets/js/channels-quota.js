@@ -436,6 +436,18 @@ const QuotaManager = {
   },
 
   /**
+   * 从缓存更新所有可见渠道的徽章（筛选后调用）
+   */
+  updateBadgesFromCache() {
+    Object.keys(this.cache).forEach(channelId => {
+      const cacheEntry = this.cache[channelId];
+      if (cacheEntry && cacheEntry.data) {
+        this.updateBadge(parseInt(channelId), cacheEntry.data);
+      }
+    });
+  },
+
+  /**
    * HTML转义（防止XSS，包括属性注入）
    * @param {string} text - 要转义的文本
    * @returns {string} 转义后的文本
