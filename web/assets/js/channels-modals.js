@@ -25,6 +25,9 @@ function showAddModal() {
   document.getElementById('inlineEyeOffIcon').style.display = 'block';
   renderInlineKeyTable();
 
+  // 重置用量监控配置
+  resetQuotaConfig();
+
   document.getElementById('channelModal').classList.add('show');
 }
 
@@ -94,6 +97,9 @@ async function editChannel(id) {
   redirectTableData = jsonToRedirectTable(modelRedirects);
   renderRedirectTable();
 
+  // 加载用量监控配置
+  loadQuotaConfig(channel.quota_config);
+
   document.getElementById('channelModal').classList.add('show');
 
   // 启动冷却倒计时（包括 Key 冷却）
@@ -139,7 +145,8 @@ async function saveChannel(event) {
     priority: parseInt(document.getElementById('channelPriority').value) || 0,
     models: document.getElementById('channelModels').value.split(',').map(m => m.trim()).filter(m => m),
     model_redirects: modelRedirects,
-    enabled: document.getElementById('channelEnabled').checked
+    enabled: document.getElementById('channelEnabled').checked,
+    quota_config: getQuotaConfig()
   };
 
   if (!formData.name || !formData.url || !formData.api_key || formData.models.length === 0) {
@@ -614,5 +621,362 @@ function openEndpointModalFromEdit() {
     if (window.showError) {
       showError('端点管理功能未加载');
     }
+  }
+}
+
+// ==================== 用量监控配置 ====================
+
+// 用量监控请求头数据
+let quotaHeadersData = [];
+
+/**
+ * 切换用量配置面板显示
+ */
+function toggleQuotaConfig() {
+  const enabled = document.getElementById('quotaEnabled').checked;
+  const panel = document.getElementById('quotaConfigPanel');
+  const testBtn = document.getElementById('quotaTestBtn');
+
+  panel.style.display = enabled ? 'block' : 'none';
+  testBtn.style.display = enabled ? 'inline-flex' : 'none';
+}
+
+/**
+ * 重置用量配置
+ */
+function resetQuotaConfig() {
+  document.getElementById('quotaEnabled').checked = false;
+  document.getElementById('quotaConfigPanel').style.display = 'none';
+  document.getElementById('quotaTestBtn').style.display = 'none';
+  document.getElementById('quotaUrl').value = '';
+  document.getElementById('quotaMethod').value = 'GET';
+  document.getElementById('quotaInterval').value = '300';
+  document.getElementById('quotaExtractor').value = '';
+  quotaHeadersData = [];
+  renderQuotaHeaders();
+}
+
+/**
+ * 加载用量配置
+ */
+function loadQuotaConfig(config) {
+  if (!config) {
+    resetQuotaConfig();
+    return;
+  }
+
+  document.getElementById('quotaEnabled').checked = config.enabled || false;
+  document.getElementById('quotaUrl').value = config.request_url || '';
+  document.getElementById('quotaMethod').value = config.request_method || 'GET';
+  document.getElementById('quotaInterval').value = String(config.interval_seconds || 300);
+  document.getElementById('quotaExtractor').value = config.extractor_script || '';
+
+  // 加载请求头
+  quotaHeadersData = [];
+  if (config.request_headers) {
+    for (const [key, value] of Object.entries(config.request_headers)) {
+      quotaHeadersData.push({ key, value });
+    }
+  }
+  renderQuotaHeaders();
+
+  // 切换面板显示
+  toggleQuotaConfig();
+}
+
+/**
+ * 获取用量配置
+ */
+function getQuotaConfig() {
+  const enabled = document.getElementById('quotaEnabled').checked;
+
+  if (!enabled) {
+    return null;
+  }
+
+  const headers = {};
+  quotaHeadersData.forEach(h => {
+    if (h.key && h.key.trim()) {
+      headers[h.key.trim()] = h.value || '';
+    }
+  });
+
+  return {
+    enabled: true,
+    request_url: document.getElementById('quotaUrl').value.trim(),
+    request_method: document.getElementById('quotaMethod').value,
+    request_headers: headers,
+    extractor_script: document.getElementById('quotaExtractor').value,
+    interval_seconds: parseInt(document.getElementById('quotaInterval').value) || 300
+  };
+}
+
+/**
+ * 添加用量请求头
+ */
+function addQuotaHeader() {
+  quotaHeadersData.push({ key: '', value: '' });
+  renderQuotaHeaders();
+
+  // 聚焦到新行的第一个输入框
+  setTimeout(() => {
+    const container = document.getElementById('quotaHeadersContainer');
+    const inputs = container.querySelectorAll('input');
+    if (inputs.length >= 2) {
+      inputs[inputs.length - 2].focus();
+    }
+  }, 50);
+}
+
+/**
+ * 删除用量请求头
+ */
+function deleteQuotaHeader(index) {
+  quotaHeadersData.splice(index, 1);
+  renderQuotaHeaders();
+}
+
+/**
+ * 更新用量请求头
+ */
+function updateQuotaHeader(index, field, value) {
+  if (quotaHeadersData[index]) {
+    quotaHeadersData[index][field] = value;
+  }
+}
+
+/**
+ * 渲染用量请求头列表
+ */
+function renderQuotaHeaders() {
+  const container = document.getElementById('quotaHeadersContainer');
+
+  if (quotaHeadersData.length === 0) {
+    container.innerHTML = '<div style="color: var(--neutral-400); font-size: 12px; padding: 8px; text-align: center;">暂无请求头</div>';
+    return;
+  }
+
+  container.innerHTML = quotaHeadersData.map((h, i) => `
+    <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 6px;">
+      <input type="text" class="form-input" placeholder="Header名称" value="${escapeHtml(h.key)}"
+             onchange="updateQuotaHeader(${i}, 'key', this.value)"
+             style="flex: 1; font-size: 12px; padding: 6px 8px;">
+      <input type="text" class="form-input" placeholder="值" value="${escapeHtml(h.value)}"
+             onchange="updateQuotaHeader(${i}, 'value', this.value)"
+             style="flex: 2; font-size: 12px; padding: 6px 8px;">
+      <button type="button" onclick="deleteQuotaHeader(${i})"
+              style="width: 24px; height: 24px; border-radius: 4px; border: 1px solid var(--error-300);
+                     background: white; color: var(--error-500); cursor: pointer; padding: 0;
+                     display: flex; align-items: center; justify-content: center;"
+              onmouseover="this.style.background='var(--error-50)'; this.style.borderColor='var(--error-500)';"
+              onmouseout="this.style.background='white'; this.style.borderColor='var(--error-300)';">
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M4 4L12 12M4 12L12 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+      </button>
+    </div>
+  `).join('');
+}
+
+/**
+ * 测试用量获取（支持新建渠道和编辑渠道）
+ */
+async function testQuotaFetch() {
+  const testBtn = document.getElementById('quotaTestBtn');
+  const originalText = testBtn.textContent;
+  testBtn.disabled = true;
+  testBtn.textContent = '测试中...';
+
+  try {
+    // 获取表单中当前填写的配置
+    const config = getQuotaConfig();
+    if (!config || !config.request_url) {
+      throw new Error('请填写请求URL');
+    }
+    if (!config.extractor_script) {
+      throw new Error('请填写提取器脚本');
+    }
+
+    // 使用 channelId=0 表示测试模式，或使用已有的渠道ID
+    const channelId = editingChannelId || 0;
+
+    // 调用后端代理API，发送表单中的配置
+    const res = await fetchWithAuth(`/admin/channels/${channelId}/quota/fetch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ quota_config: config })
+    });
+
+    const result = await res.json();
+
+    if (!result.success) {
+      throw new Error(result.error || '请求失败');
+    }
+
+    // 执行提取器脚本
+    try {
+      const extractorFn = new Function('response', `return (${config.extractor_script})(response)`);
+      const quotaData = extractorFn(result.body);
+
+      if (quotaData && quotaData.isValid) {
+        if (window.showSuccess) {
+          showSuccess(`测试成功！余额: ${quotaData.remaining} ${quotaData.unit || ''}`);
+        }
+      } else {
+        if (window.showWarning) {
+          showWarning('提取器返回无效数据，请检查脚本逻辑');
+        } else if (window.showError) {
+          showError('提取器返回无效数据');
+        }
+      }
+    } catch (extractError) {
+      console.error('提取器执行失败', extractError);
+      if (window.showWarning) {
+        showWarning('请求成功 (HTTP ' + result.status_code + ')，但提取器执行失败: ' + extractError.message);
+      } else if (window.showError) {
+        showError('提取器执行失败: ' + extractError.message);
+      }
+    }
+
+  } catch (error) {
+    console.error('测试用量获取失败', error);
+    if (window.showError) showError('测试失败: ' + error.message);
+  } finally {
+    testBtn.disabled = false;
+    testBtn.textContent = originalText;
+  }
+}
+
+/**
+ * HTML转义（防止XSS，包括属性注入）
+ */
+function escapeHtml(text) {
+  // 注意：不能用 !text 判断，否则数值 0 会被当作 false
+  if (text === null || text === undefined) return '';
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+/**
+ * 用量监控预设模板
+ */
+const QUOTA_TEMPLATES = {
+  // NEWAPI 模板
+  newapi: {
+    name: 'NEWAPI',
+    endpoint: '/api/user/self',  // 只存路径，自动拼接渠道URL
+    method: 'GET',
+    headers: [
+      { key: 'Content-Type', value: 'application/json' },
+      { key: 'Authorization', value: 'Bearer 你的Token' },
+      { key: 'New-Api-User', value: '你的用户ID' }
+    ],
+    extractor: `function(response) {
+  const data = typeof response === 'string' ? JSON.parse(response) : response;
+  if (data.success && data.data) {
+    return {
+      isValid: true,
+      remaining: data.data.quota / 500000,
+      unit: "USD"
+    };
+  }
+  return { isValid: false, error: data.message || "查询失败" };
+}`
+  },
+
+  // Veloera 模板
+  veloera: {
+    name: 'Veloera',
+    endpoint: '/api/user/self',
+    method: 'GET',
+    headers: [
+      { key: 'Content-Type', value: 'application/json' },
+      { key: 'Authorization', value: 'Bearer 你的Token' },
+      { key: 'Veloera-User', value: '你的用户ID' }
+    ],
+    extractor: `function(response) {
+  const data = typeof response === 'string' ? JSON.parse(response) : response;
+  if (data.success && data.data) {
+    return {
+      isValid: true,
+      remaining: data.data.quota / 500000,
+      unit: "USD"
+    };
+  }
+  return { isValid: false, error: data.message || "查询失败" };
+}`
+  },
+
+  // OneAPI 模板
+  oneapi: {
+    name: 'OneAPI',
+    endpoint: '/api/user/self',
+    method: 'GET',
+    headers: [
+      { key: 'Content-Type', value: 'application/json' },
+      { key: 'Authorization', value: 'Bearer 你的Token' }
+    ],
+    extractor: `function(response) {
+  const data = typeof response === 'string' ? JSON.parse(response) : response;
+  if (data.success && data.data) {
+    // OneAPI 的 quota 单位是 500000 = 1 USD
+    return {
+      isValid: true,
+      remaining: data.data.quota / 500000,
+      unit: "USD"
+    };
+  }
+  return { isValid: false, error: data.message || "查询失败" };
+}`
+  }
+};
+
+/**
+ * 应用用量监控模板
+ * @param {string} templateKey - 模板键名
+ */
+function applyQuotaTemplate(templateKey) {
+  const template = QUOTA_TEMPLATES[templateKey];
+  if (!template) {
+    console.error('未知模板:', templateKey);
+    return;
+  }
+
+  // 从渠道URL自动生成用量查询URL
+  let quotaUrl = '';
+
+  // 优先使用端点列表的第一个URL，否则使用channelUrl输入框
+  const endpoints = typeof getInlineEndpoints === 'function' ? getInlineEndpoints() : [];
+  let baseUrl = endpoints[0] || document.getElementById('channelUrl')?.value?.trim() || '';
+
+  if (baseUrl) {
+    // 移除末尾的斜杠和可能的 /v1 路径
+    baseUrl = baseUrl.replace(/\/+$/, '').replace(/\/v1$/, '');
+    quotaUrl = baseUrl + template.endpoint;
+  } else {
+    // 没有渠道URL时使用占位符
+    quotaUrl = 'https://你的域名' + template.endpoint;
+  }
+
+  // 填充URL和方法
+  document.getElementById('quotaUrl').value = quotaUrl;
+  document.getElementById('quotaMethod').value = template.method;
+
+  // 填充请求头
+  quotaHeadersData = template.headers.map(h => ({ key: h.key, value: h.value }));
+  renderQuotaHeaders();
+
+  // 填充提取器脚本
+  document.getElementById('quotaExtractor').value = template.extractor;
+
+  if (window.showSuccess) {
+    const msg = baseUrl
+      ? `已应用 ${template.name} 模板，请填写Token和用户ID`
+      : `已应用 ${template.name} 模板，请先填写渠道URL`;
+    showSuccess(msg);
   }
 }
