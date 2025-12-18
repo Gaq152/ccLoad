@@ -28,6 +28,15 @@ function showAddModal() {
   // 重置用量监控配置
   resetQuotaConfig();
 
+  // 初始化 Codex OAuth 区块（默认隐藏）
+  handleChannelTypeChange('anthropic');
+  updateCodexTokenUI(null);
+  initChannelTypeEventListener();
+  toggleCodexAuthMode('oauth');
+
+  // 添加 OAuth 回调消息监听
+  window.addEventListener('message', handleCodexOAuthMessage);
+
   document.getElementById('channelModal').classList.add('show');
 }
 
@@ -100,6 +109,82 @@ async function editChannel(id) {
   // 加载用量监控配置
   loadQuotaConfig(channel.quota_config);
 
+  // 初始化渠道类型相关 UI（Codex OAuth 区块）
+  initChannelTypeEventListener();
+
+  // Codex 渠道：根据预设类型设置 UI
+  if (channelType === 'codex') {
+    // 从后端获取预设类型（新字段），如果没有则根据数据推断
+    let preset = channel.preset || '';
+
+    // 如果后端没有返回 preset（兼容旧数据），根据 OAuth Token 存在与否推断
+    if (!preset && apiKeys.length > 0) {
+      const firstKey = apiKeys[0];
+      // 检查是否有 OAuth Token（新字段方式）
+      if (firstKey?.access_token) {
+        preset = 'official';
+      } else {
+        // 检查是否是 JSON 格式（旧方式，存在 api_key 字段中）
+        const apiKeyStr = firstKey?.api_key || firstKey;
+        if (apiKeyStr && typeof apiKeyStr === 'string' && apiKeyStr.trim().startsWith('{')) {
+          preset = 'official';
+        } else {
+          preset = 'custom';
+        }
+      }
+    }
+
+    // 默认官方预设
+    if (!preset) preset = 'official';
+
+    // 设置预设单选按钮
+    const presetRadio = document.querySelector(`input[name="codexPreset"][value="${preset}"]`);
+    if (presetRadio) {
+      presetRadio.checked = true;
+    }
+
+    // 应用渠道类型切换（会显示预设选项并应用当前预设）
+    handleChannelTypeChange(channelType);
+
+    // 加载 OAuth Token UI
+    if (preset === 'official' && apiKeys.length > 0) {
+      const firstKey = apiKeys[0];
+      // 优先使用新字段
+      if (firstKey?.access_token) {
+        const token = {
+          access_token: firstKey.access_token,
+          id_token: firstKey.id_token || '',
+          refresh_token: firstKey.refresh_token || '',
+          expires_at: firstKey.token_expires_at || 0
+        };
+        updateCodexTokenUI(token);
+      } else {
+        // 兼容旧数据：从 api_key 字段解析 JSON
+        const apiKeyStr = firstKey?.api_key || firstKey;
+        if (apiKeyStr && typeof apiKeyStr === 'string' && apiKeyStr.trim().startsWith('{')) {
+          try {
+            const token = JSON.parse(apiKeyStr);
+            updateCodexTokenUI(token);
+          } catch (e) {
+            console.warn('解析 Codex Token 失败', e);
+            updateCodexTokenUI(null);
+          }
+        } else {
+          updateCodexTokenUI(null);
+        }
+      }
+    } else {
+      updateCodexTokenUI(null);
+    }
+  } else {
+    // 非 Codex 渠道
+    handleChannelTypeChange(channelType);
+    updateCodexTokenUI(null);
+  }
+
+  // 添加 OAuth 回调消息监听
+  window.addEventListener('message', handleCodexOAuthMessage);
+
   document.getElementById('channelModal').classList.add('show');
 
   // 启动冷却倒计时（包括 Key 冷却）
@@ -109,15 +194,74 @@ async function editChannel(id) {
 function closeModal() {
   document.getElementById('channelModal').classList.remove('show');
   editingChannelId = null;
+
+  // 移除 OAuth 回调消息监听
+  window.removeEventListener('message', handleCodexOAuthMessage);
 }
 
 async function saveChannel(event) {
   event.preventDefault();
 
-  const validKeys = inlineKeyTableData.filter(k => k && k.trim());
-  if (validKeys.length === 0) {
-    alert('请至少添加一个有效的API Key');
-    return;
+  const channelType = document.querySelector('input[name="channelType"]:checked')?.value || 'anthropic';
+
+  // 预设类型（仅 Codex 渠道）
+  let preset = '';
+  let accessToken = '';
+  let idToken = '';
+  let refreshToken = '';
+  let tokenExpiresAt = 0;
+
+  // Codex 渠道：根据预设类型决定认证方式
+  let validKeys;
+  if (channelType === 'codex') {
+    preset = document.querySelector('input[name="codexPreset"]:checked')?.value || 'official';
+
+    if (preset === 'official') {
+      // 官方预设：使用 OAuth Token
+      const tokenJson = document.getElementById('channelApiKey').value;
+      if (!tokenJson || !tokenJson.startsWith('{')) {
+        if (window.showError) {
+          showError('请先完成 Codex OAuth 授权');
+        } else {
+          alert('请先完成 Codex OAuth 授权');
+        }
+        return;
+      }
+
+      // 解析 OAuth Token JSON
+      try {
+        const token = JSON.parse(tokenJson);
+        accessToken = token.access_token || '';
+        idToken = token.id_token || '';
+        refreshToken = token.refresh_token || '';
+        tokenExpiresAt = token.expires_at || 0;
+      } catch (e) {
+        if (window.showError) {
+          showError('OAuth Token 格式错误');
+        }
+        return;
+      }
+
+      validKeys = []; // 官方预设不使用 api_key 字段
+    } else {
+      // 自定义预设：使用 API Key
+      validKeys = inlineKeyTableData.filter(k => k && k.trim());
+      if (validKeys.length === 0) {
+        if (window.showError) {
+          showError('请至少添加一个 API Key');
+        } else {
+          alert('请至少添加一个 API Key');
+        }
+        return;
+      }
+    }
+  } else {
+    // 其他渠道：使用标准 API Key 列表
+    validKeys = inlineKeyTableData.filter(k => k && k.trim());
+    if (validKeys.length === 0) {
+      alert('请至少添加一个有效的API Key');
+      return;
+    }
   }
 
   document.getElementById('channelApiKey').value = validKeys.join(',');
@@ -133,7 +277,7 @@ async function saveChannel(event) {
 
   const modelRedirects = redirectTableToJSON();
 
-  const channelType = document.querySelector('input[name="channelType"]:checked')?.value || 'anthropic';
+  // channelType 已在函数开头定义
   const keyStrategy = document.querySelector('input[name="keyStrategy"]:checked')?.value || 'sequential';
 
   const formData = {
@@ -146,11 +290,27 @@ async function saveChannel(event) {
     models: document.getElementById('channelModels').value.split(',').map(m => m.trim()).filter(m => m),
     model_redirects: modelRedirects,
     enabled: document.getElementById('channelEnabled').checked,
-    quota_config: getQuotaConfig()
+    quota_config: getQuotaConfig(),
+    // Codex 预设相关字段
+    preset: preset,
+    access_token: accessToken,
+    id_token: idToken,
+    refresh_token: refreshToken,
+    token_expires_at: tokenExpiresAt
   };
 
-  if (!formData.name || !formData.url || !formData.api_key || formData.models.length === 0) {
+  // 验证必填字段（官方预设使用 OAuth，不需要 api_key）
+  const needsApiKey = channelType !== 'codex' || preset !== 'official';
+  if (!formData.name || !formData.url || formData.models.length === 0) {
     if (window.showError) showError('请填写所有必填字段');
+    return;
+  }
+  if (needsApiKey && !formData.api_key) {
+    if (window.showError) showError('请填写API Key');
+    return;
+  }
+  if (preset === 'official' && !accessToken) {
+    if (window.showError) showError('请完成OAuth授权');
     return;
   }
 
@@ -327,6 +487,24 @@ async function copyChannel(id, name) {
   const modelRedirects = channel.model_redirects || {};
   redirectTableData = jsonToRedirectTable(modelRedirects);
   renderRedirectTable();
+
+  // 初始化渠道类型相关 UI（Codex OAuth 区块）
+  initChannelTypeEventListener();
+  handleChannelTypeChange(channelType);
+
+  // Codex 渠道：复制时需要重新配置
+  if (channelType === 'codex') {
+    updateCodexTokenUI(null);
+    toggleCodexAuthMode('oauth');
+    if (window.showWarning) {
+      showWarning('Codex 渠道复制后需要重新配置鉴权');
+    }
+  } else {
+    updateCodexTokenUI(null);
+  }
+
+  // 添加 OAuth 回调消息监听
+  window.addEventListener('message', handleCodexOAuthMessage);
 
   document.getElementById('channelModal').classList.add('show');
 }
@@ -505,9 +683,6 @@ function jsonToRedirectTable(json) {
 async function fetchModelsFromAPI() {
   const channelUrl = document.getElementById('channelUrl').value.trim();
   const channelType = document.querySelector('input[name="channelType"]:checked')?.value || 'anthropic';
-  const firstValidKey = inlineKeyTableData
-    .map(key => (key || '').trim())
-    .filter(Boolean)[0];
 
   if (!channelUrl) {
     if (window.showError) {
@@ -518,13 +693,58 @@ async function fetchModelsFromAPI() {
     return;
   }
 
-  if (!firstValidKey) {
-    if (window.showError) {
-      showError('请至少添加一个API Key');
+  // 获取认证信息（区分 Codex 官方预设和其他渠道）
+  let apiKey = '';
+  let accessToken = '';
+
+  if (channelType === 'codex') {
+    const preset = document.querySelector('input[name="codexPreset"]:checked')?.value || 'official';
+    if (preset === 'official') {
+      // Codex 官方预设：从 OAuth Token 获取 access_token
+      const tokenJson = document.getElementById('channelApiKey').value;
+      if (tokenJson && tokenJson.startsWith('{')) {
+        try {
+          const token = JSON.parse(tokenJson);
+          accessToken = token.access_token || '';
+        } catch (e) {
+          console.warn('解析 Codex Token 失败', e);
+        }
+      }
+      if (!accessToken) {
+        if (window.showError) {
+          showError('请先完成 Codex OAuth 授权');
+        } else {
+          alert('请先完成 Codex OAuth 授权');
+        }
+        return;
+      }
     } else {
-      alert('请至少添加一个API Key');
+      // Codex 自定义预设：使用 API Key
+      apiKey = inlineKeyTableData
+        .map(key => (typeof key === 'string' ? key : '').trim())
+        .filter(Boolean)[0] || '';
+      if (!apiKey) {
+        if (window.showError) {
+          showError('请至少添加一个API Key');
+        } else {
+          alert('请至少添加一个API Key');
+        }
+        return;
+      }
     }
-    return;
+  } else {
+    // 其他渠道：使用 API Key
+    apiKey = inlineKeyTableData
+      .map(key => (typeof key === 'string' ? key : '').trim())
+      .filter(Boolean)[0] || '';
+    if (!apiKey) {
+      if (window.showError) {
+        showError('请至少添加一个API Key');
+      } else {
+        alert('请至少添加一个API Key');
+      }
+      return;
+    }
   }
 
   const endpoint = '/admin/channels/models/fetch';
@@ -534,7 +754,8 @@ async function fetchModelsFromAPI() {
     body: JSON.stringify({
       channel_type: channelType,
       url: channelUrl,
-      api_key: firstValidKey
+      api_key: apiKey,
+      access_token: accessToken
     })
   };
 
@@ -886,6 +1107,13 @@ const QUOTA_TEMPLATES = {
       { key: 'New-Api-User', value: '你的用户ID' }
     ],
     extractor: `function(response) {
+  // 检查是否为 HTML 响应（Cloudflare 拦截等）
+  if (typeof response === 'string' && response.trim().startsWith('<')) {
+    if (response.includes('Just a moment') || response.includes('cf-challenge')) {
+      return { isValid: false, error: "被 Cloudflare 拦截，请检查 IP 或稍后重试" };
+    }
+    return { isValid: false, error: "响应不是 JSON 格式" };
+  }
   const data = typeof response === 'string' ? JSON.parse(response) : response;
   if (data.success && data.data) {
     return {
@@ -909,6 +1137,13 @@ const QUOTA_TEMPLATES = {
       { key: 'Veloera-User', value: '你的用户ID' }
     ],
     extractor: `function(response) {
+  // 检查是否为 HTML 响应（Cloudflare 拦截等）
+  if (typeof response === 'string' && response.trim().startsWith('<')) {
+    if (response.includes('Just a moment') || response.includes('cf-challenge')) {
+      return { isValid: false, error: "被 Cloudflare 拦截，请检查 IP 或稍后重试" };
+    }
+    return { isValid: false, error: "响应不是 JSON 格式" };
+  }
   const data = typeof response === 'string' ? JSON.parse(response) : response;
   if (data.success && data.data) {
     return {
@@ -931,6 +1166,13 @@ const QUOTA_TEMPLATES = {
       { key: 'Authorization', value: 'Bearer 你的Token' }
     ],
     extractor: `function(response) {
+  // 检查是否为 HTML 响应（Cloudflare 拦截等）
+  if (typeof response === 'string' && response.trim().startsWith('<')) {
+    if (response.includes('Just a moment') || response.includes('cf-challenge')) {
+      return { isValid: false, error: "被 Cloudflare 拦截，请检查 IP 或稍后重试" };
+    }
+    return { isValid: false, error: "响应不是 JSON 格式" };
+  }
   const data = typeof response === 'string' ? JSON.parse(response) : response;
   if (data.success && data.data) {
     // OneAPI 的 quota 单位是 500000 = 1 USD
@@ -941,6 +1183,53 @@ const QUOTA_TEMPLATES = {
     };
   }
   return { isValid: false, error: data.message || "查询失败" };
+}`
+  },
+
+  // Codex 官方预设模板（使用 OAuth Token）
+  codex: {
+    name: 'Codex 官方',
+    absoluteUrl: 'https://chatgpt.com/backend-api/wham/usage',  // 绝对 URL
+    method: 'GET',
+    // headers 动态生成（从 OAuth Token 获取）
+    headers: [],
+    extractor: `function(response) {
+  const data = typeof response === 'string' ? JSON.parse(response) : response;
+
+  // 检查 rate_limit 结构
+  if (!data.rate_limit) {
+    return { isValid: false, error: "响应格式错误：缺少 rate_limit" };
+  }
+
+  const rl = data.rate_limit;
+  const primary = rl.primary_window;
+  const secondary = rl.secondary_window;
+
+  // 计算剩余百分比
+  const primaryRemaining = primary ? (100 - primary.used_percent) : 100;
+  const secondaryRemaining = secondary ? (100 - secondary.used_percent) : 100;
+
+  // 使用较低的剩余百分比
+  const remaining = Math.min(primaryRemaining, secondaryRemaining);
+
+  // 构建详细信息
+  let detail = '';
+  if (primary) {
+    const resetTime = new Date(primary.reset_at * 1000).toLocaleString();
+    detail += '5h窗口: ' + primary.used_percent + '% (重置: ' + resetTime + ')';
+  }
+  if (secondary) {
+    if (detail) detail += ' | ';
+    detail += '7d窗口: ' + secondary.used_percent + '%';
+  }
+
+  return {
+    isValid: true,
+    remaining: remaining,
+    unit: '%',
+    detail: detail,
+    limitReached: rl.limit_reached || false
+  };
 }`
   }
 };
@@ -953,6 +1242,12 @@ function applyQuotaTemplate(templateKey) {
   const template = QUOTA_TEMPLATES[templateKey];
   if (!template) {
     console.error('未知模板:', templateKey);
+    return;
+  }
+
+  // Codex 官方模板特殊处理
+  if (templateKey === 'codex') {
+    applyCodexQuotaTemplate(template);
     return;
   }
 
@@ -988,5 +1283,570 @@ function applyQuotaTemplate(templateKey) {
       ? `已应用 ${template.name} 模板，请填写Token和用户ID`
       : `已应用 ${template.name} 模板，请先填写渠道URL`;
     showSuccess(msg);
+  }
+}
+
+/**
+ * 应用 Codex 官方用量监控模板
+ * 从 OAuth Token 动态生成 headers
+ * @param {Object} template - 模板对象
+ */
+function applyCodexQuotaTemplate(template) {
+  // 检查是否为 Codex 官方预设
+  const channelType = document.querySelector('input[name="channelType"]:checked')?.value;
+  const preset = document.querySelector('input[name="codexPreset"]:checked')?.value;
+
+  if (channelType !== 'codex' || preset !== 'official') {
+    if (window.showError) {
+      showError('Codex 官方模板仅适用于 Codex 官方预设渠道');
+    }
+    return;
+  }
+
+  // 从 OAuth Token 获取认证信息
+  const tokenJson = document.getElementById('channelApiKey').value;
+  if (!tokenJson || !tokenJson.startsWith('{')) {
+    if (window.showError) {
+      showError('请先完成 Codex OAuth 授权');
+    }
+    return;
+  }
+
+  let token;
+  try {
+    token = JSON.parse(tokenJson);
+  } catch (e) {
+    if (window.showError) {
+      showError('OAuth Token 格式错误');
+    }
+    return;
+  }
+
+  if (!token.access_token) {
+    if (window.showError) {
+      showError('OAuth Token 缺少 access_token');
+    }
+    return;
+  }
+
+  // 提取 account_id
+  const accountId = token.account_id || extractAccountIdFromToken(token.access_token);
+  if (!accountId) {
+    if (window.showWarning) {
+      showWarning('无法从 Token 中提取 account_id，请手动填写');
+    }
+  }
+
+  // 填充 URL（使用绝对 URL）
+  document.getElementById('quotaUrl').value = template.absoluteUrl;
+  document.getElementById('quotaMethod').value = template.method;
+
+  // 动态生成请求头
+  quotaHeadersData = [
+    { key: 'Authorization', value: `Bearer ${token.access_token}` },
+    { key: 'chatgpt-account-id', value: accountId || '请手动填写' }
+  ];
+  renderQuotaHeaders();
+
+  // 填充提取器脚本
+  document.getElementById('quotaExtractor').value = template.extractor;
+
+  if (window.showSuccess) {
+    showSuccess('已应用 Codex 官方模板，认证信息已自动填充');
+  }
+}
+
+// ==================== Codex OAuth 授权 ====================
+
+/**
+ * 处理渠道类型切换
+ * 控制标准 Key 表格和 Codex OAuth 区块的显示
+ */
+function handleChannelTypeChange(type) {
+  const standardKeyContainer = document.getElementById('standardKeyContainer');
+  const codexOAuthSection = document.getElementById('codexOAuthSection');
+  const codexAuthSwitch = document.getElementById('codexAuthSwitch');
+  const codexPresetContainer = document.getElementById('codexPresetContainer');
+
+  // Codex 渠道
+  if (type === 'codex') {
+    // 显示预设选项
+    if (codexPresetContainer) codexPresetContainer.style.display = 'block';
+
+    // 检查是否已选择预设，如果没有则默认选择官方预设
+    const currentPreset = document.querySelector('input[name="codexPreset"]:checked')?.value;
+    if (!currentPreset) {
+      const officialRadio = document.querySelector('input[name="codexPreset"][value="official"]');
+      if (officialRadio) {
+        officialRadio.checked = true;
+        handleCodexPresetChange('official');
+      }
+    } else {
+      // 重新应用当前预设逻辑
+      handleCodexPresetChange(currentPreset);
+    }
+  }
+  // 其他渠道
+  else {
+    // 隐藏预设选项
+    if (codexPresetContainer) codexPresetContainer.style.display = 'none';
+    // 隐藏 OAuth/API Key 切换开关
+    if (codexAuthSwitch) codexAuthSwitch.style.display = 'none';
+    if (standardKeyContainer) standardKeyContainer.style.display = 'block';
+    if (codexOAuthSection) codexOAuthSection.style.display = 'none';
+
+    // 隐藏 Codex 官方用量模板按钮，恢复提示文字
+    const codexQuotaTemplateBtn = document.getElementById('codexQuotaTemplateBtn');
+    const quotaTemplateHint = document.getElementById('quotaTemplateHint');
+    if (codexQuotaTemplateBtn) codexQuotaTemplateBtn.style.display = 'none';
+    if (quotaTemplateHint) quotaTemplateHint.textContent = '选择后请替换占位符';
+  }
+}
+
+/**
+ * 处理 Codex 预设切换
+ * official: 自动填写官方 URL，显示 OAuth，隐藏 API Key
+ * custom: 用户自填 URL，显示 API Key，隐藏 OAuth
+ */
+function handleCodexPresetChange(preset) {
+  const isOfficial = preset === 'official';
+  const codexAuthSwitch = document.getElementById('codexAuthSwitch');
+  const standardKeyContainer = document.getElementById('standardKeyContainer');
+  const codexOAuthSection = document.getElementById('codexOAuthSection');
+  const codexQuotaTemplateBtn = document.getElementById('codexQuotaTemplateBtn');
+  const quotaTemplateHint = document.getElementById('quotaTemplateHint');
+
+  // 预设模式下隐藏手动切换开关（预设决定了认证方式）
+  if (codexAuthSwitch) codexAuthSwitch.style.display = 'none';
+
+  if (isOfficial) {
+    // 官方预设：
+    // 1. 自动填写官方 URL
+    const officialUrl = 'https://chatgpt.com/backend-api/codex';
+    if (typeof setInlineEndpoints === 'function') {
+      setInlineEndpoints([officialUrl]);
+    }
+
+    // 2. 显示 OAuth 区块，隐藏 API Key 表格
+    if (standardKeyContainer) standardKeyContainer.style.display = 'none';
+    if (codexOAuthSection) codexOAuthSection.style.display = 'block';
+
+    // 3. 显示 Codex 官方用量模板按钮
+    if (codexQuotaTemplateBtn) codexQuotaTemplateBtn.style.display = 'inline-flex';
+    if (quotaTemplateHint) quotaTemplateHint.textContent = 'Codex 官方自动填充认证信息';
+  } else {
+    // 自定义预设：
+    // 1. 清空 URL 让用户自填（如果当前是官方 URL）
+    const endpoints = typeof getInlineEndpoints === 'function' ? getInlineEndpoints() : [];
+    if (endpoints.length > 0 && endpoints[0] && endpoints[0].includes('chatgpt.com/backend-api/codex')) {
+      if (typeof setInlineEndpoints === 'function') {
+        setInlineEndpoints(['']);
+      }
+    }
+
+    // 2. 显示 API Key 表格，隐藏 OAuth 区块
+    if (standardKeyContainer) standardKeyContainer.style.display = 'block';
+    if (codexOAuthSection) codexOAuthSection.style.display = 'none';
+
+    // 3. 隐藏 Codex 官方用量模板按钮
+    if (codexQuotaTemplateBtn) codexQuotaTemplateBtn.style.display = 'none';
+    if (quotaTemplateHint) quotaTemplateHint.textContent = '选择后请替换占位符';
+  }
+}
+
+/**
+ * 更新 Codex Token 状态 UI
+ */
+function updateCodexTokenUI(token) {
+  const statusBadge = document.getElementById('codexTokenStatusBadge');
+  const tokenInfo = document.getElementById('codexTokenInfo');
+  const accountIdEl = document.getElementById('codexAccountId');
+  const expiresAtEl = document.getElementById('codexExpiresAt');
+
+  const startBtn = document.getElementById('startCodexOAuthBtn');
+  const refreshBtn = document.getElementById('refreshCodexTokenBtn');
+  const clearBtn = document.getElementById('clearCodexTokenBtn');
+
+  if (token && token.access_token) {
+    // 已授权
+    statusBadge.textContent = '✓ 已授权';
+    statusBadge.style.background = 'var(--success-100)';
+    statusBadge.style.color = 'var(--success-700)';
+
+    tokenInfo.style.display = 'block';
+    accountIdEl.textContent = token.account_id || extractAccountIdFromToken(token.access_token) || '未知';
+
+    if (token.expires_at) {
+      const expDate = new Date(token.expires_at * 1000);
+      expiresAtEl.textContent = expDate.toLocaleString();
+    } else if (token.expires_in) {
+      expiresAtEl.textContent = `约 ${Math.floor(token.expires_in / 3600)} 小时后`;
+    } else {
+      expiresAtEl.textContent = '未知';
+    }
+
+    startBtn.style.display = 'none';
+    refreshBtn.style.display = 'inline-flex';
+    clearBtn.style.display = 'inline-flex';
+
+    // 更新隐藏的 input 值
+    document.getElementById('channelApiKey').value = JSON.stringify(token);
+
+  } else {
+    // 未授权
+    statusBadge.textContent = '未授权';
+    statusBadge.style.background = 'var(--neutral-200)';
+    statusBadge.style.color = 'var(--neutral-600)';
+
+    tokenInfo.style.display = 'none';
+
+    startBtn.style.display = 'inline-flex';
+    refreshBtn.style.display = 'none';
+    clearBtn.style.display = 'none';
+  }
+}
+
+/**
+ * 开始 Codex OAuth 流程
+ */
+async function startCodexOAuth() {
+  // Codex CLI 的 OAuth 应用只注册了 localhost:1455 作为回调地址
+  // 必须使用这个固定地址，否则 OpenAI 会报 unknown_error
+  const FIXED_REDIRECT_URI = 'http://localhost:1455/auth/callback';
+
+  const config = {
+    authorizeUrl: 'https://auth.openai.com/oauth/authorize',
+    clientId: 'app_EMoamEEZ73f0CkXaXp7hrann',
+    redirectUri: FIXED_REDIRECT_URI, // 必须固定！
+    scope: 'openid profile email offline_access',
+    response_type: 'code',
+    code_challenge_method: 'S256'
+  };
+
+  // 检查当前是否运行在 localhost:1455
+  const isLocalhost1455 = window.location.hostname === 'localhost' && window.location.port === '1455';
+
+  // 如果不是 localhost:1455，提示用户手动复制 code
+  if (!isLocalhost1455) {
+    alert(
+      '注意：授权成功后，浏览器会跳转到 localhost:1455（可能无法访问）。\n\n' +
+      '请从地址栏复制 code=xxx 后面的值，然后回来粘贴到"手动输入授权码"中。'
+    );
+  }
+
+  // 生成 PKCE
+  const { codeVerifier, codeChallenge } = await generatePKCE();
+  localStorage.setItem('codex_oauth_verifier', codeVerifier);
+
+  // 构建 URL
+  const params = new URLSearchParams({
+    client_id: config.clientId,
+    redirect_uri: config.redirectUri,
+    response_type: config.response_type,
+    scope: config.scope,
+    code_challenge: codeChallenge,
+    code_challenge_method: config.code_challenge_method,
+    state: Math.random().toString(36).substring(2)
+  });
+
+  const fullUrl = `${config.authorizeUrl}?${params.toString()}`;
+
+  // 打开新窗口
+  const width = 600;
+  const height = 700;
+  const left = (window.screen.width - width) / 2;
+  const top = (window.screen.height - height) / 2;
+  window.open(fullUrl, 'codex_oauth', `width=${width},height=${height},left=${left},top=${top}`);
+
+  if (window.showSuccess) showSuccess('已打开授权窗口，请登录并授权');
+}
+
+/**
+ * 处理 OAuth 回调消息
+ */
+async function handleCodexOAuthMessage(event) {
+  const data = event.data;
+  if (!data || !data.code) return;
+
+  await exchangeCodeForToken(data.code);
+}
+
+/**
+ * 用 Code 换取 Token
+ */
+async function exchangeCodeForToken(code) {
+  const codeVerifier = localStorage.getItem('codex_oauth_verifier');
+  if (!codeVerifier) {
+    if (window.showError) showError('找不到 PKCE Verifier，请重新授权');
+    return;
+  }
+
+  const startBtn = document.getElementById('startCodexOAuthBtn');
+  const originalText = startBtn.textContent;
+  startBtn.disabled = true;
+  startBtn.textContent = '获取 Token 中...';
+
+  try {
+    // redirect_uri 必须与授权请求时使用的完全一致（固定值）
+    const FIXED_REDIRECT_URI = 'http://localhost:1455/auth/callback';
+
+    const body = new URLSearchParams({
+      grant_type: 'authorization_code',
+      code: code,
+      redirect_uri: FIXED_REDIRECT_URI,
+      client_id: 'app_EMoamEEZ73f0CkXaXp7hrann',
+      code_verifier: codeVerifier
+    });
+
+    // 通过后端代理请求
+    const res = await fetchWithAuth('/admin/oauth/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token_url: 'https://auth.openai.com/oauth/token',
+        body: body.toString(),
+        content_type: 'application/x-www-form-urlencoded'
+      })
+    });
+
+    const result = await res.json();
+
+    if (result.success && result.data) {
+      let tokenData = typeof result.data === 'string' ? JSON.parse(result.data) : result.data;
+
+      // 补充信息
+      tokenData.type = 'oauth';
+      tokenData.created_at = Math.floor(Date.now() / 1000);
+      if (tokenData.expires_in) {
+        tokenData.expires_at = tokenData.created_at + tokenData.expires_in;
+      }
+      tokenData.account_id = extractAccountIdFromToken(tokenData.access_token);
+
+      updateCodexTokenUI(tokenData);
+      localStorage.removeItem('codex_oauth_verifier');
+
+      if (window.showSuccess) showSuccess('授权成功！');
+    } else {
+      throw new Error(result.error || '换取 Token 失败');
+    }
+
+  } catch (e) {
+    console.error('OAuth Error:', e);
+    if (window.showError) showError('授权失败: ' + e.message);
+  } finally {
+    startBtn.disabled = false;
+    startBtn.textContent = originalText;
+  }
+}
+
+/**
+ * 刷新 Token
+ */
+async function refreshCodexToken() {
+  const tokenJson = document.getElementById('channelApiKey').value;
+  if (!tokenJson) return;
+
+  let token;
+  try {
+    token = JSON.parse(tokenJson);
+  } catch (e) { return; }
+
+  if (!token.refresh_token) {
+    if (window.showError) showError('没有 Refresh Token，请重新授权');
+    return;
+  }
+
+  const refreshBtn = document.getElementById('refreshCodexTokenBtn');
+  refreshBtn.disabled = true;
+  refreshBtn.textContent = '刷新中...';
+
+  try {
+    const body = new URLSearchParams({
+      grant_type: 'refresh_token',
+      refresh_token: token.refresh_token,
+      client_id: 'pdlLIX2Y72MIl2rhLhTE9VV9bN905kBh' // 刷新使用不同的 client_id
+    });
+
+    // 刷新使用 auth0.openai.com
+    const res = await fetchWithAuth('/admin/oauth/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token_url: 'https://auth0.openai.com/oauth/token',
+        body: body.toString(),
+        content_type: 'application/x-www-form-urlencoded'
+      })
+    });
+
+    const result = await res.json();
+
+    if (result.success && result.data) {
+      let newTokenData = typeof result.data === 'string' ? JSON.parse(result.data) : result.data;
+
+      // 合并新旧数据（保留 refresh_token 如果新的没返回）
+      const updatedToken = {
+        ...token,
+        ...newTokenData,
+        type: 'oauth',
+        created_at: Math.floor(Date.now() / 1000)
+      };
+
+      if (newTokenData.expires_in) {
+        updatedToken.expires_at = updatedToken.created_at + newTokenData.expires_in;
+      }
+
+      // 如果新响应没有 refresh_token，保留旧的
+      if (!newTokenData.refresh_token && token.refresh_token) {
+        updatedToken.refresh_token = token.refresh_token;
+      }
+
+      // 更新 account_id
+      updatedToken.account_id = extractAccountIdFromToken(updatedToken.access_token) || token.account_id;
+
+      updateCodexTokenUI(updatedToken);
+      if (window.showSuccess) showSuccess('Token 刷新成功');
+    } else {
+      throw new Error(result.error || '刷新失败');
+    }
+
+  } catch (e) {
+    console.error('Refresh Error:', e);
+    if (window.showError) showError('刷新失败: ' + e.message);
+  } finally {
+    refreshBtn.disabled = false;
+    refreshBtn.textContent = '🔄 刷新 Token';
+  }
+}
+
+/**
+ * 清除 Codex 授权
+ */
+function clearCodexToken() {
+  if (confirm('确定要清除授权信息吗？')) {
+    document.getElementById('channelApiKey').value = '';
+    updateCodexTokenUI(null);
+  }
+}
+
+/**
+ * 工具函数：生成 PKCE
+ */
+async function generatePKCE() {
+  const array = new Uint8Array(32);
+  crypto.getRandomValues(array);
+  const codeVerifier = base64UrlEncode(array);
+
+  const encoder = new TextEncoder();
+  const data = encoder.encode(codeVerifier);
+  const hash = await crypto.subtle.digest('SHA-256', data);
+  const codeChallenge = base64UrlEncode(new Uint8Array(hash));
+
+  return { codeVerifier, codeChallenge };
+}
+
+/**
+ * Base64 URL 编码
+ */
+function base64UrlEncode(buffer) {
+  let str = '';
+  const bytes = new Uint8Array(buffer);
+  for (let i = 0; i < bytes.length; i++) {
+    str += String.fromCharCode(bytes[i]);
+  }
+  return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+}
+
+/**
+ * 从 JWT 提取 account_id
+ */
+function extractAccountIdFromToken(token) {
+  if (!token) return null;
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+    return payload['https://api.openai.com/auth']?.chatgpt_account_id || null;
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
+ * 初始化渠道类型切换事件监听
+ * 使用事件委托，避免重复绑定
+ */
+function initChannelTypeEventListener() {
+  const container = document.getElementById('channelTypeRadios');
+  if (!container || container.dataset.codexListenerAdded) return;
+
+  container.dataset.codexListenerAdded = 'true';
+
+  container.addEventListener('change', (e) => {
+    const radio = e.target.closest('input[name="channelType"]');
+    if (radio) {
+      handleChannelTypeChange(radio.value);
+    }
+  });
+}
+
+/**
+ * 手动提交 Codex 授权码
+ */
+async function submitManualCodexCode() {
+  const input = document.getElementById('codexManualCodeInput');
+  const code = input?.value?.trim();
+
+  if (!code) {
+    if (window.showError) showError('请输入授权码');
+    return;
+  }
+
+  // 提取 code（支持粘贴完整 URL 或只粘贴 code 值）
+  let authCode = code;
+  if (code.includes('code=')) {
+    const match = code.match(/code=([^&]+)/);
+    authCode = match ? match[1] : code;
+  }
+
+  await exchangeCodeForToken(authCode);
+  input.value = '';
+}
+
+/**
+ * 切换 Codex 鉴权模式
+ * @param {string} mode 'oauth' | 'apikey'
+ */
+function toggleCodexAuthMode(mode) {
+  const oauthContainer = document.getElementById('codexOAuthContainer');
+  const standardKeyContainer = document.getElementById('standardKeyContainer');
+  const oauthToggle = document.getElementById('codexAuthToggleOAuth');
+  const keyToggle = document.getElementById('codexAuthToggleApiKey');
+
+  if (mode === 'oauth') {
+    // OAuth 模式：显示 OAuth 容器，隐藏标准 Key 表格
+    if (oauthContainer) oauthContainer.style.display = 'block';
+    if (standardKeyContainer) standardKeyContainer.style.display = 'none';
+
+    // 更新切换按钮样式（使用 CSS class）
+    if (oauthToggle) {
+      oauthToggle.classList.add('active');
+      oauthToggle.querySelector('input').checked = true;
+    }
+    if (keyToggle) {
+      keyToggle.classList.remove('active');
+    }
+  } else {
+    // API Key 模式：隐藏 OAuth 容器，显示标准 Key 表格
+    if (oauthContainer) oauthContainer.style.display = 'none';
+    if (standardKeyContainer) standardKeyContainer.style.display = 'block';
+
+    // 更新切换按钮样式（使用 CSS class）
+    if (keyToggle) {
+      keyToggle.classList.add('active');
+      keyToggle.querySelector('input').checked = true;
+    }
+    if (oauthToggle) {
+      oauthToggle.classList.remove('active');
+    }
   }
 }

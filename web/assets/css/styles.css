@@ -1148,6 +1148,83 @@ textarea::selection {
   }
 }
 
+/* ===== API Key Card Styles ===== */
+.api-key-card {
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--radius-lg);
+  background: var(--card-bg);
+  overflow: hidden;
+}
+
+.api-key-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 16px;
+  background: var(--neutral-50);
+  border-bottom: 1px solid var(--neutral-200);
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.api-key-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.api-key-header-right {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.api-key-body {
+  position: relative;
+  background: var(--card-bg);
+}
+
+/* Override standard container styles when inside card */
+.api-key-body #standardKeyContainer {
+  border: none !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+
+/* Codex Auth Switch in Header */
+#codexAuthSwitch {
+  background: var(--neutral-200);
+  padding: 3px;
+  border-radius: 6px;
+  display: none;
+  gap: 2px;
+}
+
+#codexAuthSwitch .auth-toggle-btn {
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.2s;
+  color: var(--neutral-600);
+  display: flex;
+  align-items: center;
+  line-height: 1;
+  background: transparent;
+}
+
+#codexAuthSwitch .auth-toggle-btn.active {
+  background: var(--card-bg);
+  color: var(--primary-600);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+/* Codex OAuth Container Styles */
+#codexOAuthContainer {
+  padding: 16px;
+}
+
 
 /* ===== 模态框组件 ===== */
 .modal {

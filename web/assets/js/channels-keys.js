@@ -1,7 +1,16 @@
 // 统一Key解析函数（DRY原则）
+// 特殊处理：如果整个字符串是 JSON 对象（以 { 开头），视为单个 Key（如 OAuth Token）
 function parseKeys(input) {
   if (!input || !input.trim()) return [];
 
+  const trimmed = input.trim();
+
+  // JSON 格式的 OAuth Token：不分割，整体作为单个 Key
+  if (trimmed.startsWith('{')) {
+    return [trimmed];
+  }
+
+  // 普通 API Key：按逗号或换行分割
   const keys = input
     .split(/[,\n]/)
     .map(k => k.trim())
@@ -246,7 +255,13 @@ function renderInlineKeyTable() {
   keyCount.textContent = inlineKeyTableData.length;
 
   const hiddenInput = document.getElementById('channelApiKey');
-  hiddenInput.value = inlineKeyTableData.join(',');
+
+  // Codex 官方预设使用 OAuth Token，不覆盖 channelApiKey（由 updateCodexTokenUI 管理）
+  const isCodexOfficial = document.querySelector('input[name="channelType"]:checked')?.value === 'codex' &&
+                          document.querySelector('input[name="codexPreset"]:checked')?.value === 'official';
+  if (!isCodexOfficial) {
+    hiddenInput.value = inlineKeyTableData.join(',');
+  }
 
   // 初始化事件委托
   initKeyTableEventDelegation();
@@ -317,7 +332,12 @@ function toggleInlineKeyVisibility() {
 
 function updateInlineKey(index, value) {
   inlineKeyTableData[index] = value.trim();
-  
+
+  // Codex 官方预设使用 OAuth Token，不覆盖 channelApiKey
+  const isCodexOfficial = document.querySelector('input[name="channelType"]:checked')?.value === 'codex' &&
+                          document.querySelector('input[name="codexPreset"]:checked')?.value === 'official';
+  if (isCodexOfficial) return;
+
   const hiddenInput = document.getElementById('channelApiKey');
   if (hiddenInput) {
     hiddenInput.value = inlineKeyTableData.join(',');
