@@ -19,6 +19,11 @@ async function loadChannels(type = 'all', forceRefresh = false) {
 
     updateModelOptions();
     filterChannels();
+
+    // 初始化用量管理器（轮询获取启用用量监控的渠道数据）
+    if (window.QuotaManager) {
+      window.QuotaManager.init(channels);
+    }
   } catch (e) {
     console.error('加载渠道失败', e);
     if (window.showError) showError('加载渠道失败');
