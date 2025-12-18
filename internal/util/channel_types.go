@@ -24,14 +24,7 @@ var ChannelTypes = []ChannelTypeConfig{
 		Value:        ChannelTypeCodex,
 		DisplayName:  "Codex",
 		Description:  "Codex兼容API",
-		PathPatterns: []string{"/v1/responses"},
-		MatchType:    MatchTypePrefix,
-	},
-	{
-		Value:        ChannelTypeOpenAI,
-		DisplayName:  "OpenAI",
-		Description:  "OpenAI API (GPT系列)",
-		PathPatterns: []string{"/v1/chat/completions", "/v1/completions", "/v1/embeddings"},
+		PathPatterns: []string{"/v1/responses", "/v1/chat/completions"},
 		MatchType:    MatchTypePrefix,
 	},
 	{
@@ -74,7 +67,6 @@ func NormalizeChannelType(value string) string {
 const (
 	ChannelTypeAnthropic = "anthropic"
 	ChannelTypeCodex     = "codex"
-	ChannelTypeOpenAI    = "openai"
 	ChannelTypeGemini    = "gemini"
 )
 

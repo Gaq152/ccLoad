@@ -21,8 +21,6 @@ func NewModelsFetcher(channelType string) ModelsFetcher {
 	switch NormalizeChannelType(channelType) {
 	case ChannelTypeAnthropic:
 		return &AnthropicModelsFetcher{}
-	case ChannelTypeOpenAI:
-		return &OpenAIModelsFetcher{}
 	case ChannelTypeGemini:
 		return &GeminiModelsFetcher{}
 	case ChannelTypeCodex:

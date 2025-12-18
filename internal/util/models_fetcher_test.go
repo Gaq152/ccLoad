@@ -20,11 +20,11 @@ func TestNewModelsFetcher(t *testing.T) {
 		expectedType string
 	}{
 		{"Anthropic渠道", "anthropic", "*util.AnthropicModelsFetcher"},
-		{"OpenAI渠道", "openai", "*util.OpenAIModelsFetcher"},
 		{"Gemini渠道", "gemini", "*util.GeminiModelsFetcher"},
 		{"Codex渠道", "codex", "*util.CodexModelsFetcher"},
 		{"空值默认", "", "*util.AnthropicModelsFetcher"},
 		{"未知类型默认", "unknown", "*util.AnthropicModelsFetcher"},
+		{"openai类型已移除（回退默认）", "openai", "*util.AnthropicModelsFetcher"},
 	}
 
 	for _, tt := range tests {
@@ -130,11 +130,11 @@ func TestAnthropicModelsFetcher(t *testing.T) {
 }
 
 // ============================================================
-// OpenAI 模型获取器测试
+// OpenAI 模型获取器测试（供 Codex 复用）
 // ============================================================
 
 func TestOpenAIModelsFetcher(t *testing.T) {
-	// 模拟OpenAI API服务器
+	// 模拟OpenAI兼容API服务器（Codex使用相同格式）
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// 验证Authorization头
 		if auth := r.Header.Get("Authorization"); auth != "Bearer test-key" {
