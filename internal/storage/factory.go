@@ -165,7 +165,7 @@ func createSQLiteStore(path string, redisSync RedisSync) (*sqlstore.SQLStore, er
 // buildSQLiteDSN 构建SQLite DSN
 func buildSQLiteDSN(path string) string {
 	journalMode := validateJournalMode(os.Getenv("SQLITE_JOURNAL_MODE"))
-	return fmt.Sprintf("file:%s?_pragma=busy_timeout(5000)&_foreign_keys=on&_pragma=journal_mode=%s&_loc=Local", path, journalMode)
+	return fmt.Sprintf("file:%s?_pragma=busy_timeout(5000)&_fk=1&_pragma=journal_mode=%s&_loc=Local", path, journalMode)
 }
 
 // validateJournalMode 验证SQLITE_JOURNAL_MODE环境变量的合法性（白名单）
