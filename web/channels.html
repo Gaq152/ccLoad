@@ -142,18 +142,18 @@
             </div>
           </div>
 
-          <!-- Codex 预设选项（仅 Codex 时显示，独立一行） -->
-          <div id="codexPresetContainer" style="display: none; margin-top: 12px; padding-left: 80px;">
+          <!-- 渠道预设选项（所有渠道类型通用，独立一行） -->
+          <div id="channelPresetContainer" style="display: none; margin-top: 12px; padding-left: 80px;">
             <div style="display: flex; align-items: center; gap: 8px;">
               <label style="margin: 0; font-size: 13px; white-space: nowrap; color: var(--neutral-700);">预设</label>
-              <div style="display: flex; gap: 16px;">
+              <div id="channelPresetRadios" style="display: flex; gap: 16px;">
                 <label style="display: flex; align-items: center; gap: 4px; cursor: pointer; font-size: 13px;">
-                  <input type="radio" name="codexPreset" value="official" onchange="handleCodexPresetChange('official')">
-                  <span>OpenAI 官方</span>
+                  <input type="radio" name="channelPreset" value="custom" checked onchange="handlePresetChange('custom')">
+                  <span>自定义</span>
                 </label>
                 <label style="display: flex; align-items: center; gap: 4px; cursor: pointer; font-size: 13px;">
-                  <input type="radio" name="codexPreset" value="custom" onchange="handleCodexPresetChange('custom')">
-                  <span>自定义</span>
+                  <input type="radio" name="channelPreset" value="official" onchange="handlePresetChange('official')">
+                  <span id="officialPresetLabel">官方</span>
                 </label>
               </div>
             </div>
@@ -787,7 +787,7 @@ function(response) {
           data-index="{{index}}"
           value="{{from}}"
           placeholder="claude-opus-4"
-          style="width: 100%; padding: 6px 10px; border: 1px solid var(--neutral-300); border-radius: 6px; font-size: 13px; font-family: 'Monaco', 'Menlo', 'Courier New', monospace;"
+          style="width: 100%; padding: 6px 10px; border: 1px solid var(--neutral-300); border-radius: 6px; font-size: 13px; font-family: 'Monaco', 'Menlo', 'Courier New', monospace; background: var(--input-bg); color: var(--text-main);"
         >
       </td>
       <td style="padding: 8px 12px;">
@@ -797,7 +797,7 @@ function(response) {
           data-index="{{index}}"
           value="{{to}}"
           placeholder="claude-opus-4-20250514"
-          style="width: 100%; padding: 6px 10px; border: 1px solid var(--neutral-300); border-radius: 6px; font-size: 13px; font-family: 'Monaco', 'Menlo', 'Courier New', monospace;"
+          style="width: 100%; padding: 6px 10px; border: 1px solid var(--neutral-300); border-radius: 6px; font-size: 13px; font-family: 'Monaco', 'Menlo', 'Courier New', monospace; background: var(--input-bg); color: var(--text-main);"
         >
       </td>
       <td style="padding: 8px 12px; text-align: center;">

@@ -250,8 +250,9 @@ const QuotaManager = {
   /**
    * 获取渠道用量
    * @param {Object} channel - 渠道对象
+   * @param {boolean} isManualRefresh - 是否为手动刷新（手动刷新时显示 toast）
    */
-  async fetchQuota(channel) {
+  async fetchQuota(channel, isManualRefresh = false) {
     const channelId = channel.id;
 
     try {
@@ -324,6 +325,14 @@ const QuotaManager = {
 
           // 更新UI
           this.updateBadge(channelId, quotaData);
+
+          // 手动刷新时显示成功 toast
+          if (isManualRefresh && quotaData.isValid) {
+            const remaining = quotaData.remaining;
+            const unit = quotaData.unit || '';
+            const displayValue = typeof remaining === 'number' ? remaining.toFixed(2) : remaining;
+            showToast(`✅ 用量刷新成功：剩余 ${displayValue}${unit}`, 'success');
+          }
         }
       } catch (extractError) {
         console.error(`[QuotaManager] 渠道 ${channelId} 提取器执行失败:`, extractError);
@@ -333,6 +342,9 @@ const QuotaManager = {
           fetchedAt: Date.now()
         };
         this.updateBadge(channelId, { isValid: false, error: extractError.message });
+        if (isManualRefresh) {
+          showToast(`❌ 用量刷新失败：${extractError.message}`, 'error');
+        }
       }
 
     } catch (error) {
@@ -346,6 +358,11 @@ const QuotaManager = {
       };
 
       this.updateBadge(channelId, { isValid: false, error: error.message });
+
+      // 手动刷新时显示网络错误 toast
+      if (isManualRefresh) {
+        showToast(`❌ 用量刷新失败：${error.message}`, 'error');
+      }
     }
   },
 
@@ -435,8 +452,8 @@ const QuotaManager = {
           this.fetchQuota(channel);
         }, intervalMs);
       }
-      // 立即获取
-      this.fetchQuota(channel);
+      // 立即获取（手动刷新，显示 toast）
+      this.fetchQuota(channel, true);
     }
   },
 

@@ -138,7 +138,7 @@ async function editChannel(id) {
     if (!preset) preset = 'official';
 
     // 设置预设单选按钮
-    const presetRadio = document.querySelector(`input[name="codexPreset"][value="${preset}"]`);
+    const presetRadio = document.querySelector(`input[name="channelPreset"][value="${preset}"]`);
     if (presetRadio) {
       presetRadio.checked = true;
     }
@@ -214,7 +214,7 @@ async function saveChannel(event) {
   // Codex 渠道：根据预设类型决定认证方式
   let validKeys;
   if (channelType === 'codex') {
-    preset = document.querySelector('input[name="codexPreset"]:checked')?.value || 'custom';
+    preset = document.querySelector('input[name="channelPreset"]:checked')?.value || 'custom';
 
     if (preset === 'official') {
       // 官方预设：使用 OAuth Token
@@ -494,7 +494,7 @@ async function copyChannel(id, name) {
   // Codex 渠道：复制时保留原有预设
   if (channelType === 'codex') {
     const sourcePreset = channel.preset || 'custom';
-    const presetRadio = document.querySelector(`input[name="codexPreset"][value="${sourcePreset}"]`);
+    const presetRadio = document.querySelector(`input[name="channelPreset"][value="${sourcePreset}"]`);
     if (presetRadio) {
       presetRadio.checked = true;
     }
@@ -714,7 +714,7 @@ async function fetchModelsFromAPI() {
   let accessToken = '';
 
   if (channelType === 'codex') {
-    const preset = document.querySelector('input[name="codexPreset"]:checked')?.value || 'custom';
+    const preset = document.querySelector('input[name="channelPreset"]:checked')?.value || 'custom';
     if (preset === 'official') {
       // Codex 官方预设：从 OAuth Token 获取 access_token
       const tokenJson = document.getElementById('channelApiKey').value;
@@ -1219,31 +1219,20 @@ const QUOTA_TEMPLATES = {
 
   const rl = data.rate_limit;
   const primary = rl.primary_window;
-  const secondary = rl.secondary_window;
 
-  // 计算剩余百分比
-  const primaryRemaining = primary ? (100 - primary.used_percent) : 100;
-  const secondaryRemaining = secondary ? (100 - secondary.used_percent) : 100;
-
-  // 使用较低的剩余百分比
-  const remaining = Math.min(primaryRemaining, secondaryRemaining);
-
-  // 构建详细信息
-  let detail = '';
-  if (primary) {
-    const resetTime = new Date(primary.reset_at * 1000).toLocaleString();
-    detail += '5h窗口: ' + primary.used_percent + '% (重置: ' + resetTime + ')';
+  // 只使用 5h 窗口（primary_window）的数据
+  if (!primary) {
+    return { isValid: false, error: "响应格式错误：缺少 primary_window" };
   }
-  if (secondary) {
-    if (detail) detail += ' | ';
-    detail += '7d窗口: ' + secondary.used_percent + '%';
-  }
+
+  const remaining = 100 - primary.used_percent;
+  const resetTime = new Date(primary.reset_at * 1000).toLocaleString();
 
   return {
     isValid: true,
     remaining: remaining,
     unit: '%',
-    detail: detail,
+    detail: '重置时间: ' + resetTime,
     limitReached: rl.limit_reached || false
   };
 }`
@@ -1310,7 +1299,7 @@ function applyQuotaTemplate(templateKey) {
 function applyCodexQuotaTemplate(template) {
   // 检查是否为 Codex 官方预设
   const channelType = document.querySelector('input[name="channelType"]:checked')?.value;
-  const preset = document.querySelector('input[name="codexPreset"]:checked')?.value;
+  const preset = document.querySelector('input[name="channelPreset"]:checked')?.value;
 
   if (channelType !== 'codex' || preset !== 'official') {
     if (window.showError) {
@@ -1375,57 +1364,83 @@ function applyCodexQuotaTemplate(template) {
 // ==================== Codex OAuth 授权 ====================
 
 /**
+ * 获取渠道类型对应的官方预设标签名称
+ */
+function getOfficialPresetLabel(type) {
+  const labels = {
+    'codex': 'OpenAI 官方',
+    'anthropic': 'Anthropic 官方',
+    'gemini': 'Google 官方'
+  };
+  return labels[type] || '官方';
+}
+
+/**
  * 处理渠道类型切换
- * 控制标准 Key 表格和 Codex OAuth 区块的显示
+ * 控制预设选项、标准 Key 表格和 OAuth 区块的显示
  */
 function handleChannelTypeChange(type) {
   const standardKeyContainer = document.getElementById('standardKeyContainer');
   const codexOAuthSection = document.getElementById('codexOAuthSection');
   const codexAuthSwitch = document.getElementById('codexAuthSwitch');
-  const codexPresetContainer = document.getElementById('codexPresetContainer');
+  const channelPresetContainer = document.getElementById('channelPresetContainer');
+  const officialPresetLabel = document.getElementById('officialPresetLabel');
 
-  // Codex 渠道
-  if (type === 'codex') {
-    // 显示预设选项
-    if (codexPresetContainer) codexPresetContainer.style.display = 'block';
+  // 所有渠道类型都显示预设选项
+  if (channelPresetContainer) channelPresetContainer.style.display = 'block';
 
-    // 检查是否已选择预设，如果没有则默认选择自定义预设
-    const currentPreset = document.querySelector('input[name="codexPreset"]:checked')?.value;
-    if (!currentPreset) {
-      const customRadio = document.querySelector('input[name="codexPreset"][value="custom"]');
-      if (customRadio) {
-        customRadio.checked = true;
-        handleCodexPresetChange('custom');
-      }
-    } else {
-      // 重新应用当前预设逻辑
-      handleCodexPresetChange(currentPreset);
-    }
+  // 更新官方预设的标签名称
+  if (officialPresetLabel) {
+    officialPresetLabel.textContent = getOfficialPresetLabel(type);
   }
-  // 其他渠道
-  else {
-    // 隐藏预设选项
-    if (codexPresetContainer) codexPresetContainer.style.display = 'none';
-    // 隐藏 OAuth/API Key 切换开关
-    if (codexAuthSwitch) codexAuthSwitch.style.display = 'none';
-    if (standardKeyContainer) standardKeyContainer.style.display = 'block';
-    if (codexOAuthSection) codexOAuthSection.style.display = 'none';
 
-    // 隐藏 Codex 官方用量模板按钮，恢复提示文字
-    const codexQuotaTemplateBtn = document.getElementById('codexQuotaTemplateBtn');
-    const quotaTemplateHint = document.getElementById('quotaTemplateHint');
-    if (codexQuotaTemplateBtn) codexQuotaTemplateBtn.style.display = 'none';
-    if (quotaTemplateHint) quotaTemplateHint.textContent = '选择后请替换占位符';
+  // 检查是否已选择预设，如果没有则默认选择自定义预设
+  const currentPreset = document.querySelector('input[name="channelPreset"]:checked')?.value;
+  if (!currentPreset) {
+    const customRadio = document.querySelector('input[name="channelPreset"][value="custom"]');
+    if (customRadio) {
+      customRadio.checked = true;
+      handlePresetChange('custom');
+    }
+  } else {
+    // 重新应用当前预设逻辑
+    handlePresetChange(currentPreset);
   }
 }
 
 /**
- * 处理 Codex 预设切换
- * official: 自动填写官方 URL，显示 OAuth，隐藏 API Key
- * custom: 用户自填 URL，显示 API Key，隐藏 OAuth
+ * 获取渠道类型对应的官方 URL
  */
-function handleCodexPresetChange(preset) {
+function getOfficialUrl(type) {
+  const urls = {
+    'codex': 'https://chatgpt.com/backend-api/codex',
+    'anthropic': 'https://api.anthropic.com',
+    'gemini': 'https://generativelanguage.googleapis.com'
+  };
+  return urls[type] || '';
+}
+
+/**
+ * 检查当前 URL 是否为官方 URL
+ */
+function isOfficialUrl(url, type) {
+  const officialUrls = {
+    'codex': 'chatgpt.com/backend-api/codex',
+    'anthropic': 'api.anthropic.com',
+    'gemini': 'generativelanguage.googleapis.com'
+  };
+  const pattern = officialUrls[type];
+  return pattern && url && url.includes(pattern);
+}
+
+/**
+ * 处理预设切换（通用）
+ * official: 自动填写官方 URL，Codex 显示 OAuth，其他渠道显示 API Key
+ * custom: 用户自填 URL，显示 API Key
+ */
+function handlePresetChange(preset) {
   const isOfficial = preset === 'official';
+  const channelType = document.querySelector('input[name="channelType"]:checked')?.value || 'anthropic';
   const codexAuthSwitch = document.getElementById('codexAuthSwitch');
   const standardKeyContainer = document.getElementById('standardKeyContainer');
   const codexOAuthSection = document.getElementById('codexOAuthSection');
@@ -1436,25 +1451,30 @@ function handleCodexPresetChange(preset) {
   if (codexAuthSwitch) codexAuthSwitch.style.display = 'none';
 
   if (isOfficial) {
-    // 官方预设：
-    // 1. 自动填写官方 URL
-    const officialUrl = 'https://chatgpt.com/backend-api/codex';
-    if (typeof setInlineEndpoints === 'function') {
+    // 官方预设：自动填写官方 URL
+    const officialUrl = getOfficialUrl(channelType);
+    if (officialUrl && typeof setInlineEndpoints === 'function') {
       setInlineEndpoints([officialUrl]);
     }
 
-    // 2. 显示 OAuth 区块，隐藏 API Key 表格
-    if (standardKeyContainer) standardKeyContainer.style.display = 'none';
-    if (codexOAuthSection) codexOAuthSection.style.display = 'block';
-
-    // 3. 显示 Codex 官方用量模板按钮
-    if (codexQuotaTemplateBtn) codexQuotaTemplateBtn.style.display = 'inline-flex';
-    if (quotaTemplateHint) quotaTemplateHint.textContent = 'Codex 官方自动填充认证信息';
+    // Codex 官方预设：显示 OAuth 区块
+    if (channelType === 'codex') {
+      if (standardKeyContainer) standardKeyContainer.style.display = 'none';
+      if (codexOAuthSection) codexOAuthSection.style.display = 'block';
+      if (codexQuotaTemplateBtn) codexQuotaTemplateBtn.style.display = 'inline-flex';
+      if (quotaTemplateHint) quotaTemplateHint.textContent = 'Codex 官方自动填充认证信息';
+    } else {
+      // 其他渠道官方预设：目前仍使用 API Key（OAuth 暂不支持）
+      if (standardKeyContainer) standardKeyContainer.style.display = 'block';
+      if (codexOAuthSection) codexOAuthSection.style.display = 'none';
+      if (codexQuotaTemplateBtn) codexQuotaTemplateBtn.style.display = 'none';
+      if (quotaTemplateHint) quotaTemplateHint.textContent = '选择后请替换占位符';
+    }
   } else {
     // 自定义预设：
     // 1. 清空 URL 让用户自填（如果当前是官方 URL）
     const endpoints = typeof getInlineEndpoints === 'function' ? getInlineEndpoints() : [];
-    if (endpoints.length > 0 && endpoints[0] && endpoints[0].includes('chatgpt.com/backend-api/codex')) {
+    if (endpoints.length > 0 && endpoints[0] && isOfficialUrl(endpoints[0], channelType)) {
       if (typeof setInlineEndpoints === 'function') {
         setInlineEndpoints(['']);
       }
@@ -1468,6 +1488,11 @@ function handleCodexPresetChange(preset) {
     if (codexQuotaTemplateBtn) codexQuotaTemplateBtn.style.display = 'none';
     if (quotaTemplateHint) quotaTemplateHint.textContent = '选择后请替换占位符';
   }
+}
+
+// 兼容旧代码的别名
+function handleCodexPresetChange(preset) {
+  handlePresetChange(preset);
 }
 
 /**

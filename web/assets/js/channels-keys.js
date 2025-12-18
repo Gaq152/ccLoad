@@ -258,7 +258,7 @@ function renderInlineKeyTable() {
 
   // Codex 官方预设使用 OAuth Token，不覆盖 channelApiKey（由 updateCodexTokenUI 管理）
   const isCodexOfficial = document.querySelector('input[name="channelType"]:checked')?.value === 'codex' &&
-                          document.querySelector('input[name="codexPreset"]:checked')?.value === 'official';
+                          document.querySelector('input[name="channelPreset"]:checked')?.value === 'official';
   if (!isCodexOfficial) {
     hiddenInput.value = inlineKeyTableData.join(',');
   }
@@ -335,7 +335,7 @@ function updateInlineKey(index, value) {
 
   // Codex 官方预设使用 OAuth Token，不覆盖 channelApiKey
   const isCodexOfficial = document.querySelector('input[name="channelType"]:checked')?.value === 'codex' &&
-                          document.querySelector('input[name="codexPreset"]:checked')?.value === 'official';
+                          document.querySelector('input[name="channelPreset"]:checked')?.value === 'official';
   if (isCodexOfficial) return;
 
   const hiddenInput = document.getElementById('channelApiKey');
