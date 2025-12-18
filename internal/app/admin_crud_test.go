@@ -679,7 +679,7 @@ func TestChannelRequestValidate(t *testing.T) {
 			errorMsg:  "url must not contain query or fragment",
 		},
 		{
-			name: "URL包含/v1路径（禁止）",
+			name: "URL以/v1开头（禁止）",
 			req: ChannelRequest{
 				Name:     "Test",
 				APIKey:   "sk-test",
@@ -688,10 +688,10 @@ func TestChannelRequestValidate(t *testing.T) {
 				Models:   []string{"model-1"},
 			},
 			wantError: true,
-			errorMsg:  "url should not contain API endpoint path like /v1 (current path: \"/v1\")",
+			errorMsg:  "url should not start with API endpoint path /v1 (current path: \"/v1\")",
 		},
 		{
-			name: "URL包含/v1/messages路径（禁止）",
+			name: "URL以/v1/messages开头（禁止）",
 			req: ChannelRequest{
 				Name:     "Test",
 				APIKey:   "sk-test",
@@ -700,7 +700,19 @@ func TestChannelRequestValidate(t *testing.T) {
 				Models:   []string{"model-1"},
 			},
 			wantError: true,
-			errorMsg:  "url should not contain API endpoint path like /v1 (current path: \"/v1/messages\")",
+			errorMsg:  "url should not start with API endpoint path /v1 (current path: \"/v1/messages\")",
+		},
+		{
+			name: "URL以/v1结尾（允许，如/openai/v1）",
+			req: ChannelRequest{
+				Name:     "Test",
+				APIKey:   "sk-test",
+				URL:      "https://example.com/openai/v1",
+				Priority: 100,
+				Models:   []string{"model-1"},
+			},
+			wantError:       false,
+			expectNormalize: "https://example.com/openai/v1",
 		},
 		{
 			name: "URL包含/api路径（允许）",

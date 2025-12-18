@@ -56,10 +56,10 @@ func validateChannelBaseURL(raw string) (string, error) {
 		return "", fmt.Errorf("url must not contain query or fragment")
 	}
 
-	// [FIX] 只禁止包含 /v1 的 path（防止误填 API endpoint 如 /v1/messages）
-	// 允许其他 path（如 /api, /openai 等用于反向代理或 API gateway）
-	if strings.Contains(u.Path, "/v1") {
-		return "", fmt.Errorf("url should not contain API endpoint path like /v1 (current path: %q)", u.Path)
+	// [FIX] 只禁止以 /v1 开头的 path（防止误填 API endpoint 如 /v1/messages）
+	// 允许以 /v1 结尾的 path（如 /openai/v1 用于反向代理或 API gateway）
+	if strings.HasPrefix(u.Path, "/v1") {
+		return "", fmt.Errorf("url should not start with API endpoint path /v1 (current path: %q)", u.Path)
 	}
 
 	// 强制返回标准化格式（scheme://host+path，移除 trailing slash）
@@ -98,7 +98,7 @@ func (cr *ChannelRequest) Validate() error {
 		normalized := util.NormalizeChannelType(cr.ChannelType)
 		// 再白名单校验
 		if !util.IsValidChannelType(normalized) {
-			return fmt.Errorf("invalid channel_type: %q (allowed: anthropic, openai, gemini, codex)", cr.ChannelType)
+			return fmt.Errorf("invalid channel_type: %q (allowed: anthropic, gemini, codex)", cr.ChannelType)
 		}
 		cr.ChannelType = normalized // 应用标准化结果
 	}
