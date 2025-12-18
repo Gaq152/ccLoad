@@ -76,9 +76,15 @@ func migrate(ctx context.Context, db *sql.DB, dialect Dialect) error {
 				if err := ensureChannelsAutoSelectEndpoint(ctx, db); err != nil {
 					return fmt.Errorf("migrate channels.auto_select_endpoint: %w", err)
 				}
+				if err := ensureChannelsQuotaConfig(ctx, db); err != nil {
+					return fmt.Errorf("migrate channels.quota_config: %w", err)
+				}
 			} else {
 				if err := ensureChannelsAutoSelectEndpointSQLite(ctx, db); err != nil {
 					return fmt.Errorf("migrate channels.auto_select_endpoint: %w", err)
+				}
+				if err := ensureChannelsQuotaConfigSQLite(ctx, db); err != nil {
+					return fmt.Errorf("migrate channels.quota_config: %w", err)
 				}
 			}
 		}
@@ -632,6 +638,67 @@ func ensureAuthTokensAllChannelsSQLite(ctx context.Context, db *sql.DB) error {
 	)
 	if err != nil {
 		return fmt.Errorf("add all_channels column: %w", err)
+	}
+
+	return nil
+}
+
+// ensureChannelsQuotaConfig 确保channels表有quota_config字段(MySQL增量迁移,2025-12新增)
+func ensureChannelsQuotaConfig(ctx context.Context, db *sql.DB) error {
+	var count int
+	err := db.QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='channels' AND COLUMN_NAME='quota_config'",
+	).Scan(&count)
+	if err != nil {
+		return fmt.Errorf("check quota_config existence: %w", err)
+	}
+
+	if count > 0 {
+		return nil
+	}
+
+	_, err = db.ExecContext(ctx,
+		"ALTER TABLE channels ADD COLUMN quota_config TEXT DEFAULT NULL COMMENT '用量监控配置(JSON格式,新增2025-12)'",
+	)
+	if err != nil {
+		return fmt.Errorf("add quota_config column: %w", err)
+	}
+
+	return nil
+}
+
+// ensureChannelsQuotaConfigSQLite 确保channels表有quota_config字段(SQLite增量迁移,2025-12新增)
+func ensureChannelsQuotaConfigSQLite(ctx context.Context, db *sql.DB) error {
+	rows, err := db.QueryContext(ctx, "PRAGMA table_info(channels)")
+	if err != nil {
+		return fmt.Errorf("check table info: %w", err)
+	}
+	defer rows.Close()
+
+	hasColumn := false
+	for rows.Next() {
+		var cid int
+		var name, typ string
+		var notNull, pk int
+		var dfltValue any
+		if err := rows.Scan(&cid, &name, &typ, &notNull, &dfltValue, &pk); err != nil {
+			return fmt.Errorf("scan column info: %w", err)
+		}
+		if name == "quota_config" {
+			hasColumn = true
+			break
+		}
+	}
+
+	if hasColumn {
+		return nil
+	}
+
+	_, err = db.ExecContext(ctx,
+		"ALTER TABLE channels ADD COLUMN quota_config TEXT DEFAULT NULL",
+	)
+	if err != nil {
+		return fmt.Errorf("add quota_config column: %w", err)
 	}
 
 	return nil

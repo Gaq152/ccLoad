@@ -108,20 +108,35 @@ func (cs *ConfigScanner) ScanConfig(scanner interface {
 }) (*model.Config, error) {
 	var c model.Config
 	var modelsStr, modelRedirectsStr string
-	var enabledInt int
-	var createdAtRaw, updatedAtRaw any // 使用any接受任意类型（兼容字符串、整数或RFC3339）
+	var enabledInt, autoSelectEndpointInt int
+	var quotaConfigStr *string                // 可空字段，使用指针
+	var createdAtRaw, updatedAtRaw any        // 使用any接受任意类型（兼容字符串、整数或RFC3339）
 
 	// [INFO] Linus风格：删除rr_key_index字段（已改用内存计数器）
 	var rrKeyIndex int // 临时变量，读取后丢弃
 	// 扫描key_count字段（从JOIN查询获取）
+	// 扫描顺序必须与SELECT语句一致：
+	// id, name, url, priority, models, model_redirects, channel_type, enabled,
+	// cooldown_until, cooldown_duration_ms, key_count,
+	// rr_key_index, auto_select_endpoint, quota_config, created_at, updated_at
 	if err := scanner.Scan(&c.ID, &c.Name, &c.URL, &c.Priority,
 		&modelsStr, &modelRedirectsStr, &c.ChannelType, &enabledInt,
 		&c.CooldownUntil, &c.CooldownDurationMs, &c.KeyCount,
-		&rrKeyIndex, &createdAtRaw, &updatedAtRaw); err != nil {
+		&rrKeyIndex, &autoSelectEndpointInt, &quotaConfigStr, &createdAtRaw, &updatedAtRaw); err != nil {
 		return nil, err
 	}
 
 	c.Enabled = enabledInt != 0
+	c.AutoSelectEndpoint = autoSelectEndpointInt != 0
+
+	// 解析 quota_config JSON（可选字段）
+	if quotaConfigStr != nil && *quotaConfigStr != "" {
+		var qc model.QuotaConfig
+		if err := sonic.Unmarshal([]byte(*quotaConfigStr), &qc); err == nil {
+			c.QuotaConfig = &qc
+		}
+		// 解析失败时静默忽略，保持nil
+	}
 
 	// 转换时间戳（支持不同数据库）
 	now := time.Now()

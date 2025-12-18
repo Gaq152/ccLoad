@@ -419,6 +419,9 @@ func (s *Server) SetupRoutes(r *gin.Engine) {
 		admin.PUT("/channels/:id/endpoints/active", s.HandleSetActiveEndpoint)
 		admin.GET("/endpoints/status", s.HandleEndpointsStatus) // 测速状态（前端倒计时）
 
+		// 渠道用量监控
+		admin.POST("/channels/:id/quota/fetch", s.handleQuotaFetch)
+
 		// 统计分析
 		admin.GET("/errors", s.HandleErrors)
 		admin.GET("/metrics", s.HandleMetrics)

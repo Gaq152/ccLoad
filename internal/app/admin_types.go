@@ -15,15 +15,16 @@ import (
 
 // ChannelRequest 渠道创建/更新请求结构
 type ChannelRequest struct {
-	Name           string            `json:"name" binding:"required"`
-	APIKey         string            `json:"api_key" binding:"required"`
-	ChannelType    string            `json:"channel_type,omitempty"` // 渠道类型:anthropic, codex, gemini
-	KeyStrategy    string            `json:"key_strategy,omitempty"` // Key使用策略:sequential, round_robin
-	URL            string            `json:"url" binding:"required,url"`
-	Priority       int               `json:"priority"`
-	Models         []string          `json:"models" binding:"required,min=1"`
-	ModelRedirects map[string]string `json:"model_redirects,omitempty"` // 可选的模型重定向映射
-	Enabled        bool              `json:"enabled"`
+	Name           string             `json:"name" binding:"required"`
+	APIKey         string             `json:"api_key" binding:"required"`
+	ChannelType    string             `json:"channel_type,omitempty"` // 渠道类型:anthropic, codex, gemini
+	KeyStrategy    string             `json:"key_strategy,omitempty"` // Key使用策略:sequential, round_robin
+	URL            string             `json:"url" binding:"required,url"`
+	Priority       int                `json:"priority"`
+	Models         []string           `json:"models" binding:"required,min=1"`
+	ModelRedirects map[string]string  `json:"model_redirects,omitempty"` // 可选的模型重定向映射
+	Enabled        bool               `json:"enabled"`
+	QuotaConfig    *model.QuotaConfig `json:"quota_config,omitempty"` // 用量监控配置（可选）
 }
 
 func validateChannelBaseURL(raw string) (string, error) {
@@ -109,6 +110,62 @@ func (cr *ChannelRequest) Validate() error {
 		cr.KeyStrategy = normalized // 应用标准化结果
 	}
 
+	// QuotaConfig 验证（如果启用）
+	if cr.QuotaConfig != nil && cr.QuotaConfig.Enabled {
+		if err := validateQuotaConfig(cr.QuotaConfig); err != nil {
+			return fmt.Errorf("invalid quota_config: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// validateQuotaConfig 验证用量监控配置
+func validateQuotaConfig(qc *model.QuotaConfig) error {
+	// 验证 URL（复用 SSRF 防护逻辑）
+	if qc.RequestURL == "" {
+		return fmt.Errorf("request_url is required")
+	}
+	if err := validateQuotaURL(qc.RequestURL); err != nil {
+		return fmt.Errorf("invalid request_url: %w", err)
+	}
+
+	// 验证方法
+	method := strings.ToUpper(qc.GetRequestMethod())
+	if method != "GET" && method != "POST" {
+		return fmt.Errorf("invalid request_method: %q (allowed: GET, POST)", qc.RequestMethod)
+	}
+
+	// 验证请求体大小
+	if len(qc.RequestBody) > 64*1024 {
+		return fmt.Errorf("request_body too large (max 64KB)")
+	}
+
+	// 验证提取器脚本
+	if qc.ExtractorScript == "" {
+		return fmt.Errorf("extractor_script is required")
+	}
+	if len(qc.ExtractorScript) > 64*1024 {
+		return fmt.Errorf("extractor_script too large (max 64KB)")
+	}
+
+	// 验证轮询间隔（最少 60 秒，最多 1 天）
+	if qc.IntervalSeconds < 60 {
+		qc.IntervalSeconds = 60
+	} else if qc.IntervalSeconds > 86400 {
+		qc.IntervalSeconds = 86400
+	}
+
+	// 验证请求头数量和大小
+	if len(qc.RequestHeaders) > 20 {
+		return fmt.Errorf("too many request_headers (max 20)")
+	}
+	for key, value := range qc.RequestHeaders {
+		if len(key) > 256 || len(value) > 4096 {
+			return fmt.Errorf("request_header too large (key max 256, value max 4096)")
+		}
+	}
+
 	return nil
 }
 
@@ -122,6 +179,7 @@ func (cr *ChannelRequest) ToConfig() *model.Config {
 		Models:         cr.Models,
 		ModelRedirects: cr.ModelRedirects,
 		Enabled:        cr.Enabled,
+		QuotaConfig:    cr.QuotaConfig, // 用量监控配置
 	}
 }
 
