@@ -131,20 +131,15 @@ func (s *Server) RefreshCodexTokenIfNeeded(
 		return token.AccessToken, token, nil
 	}
 
-	// 更新数据库
-	newJSON, err := sonic.Marshal(newToken)
-	if err != nil {
-		log.Printf("[WARN] Failed to marshal new Codex token: %v", err)
-		return newToken.AccessToken, newToken, nil
-	}
-
-	// 获取现有 API Key 记录
+	// 更新数据库：存储到 OAuth 专用字段
 	existingKey, err := s.store.GetAPIKey(ctx, channelID, keyIndex)
 	if err != nil {
 		log.Printf("[WARN] Failed to get existing API Key for update: %v", err)
 	} else {
-		// 更新 API Key 值
-		existingKey.APIKey = string(newJSON)
+		// 更新 OAuth 专用字段（IDToken 刷新时不返回，保留原值）
+		existingKey.AccessToken = newToken.AccessToken
+		existingKey.RefreshToken = newToken.RefreshToken
+		existingKey.TokenExpiresAt = newToken.ExpiresAt
 		if err := s.store.UpdateAPIKey(ctx, existingKey); err != nil {
 			log.Printf("[WARN] Failed to update Codex token in database: %v", err)
 		} else {
