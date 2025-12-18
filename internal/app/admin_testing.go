@@ -61,7 +61,20 @@ func (s *Server) HandleChannelTest(c *gin.Context) {
 		keyIndex = 0 // 默认使用第一个 Key
 	}
 
-	selectedKey := apiKeys[keyIndex].APIKey
+	// [FIX] Codex 官方预设使用 AccessToken 字段，而非 APIKey 字段
+	var selectedKey string
+	if cfg.GetChannelType() == util.ChannelTypeCodex && cfg.Preset == "official" {
+		selectedKey = apiKeys[keyIndex].AccessToken
+		if selectedKey == "" {
+			RespondJSON(c, http.StatusOK, gin.H{
+				"success": false,
+				"error":   "Codex 官方预设未配置 OAuth Token，请先完成授权",
+			})
+			return
+		}
+	} else {
+		selectedKey = apiKeys[keyIndex].APIKey
+	}
 
 	// 检查模型是否支持
 	modelSupported := false
