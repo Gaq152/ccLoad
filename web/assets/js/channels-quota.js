@@ -269,6 +269,17 @@ const QuotaManager = {
         throw new Error(result.error || '请求失败');
       }
 
+      // 检查上游 HTTP 状态码（非 2xx 视为错误）
+      const upstreamStatus = result.status_code || 200;
+      if (upstreamStatus < 200 || upstreamStatus >= 300) {
+        // 检查是否为 Cloudflare 拦截
+        const bodyPreview = (result.body || '').substring(0, 500);
+        if (bodyPreview.includes('Just a moment') || bodyPreview.includes('cf-challenge')) {
+          throw new Error(`被 Cloudflare 拦截 (HTTP ${upstreamStatus})，请检查 IP 或稍后重试`);
+        }
+        throw new Error(`上游返回 HTTP ${upstreamStatus}`);
+      }
+
       // 执行提取器脚本
       const extractorScript = channel.quota_config.extractor_script;
       if (!extractorScript) {
@@ -280,6 +291,14 @@ const QuotaManager = {
         // 解析 body（后端返回的是 JSON 字符串）
         let responseBody = result.body;
         if (typeof responseBody === 'string') {
+          // 先检查是否为 HTML（可能是 Cloudflare 等拦截页面）
+          const trimmed = responseBody.trim();
+          if (trimmed.startsWith('<') && (trimmed.includes('<!DOCTYPE') || trimmed.includes('<html'))) {
+            if (trimmed.includes('Just a moment') || trimmed.includes('cf-challenge')) {
+              throw new Error('被 Cloudflare 拦截，请检查 IP 或稍后重试');
+            }
+            throw new Error('响应不是 JSON 格式（返回了 HTML 页面）');
+          }
           try {
             responseBody = JSON.parse(responseBody);
           } catch (parseErr) {

@@ -141,9 +141,10 @@ func (s *Server) handleQuotaFetch(c *gin.Context) {
 		return
 	}
 
-	// 设置默认请求头
-	req.Header.Set("User-Agent", "ccLoad/1.0")
+	// 设置默认请求头（模拟浏览器以降低被 Cloudflare 拦截概率）
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
 	req.Header.Set("Accept", "application/json, text/plain, */*")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7")
 
 	// 添加自定义请求头（可覆盖默认值，但过滤敏感头）
 	blockedHeaders := map[string]bool{
