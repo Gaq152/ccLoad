@@ -578,26 +578,28 @@ func (s *Server) tryChannelWithKeys(ctx context.Context, cfg *model.Config, reqC
 		// [INFO] Codex 渠道：根据预设类型处理认证
 		actualKey := selectedKey
 		if isCodexChannel && cfg.Preset == "official" {
-			// 官方预设：从 apiKeys 中查找对应的 OAuth Token
+			// 官方预设：从 apiKeys 中查找对应的 OAuth Token 字段
 			// 注意：keyIndex 是数据库中的真实 KeyIndex，需要遍历查找
-			var oauthTokenStr string
+			var foundKey *model.APIKey
 			for _, ak := range apiKeys {
 				if ak.KeyIndex == keyIndex {
-					oauthTokenStr = ak.AccessToken
+					foundKey = ak
 					break
 				}
 			}
 
-			if oauthTokenStr == "" {
+			if foundKey == nil || foundKey.AccessToken == "" {
 				log.Printf("[WARN] [Codex] 官方预设 Key#%d 没有 AccessToken，跳过", keyIndex)
 				continue
 			}
 
-			// 解析 OAuth Token
-			_, oauthToken, isOAuth := ParseAPIKeyOrOAuth(oauthTokenStr)
-			if !isOAuth {
-				log.Printf("[WARN] [Codex] 官方预设 Key#%d AccessToken 格式无效，跳过", keyIndex)
-				continue
+			// 从数据库字段构建 OAuth Token 对象
+			oauthToken := &CodexOAuthToken{
+				Type:         "oauth",
+				AccessToken:  foundKey.AccessToken,
+				RefreshToken: foundKey.RefreshToken,
+				ExpiresAt:    foundKey.TokenExpiresAt,
+				AccountID:    ExtractAccountIDFromJWT(foundKey.AccessToken),
 			}
 
 			// 检查并刷新 Token
