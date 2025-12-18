@@ -141,6 +141,23 @@
               </div>
             </div>
           </div>
+
+          <!-- Codex 预设选项（仅 Codex 时显示，独立一行） -->
+          <div id="codexPresetContainer" style="display: none; margin-top: 12px; padding-left: 80px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <label style="margin: 0; font-size: 13px; white-space: nowrap; color: var(--neutral-700);">预设</label>
+              <div style="display: flex; gap: 16px;">
+                <label style="display: flex; align-items: center; gap: 4px; cursor: pointer; font-size: 13px;">
+                  <input type="radio" name="codexPreset" value="official" onchange="handleCodexPresetChange('official')">
+                  <span>OpenAI 官方</span>
+                </label>
+                <label style="display: flex; align-items: center; gap: 4px; cursor: pointer; font-size: 13px;">
+                  <input type="radio" name="codexPreset" value="custom" onchange="handleCodexPresetChange('custom')">
+                  <span>自定义</span>
+                </label>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div class="form-group">
@@ -173,81 +190,132 @@
         </div>
 
         <div class="form-group">
-          <!-- API Key标签行：包含标签、Key计数和操作按钮 -->
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-            <label class="form-label" style="margin: 0;">
-              API Key * <span class="models-hint" style="margin-left: 8px; margin-top: 0;">共 <span id="inlineKeyCount">0</span> 个Key <span id="virtualScrollHint" style="display: none; color: var(--primary-600); font-weight: 600;">· 虚拟滚动已启用</span></span>
-            </label>
-            <div style="display: flex; gap: 6px;">
-              <button type="button" class="btn btn-secondary btn-sm" onclick="openInlineKeyImport()" style="padding: 5px 10px; font-size: 12px; display: inline-flex; align-items: center; gap: 4px;">
-                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M8 3.5V12M8 12L5 9M8 12L11 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-                  <path d="M2 13.5H14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                </svg>
-                <span>导入</span>
-              </button>
-              <button type="button" id="toggleInlineKeyBtn" onclick="toggleInlineKeyVisibility()" style="width: 26px; height: 26px; border-radius: 6px; border: 1px solid var(--neutral-300); background: var(--input-focus-bg); color: var(--neutral-500); cursor: pointer; padding: 0; display: inline-flex; align-items: center; justify-content: center; transition: all 0.2s;" title="显示/隐藏API Key" onmouseover="this.style.background='var(--neutral-50)'; this.style.borderColor='var(--neutral-400)';" onmouseout="this.style.background='var(--input-focus-bg)'; this.style.borderColor='var(--neutral-300)';">
-                <svg id="inlineEyeIcon" width="13" height="13" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M1.5 8C1.5 8 3.5 3.5 8 3.5C12.5 3.5 14.5 8 14.5 8C14.5 8 12.5 12.5 8 12.5C3.5 12.5 1.5 8 1.5 8Z" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
-                  <circle cx="8" cy="8" r="2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-                <svg id="inlineEyeOffIcon" width="13" height="13" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style="display: none;">
-                  <path d="M2 2L14 14M6.5 6.5C6.96785 6.03214 7.60786 5.75 8.3 5.75C9.73071 5.75 10.9 6.91929 10.9 8.35C10.9 9.04214 10.6179 9.68215 10.15 10.15M4.5 4.5C2.73 5.67 1.5 8 1.5 8C1.5 8 3.5 12.5 8 12.5C9.35 12.5 10.58 11.97 11.55 11.5M12.85 11.85C13.97 10.73 14.5 8 14.5 8C14.5 8 12.5 3.5 8 3.5C7.23 3.5 6.5 3.73 5.85 4.05" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-              </button>
-            </div>
-          </div>
-
           <!-- 隐藏的input用于表单验证和提交 -->
           <input type="hidden" id="channelApiKey" required>
 
-          <!-- Key表格容器（最多显示5行+滚动） -->
-          <div style="max-height: 250px; overflow-y: auto; border: 1px solid var(--neutral-200); border-radius: 8px; background: var(--card-bg);">
-            <table style="width: 100%; border-collapse: collapse;">
-              <thead style="position: sticky; top: 0; z-index: 1; background: var(--neutral-100);">
-                <tr style="border-bottom: 2px solid var(--neutral-300);">
-                  <th style="padding: 6px 10px; text-align: left; font-weight: 600; font-size: 13px; width: 70px;">
-                    <div style="display: flex; align-items: center; gap: 6px;">
-                      <input
-                        type="checkbox"
-                        id="selectAllKeys"
-                        onchange="toggleSelectAllKeys(this.checked)"
-                        style="width: 16px; height: 16px; cursor: pointer; accent-color: var(--primary-500);"
-                        title="全选/取消全选"
-                      >
-                      <span>#</span>
-                    </div>
-                  </th>
-                  <th style="padding: 6px 10px; text-align: left; font-weight: 600; font-size: 13px;">API Key</th>
-                  <th style="padding: 6px 10px; text-align: left; font-weight: 600; font-size: 13px; width: 200px;">
-                    <select
-                      id="keyStatusFilter"
-                      onchange="filterKeysByStatus(this.value)"
-                      style="width: 100%; padding: 4px 8px; border: 1px solid var(--neutral-300); border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; background: var(--input-bg);"
-                    >
-                      <option value="all">全部</option>
-                      <option value="normal">正常</option>
-                      <option value="cooldown">冷却中</option>
-                    </select>
-                  </th>
-                  <th style="padding: 6px 10px; text-align: center; font-weight: 600; font-size: 13px; width: 120px;">
-                    <button
-                      type="button"
-                      id="batchDeleteKeysBtn"
-                      onclick="batchDeleteSelectedKeys()"
-                      disabled
-                      title="批量删除选中的Keys"
-                      style="padding: 4px 12px; border-radius: 6px; border: 1px solid var(--neutral-300); background: var(--input-bg); color: var(--neutral-500); cursor: not-allowed; font-size: 12px; font-weight: 500; transition: all 0.2s;"
-                    >
-                      删除选中
-                    </button>
-                  </th>
-                </tr>
-              </thead>
-              <tbody id="inlineKeyTableBody">
-                <!-- Key行动态渲染 -->
-              </tbody>
-            </table>
+          <!-- API Key Card -->
+          <div class="api-key-card">
+            <!-- Card Header -->
+            <div class="api-key-header">
+              <div class="api-key-header-left">
+                <label class="form-label" style="margin: 0;">
+                  API Key * <span class="models-hint" style="margin-left: 8px;">共 <span id="inlineKeyCount">0</span> 个Key <span id="virtualScrollHint" style="display: none; color: var(--primary-600); font-weight: 600;">· 虚拟滚动已启用</span></span>
+                </label>
+              </div>
+
+              <div class="api-key-header-right">
+                <!-- Codex Auth Switch (仅 Codex 渠道显示) -->
+                <div id="codexAuthSwitch">
+                  <label class="auth-toggle-btn active" id="codexAuthToggleOAuth" onclick="toggleCodexAuthMode('oauth')">
+                    <input type="radio" name="codexAuthType" value="oauth" checked style="display:none;"> OAuth
+                  </label>
+                  <label class="auth-toggle-btn" id="codexAuthToggleApiKey" onclick="toggleCodexAuthMode('apikey')">
+                    <input type="radio" name="codexAuthType" value="apikey" style="display:none;"> API Key
+                  </label>
+                </div>
+
+                <button type="button" class="btn btn-secondary btn-sm" onclick="openInlineKeyImport()" style="padding: 5px 10px; font-size: 12px; display: inline-flex; align-items: center; gap: 4px;">
+                  <svg width="12" height="12" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M8 3.5V12M8 12L5 9M8 12L11 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M2 13.5H14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                  </svg>
+                  <span>导入</span>
+                </button>
+                <button type="button" id="toggleInlineKeyBtn" onclick="toggleInlineKeyVisibility()" style="width: 26px; height: 26px; border-radius: 6px; border: 1px solid var(--neutral-300); background: var(--input-focus-bg); color: var(--neutral-500); cursor: pointer; padding: 0; display: inline-flex; align-items: center; justify-content: center; transition: all 0.2s;" title="显示/隐藏API Key" onmouseover="this.style.background='var(--neutral-50)'; this.style.borderColor='var(--neutral-400)';" onmouseout="this.style.background='var(--input-focus-bg)'; this.style.borderColor='var(--neutral-300)';">
+                  <svg id="inlineEyeIcon" width="13" height="13" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M1.5 8C1.5 8 3.5 3.5 8 3.5C12.5 3.5 14.5 8 14.5 8C14.5 8 12.5 12.5 8 12.5C3.5 12.5 1.5 8 1.5 8Z" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <circle cx="8" cy="8" r="2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                  <svg id="inlineEyeOffIcon" width="13" height="13" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style="display: none;">
+                    <path d="M2 2L14 14M6.5 6.5C6.96785 6.03214 7.60786 5.75 8.3 5.75C9.73071 5.75 10.9 6.91929 10.9 8.35C10.9 9.04214 10.6179 9.68215 10.15 10.15M4.5 4.5C2.73 5.67 1.5 8 1.5 8C1.5 8 3.5 12.5 8 12.5C9.35 12.5 10.58 11.97 11.55 11.5M12.85 11.85C13.97 10.73 14.5 8 14.5 8C14.5 8 12.5 3.5 8 3.5C7.23 3.5 6.5 3.73 5.85 4.05" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <!-- Card Body -->
+            <div class="api-key-body">
+              <!-- Standard Key Table Container -->
+              <div id="standardKeyContainer" style="max-height: 250px; overflow-y: auto;">
+                <table style="width: 100%; border-collapse: collapse;">
+                  <thead style="position: sticky; top: 0; z-index: 1; background: var(--neutral-100);">
+                    <tr style="border-bottom: 2px solid var(--neutral-300);">
+                      <th style="padding: 6px 10px; text-align: left; font-weight: 600; font-size: 13px; width: 70px;">
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                          <input type="checkbox" id="selectAllKeys" onchange="toggleSelectAllKeys(this.checked)" style="width: 16px; height: 16px; cursor: pointer; accent-color: var(--primary-500);" title="全选/取消全选">
+                          <span>#</span>
+                        </div>
+                      </th>
+                      <th style="padding: 6px 10px; text-align: left; font-weight: 600; font-size: 13px;">API Key</th>
+                      <th style="padding: 6px 10px; text-align: left; font-weight: 600; font-size: 13px; width: 200px;">
+                        <select id="keyStatusFilter" onchange="filterKeysByStatus(this.value)" style="width: 100%; padding: 4px 8px; border: 1px solid var(--neutral-300); border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; background: var(--input-bg);">
+                          <option value="all">全部</option>
+                          <option value="normal">正常</option>
+                          <option value="cooldown">冷却中</option>
+                        </select>
+                      </th>
+                      <th style="padding: 6px 10px; text-align: center; font-weight: 600; font-size: 13px; width: 120px;">
+                        <button type="button" id="batchDeleteKeysBtn" onclick="batchDeleteSelectedKeys()" disabled title="批量删除选中的Keys" style="padding: 4px 12px; border-radius: 6px; border: 1px solid var(--neutral-300); background: var(--input-bg); color: var(--neutral-500); cursor: not-allowed; font-size: 12px; font-weight: 500; transition: all 0.2s;">
+                          删除选中
+                        </button>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody id="inlineKeyTableBody">
+                    <!-- Key行动态渲染 -->
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- Codex OAuth Section (仅 Codex 渠道显示) -->
+              <div id="codexOAuthSection" style="display: none;">
+
+            <!-- OAuth 容器 -->
+            <div id="codexOAuthContainer">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <div id="codexTokenStatus" style="display: flex; align-items: center; gap: 8px;">
+                  <span id="codexTokenStatusBadge" class="status-badge" style="padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; background: var(--neutral-200); color: var(--neutral-600);">未授权</span>
+                </div>
+              </div>
+
+              <div id="codexTokenInfo" style="display: none; margin-bottom: 12px; padding: 10px; background: var(--card-bg); border-radius: 6px; font-size: 13px;">
+                <div style="display: flex; gap: 16px; flex-wrap: wrap;">
+                  <div><span style="color: var(--neutral-500);">Account ID:</span> <code id="codexAccountId" style="background: var(--neutral-100); padding: 2px 6px; border-radius: 4px;">-</code></div>
+                  <div><span style="color: var(--neutral-500);">过期时间:</span> <span id="codexExpiresAt" style="font-weight: 500;">-</span></div>
+                </div>
+              </div>
+
+              <div style="display: flex; gap: 8px;">
+                <button type="button" id="startCodexOAuthBtn" class="btn btn-primary btn-sm" onclick="startCodexOAuth()" style="padding: 8px 16px;">
+                  🚀 开始 OAuth 授权
+                </button>
+                <button type="button" id="refreshCodexTokenBtn" class="btn btn-secondary btn-sm" onclick="refreshCodexToken()" style="padding: 8px 16px; display: none;">
+                  🔄 刷新 Token
+                </button>
+                <button type="button" id="clearCodexTokenBtn" class="btn btn-secondary btn-sm" onclick="clearCodexToken()" style="padding: 8px 16px; display: none;">
+                  🗑️ 清除授权
+                </button>
+              </div>
+
+              <div style="margin-top: 12px; font-size: 12px; color: var(--neutral-500);">
+                <p style="margin: 0;">点击授权后将跳转到 OpenAI 登录页面，完成后请复制 URL 中的授权码并粘贴到下方。</p>
+              </div>
+
+              <!-- 手动输入授权码 -->
+              <div id="codexManualCodeSection" style="margin-top: 12px;">
+                <div style="font-size: 12px; color: var(--neutral-500); margin-bottom: 8px;">
+                  授权码（URL 中 <code style="background: var(--neutral-100); padding: 1px 4px; border-radius: 3px;">code=</code> 后的值）
+                </div>
+                <div style="display: flex; gap: 8px;">
+                  <input type="text" id="codexManualCodeInput" class="form-input" placeholder="粘贴 code=... 后的值" style="flex: 1; font-size: 12px;">
+                  <button type="button" class="btn btn-secondary btn-sm" onclick="submitManualCodexCode()" style="padding: 6px 12px; font-size: 12px;">
+                    提交
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+            </div>
           </div>
         </div>
         <div class="form-group">
@@ -335,7 +403,10 @@
                 <button type="button" class="btn btn-secondary btn-sm" onclick="applyQuotaTemplate('oneapi')" style="padding: 4px 10px; font-size: 12px;">
                   OneAPI
                 </button>
-                <span style="font-size: 11px; color: var(--neutral-400); align-self: center; margin-left: 8px;">选择后请替换占位符</span>
+                <button type="button" id="codexQuotaTemplateBtn" class="btn btn-secondary btn-sm" onclick="applyQuotaTemplate('codex')" style="padding: 4px 10px; font-size: 12px; display: none;">
+                  Codex 官方
+                </button>
+                <span id="quotaTemplateHint" style="font-size: 11px; color: var(--neutral-400); align-self: center; margin-left: 8px;">选择后请替换占位符</span>
               </div>
             </div>
 
