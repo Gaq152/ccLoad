@@ -117,7 +117,7 @@ func (s *Server) HandleFetchModelsPreview(c *gin.Context) {
 	}
 
 	// 检查是否需要认证凭据（预定义列表类型不需要）
-	source := determineSource(req.ChannelType)
+	source := determineSource(req.ChannelType, req.URL)
 	if source == "api" && authKey == "" {
 		RespondErrorMsg(c, http.StatusBadRequest, "该渠道类型需要提供api_key或access_token")
 		return
@@ -137,7 +137,7 @@ func (s *Server) HandleFetchModelsPreview(c *gin.Context) {
 
 func fetchModelsForConfig(ctx context.Context, channelType, channelURL, apiKey string) (*FetchModelsResponse, error) {
 	normalizedType := util.NormalizeChannelType(channelType)
-	source := determineSource(channelType)
+	source := determineSource(channelType, channelURL)
 
 	var (
 		models     []string
@@ -181,10 +181,15 @@ func fetchModelsForConfig(ctx context.Context, channelType, channelURL, apiKey s
 }
 
 // determineSource 判断模型列表来源（辅助函数）
-func determineSource(channelType string) string {
+// channelURL 用于区分 Gemini CLI 官方端点（无 models API）和标准 Gemini API
+func determineSource(channelType, channelURL string) string {
 	switch util.NormalizeChannelType(channelType) {
 	case util.ChannelTypeGemini:
-		return "api" // 从API获取
+		// Gemini CLI 官方端点没有 models API，使用预定义列表
+		if strings.Contains(channelURL, "cloudcode-pa.googleapis.com") {
+			return "predefined"
+		}
+		return "api" // 标准 Gemini API 从接口获取
 	default:
 		return "predefined" // 预定义列表（Anthropic/Codex等官方无开放接口）
 	}

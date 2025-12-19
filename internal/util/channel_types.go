@@ -31,7 +31,7 @@ var ChannelTypes = []ChannelTypeConfig{
 		Value:        ChannelTypeGemini,
 		DisplayName:  "Google Gemini",
 		Description:  "Google Gemini API",
-		PathPatterns: []string{"/v1beta/"},
+		PathPatterns: []string{"/v1beta/", "/v1internal:"},
 		MatchType:    MatchTypeContains,
 	},
 }

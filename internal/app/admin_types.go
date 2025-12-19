@@ -56,10 +56,13 @@ func validateChannelBaseURL(raw string) (string, error) {
 		return "", fmt.Errorf("url must not contain query or fragment")
 	}
 
-	// [FIX] 只禁止以 /v1 开头的 path（防止误填 API endpoint 如 /v1/messages）
-	// 允许以 /v1 结尾的 path（如 /openai/v1 用于反向代理或 API gateway）
-	if strings.HasPrefix(u.Path, "/v1") {
-		return "", fmt.Errorf("url should not start with API endpoint path /v1 (current path: %q)", u.Path)
+	// [FIX] 只禁止看起来像完整 API 端点的路径（防止误填如 /v1/messages, /v1/chat/completions）
+	// 允许以下场景：
+	// - /v1 单独结尾（如 https://proxy.example.com/v1 作为基础 URL）
+	// - /openai/v1 结尾（反向代理或 API gateway）
+	// 禁止：/v1/ 后面还有内容（如 /v1/messages, /v1/chat/completions）
+	if strings.HasPrefix(u.Path, "/v1/") {
+		return "", fmt.Errorf("url should not contain API endpoint path like /v1/... (current path: %q), please use base URL only", u.Path)
 	}
 
 	// 强制返回标准化格式（scheme://host+path，移除 trailing slash）
@@ -82,8 +85,8 @@ func (cr *ChannelRequest) Validate() error {
 	// URL 验证规则（Fail-Fast 边界防御）：
 	// - 必须包含 scheme+host（http/https）
 	// - 禁止 userinfo、query、fragment
-	// - 禁止包含 /v1 的 path（防止误填 endpoint 如 /v1/messages）
-	// - 允许其他 path（如 /api, /openai 等用于反向代理或 API gateway）
+	// - 禁止 /v1/ 开头的 path（防止误填完整端点如 /v1/messages）
+	// - 允许 /v1 结尾（如 https://proxy.example.com/v1 作为基础 URL）
 	normalizedURL, err := validateChannelBaseURL(cr.URL)
 	if err != nil {
 		return err
@@ -103,13 +106,15 @@ func (cr *ChannelRequest) Validate() error {
 		cr.ChannelType = normalized // 应用标准化结果
 	}
 
-	// [FIX] Codex 预设验证（2025-12新增）
-	// 设计：Codex 渠道必须选择预设类型，官方预设只能用 OAuth，自定义预设只能用 API Key
+	// [FIX] OAuth 预设验证（2025-12新增，支持 Codex 和 Gemini）
+	// 设计：Codex/Gemini 渠道支持预设类型，官方预设只能用 OAuth，自定义预设只能用 API Key
 	cr.Preset = strings.TrimSpace(cr.Preset)
-	if cr.ChannelType == "codex" {
-		// Codex 渠道必须指定预设
+	isOAuthChannel := cr.ChannelType == "codex" || cr.ChannelType == "gemini"
+
+	if isOAuthChannel {
+		// Codex/Gemini 渠道必须指定预设
 		if cr.Preset != "official" && cr.Preset != "custom" {
-			return fmt.Errorf("Codex渠道必须选择预设类型 (official 或 custom)")
+			return fmt.Errorf("%s渠道必须选择预设类型 (official 或 custom)", cr.ChannelType)
 		}
 		if cr.Preset == "official" {
 			// 官方预设：必须有 OAuth Token
@@ -130,11 +135,11 @@ func (cr *ChannelRequest) Validate() error {
 			cr.TokenExpiresAt = 0
 		}
 	} else {
-		// 非 Codex 渠道：必须有 API Key，不使用预设
+		// 非 OAuth 渠道（如 Anthropic）：必须有 API Key，不使用预设
 		if strings.TrimSpace(cr.APIKey) == "" {
 			return fmt.Errorf("api_key cannot be empty")
 		}
-		cr.Preset = "" // 非 Codex 渠道清空预设
+		cr.Preset = "" // 非 OAuth 渠道清空预设
 	}
 
 	// [FIX] key_strategy 白名单校验 + 标准化

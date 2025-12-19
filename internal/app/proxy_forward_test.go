@@ -32,7 +32,7 @@ func TestHandleSuccessResponse_ExtractsUsageFromJSON(t *testing.T) {
 	testChannelID := int64(1)
 	testAPIKey := "sk-test-xxx"
 
-	res, _, err := s.handleSuccessResponse(reqCtx, resp, 0, resp.Header.Clone(), rec, "anthropic", &testChannelID, testAPIKey, "/v1/chat/completions")
+	res, _, err := s.handleSuccessResponse(reqCtx, resp, 0, resp.Header.Clone(), rec, "anthropic", &testChannelID, testAPIKey, "/v1/chat/completions", "https://test.example.com/v1/chat/completions")
 	if err != nil {
 		t.Fatalf("handleSuccessResponse returned error: %v", err)
 	}
@@ -67,7 +67,7 @@ func TestHandleSuccessResponse_ExtractsUsageFromTextPlainSSE(t *testing.T) {
 	testChannelID := int64(1)
 	testAPIKey := "sk-test-xxx"
 
-	res, _, err := s.handleSuccessResponse(reqCtx, resp, 0, resp.Header.Clone(), rec, "anthropic", &testChannelID, testAPIKey, "/v1/chat/completions")
+	res, _, err := s.handleSuccessResponse(reqCtx, resp, 0, resp.Header.Clone(), rec, "anthropic", &testChannelID, testAPIKey, "/v1/chat/completions", "https://test.example.com/v1/chat/completions")
 	if err != nil {
 		t.Fatalf("handleSuccessResponse returned error: %v", err)
 	}
@@ -105,7 +105,7 @@ func TestHandleSuccessResponse_StreamDiagMsg_NormalEOF(t *testing.T) {
 	testChannelID := int64(1)
 	testAPIKey := "sk-test-xxx"
 
-	res, _, err := s.handleSuccessResponse(reqCtx, resp, 0, resp.Header.Clone(), rec, "anthropic", &testChannelID, testAPIKey, "/v1/chat/completions")
+	res, _, err := s.handleSuccessResponse(reqCtx, resp, 0, resp.Header.Clone(), rec, "anthropic", &testChannelID, testAPIKey, "/v1/chat/completions", "https://test.example.com/v1/chat/completions")
 	if err != nil {
 		t.Fatalf("handleSuccessResponse returned error: %v", err)
 	}
@@ -138,7 +138,7 @@ func TestHandleSuccessResponse_StreamDiagMsg_NonAnthropicNoUsage(t *testing.T) {
 	testChannelID := int64(1)
 	testAPIKey := "sk-test-xxx"
 
-	res, _, err := s.handleSuccessResponse(reqCtx, resp, 0, resp.Header.Clone(), rec, "openai", &testChannelID, testAPIKey, "/v1/chat/completions")
+	res, _, err := s.handleSuccessResponse(reqCtx, resp, 0, resp.Header.Clone(), rec, "openai", &testChannelID, testAPIKey, "/v1/chat/completions", "https://test.example.com/v1/chat/completions")
 	if err != nil {
 		t.Fatalf("handleSuccessResponse returned error: %v", err)
 	}

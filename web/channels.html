@@ -315,6 +315,57 @@
               </div>
             </div>
           </div>
+
+              <!-- Gemini OAuth Section (仅 Gemini 官方预设显示) -->
+              <div id="geminiOAuthSection" style="display: none;">
+                <!-- 隐藏字段存储 OAuth Token JSON -->
+                <input type="hidden" id="geminiApiKey">
+
+                <!-- OAuth 容器 -->
+                <div id="geminiOAuthContainer">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                    <div id="geminiTokenStatus" style="display: flex; align-items: center; gap: 8px;">
+                      <span id="geminiTokenStatusBadge" class="status-badge" style="padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; background: var(--neutral-200); color: var(--neutral-600);">未授权</span>
+                    </div>
+                  </div>
+
+                  <div id="geminiTokenInfo" style="display: none; margin-bottom: 12px; padding: 10px; background: var(--card-bg); border-radius: 6px; font-size: 13px;">
+                    <div style="display: flex; gap: 16px; flex-wrap: wrap;">
+                      <div><span style="color: var(--neutral-500);">Email:</span> <code id="geminiEmail" style="background: var(--neutral-100); padding: 2px 6px; border-radius: 4px;">-</code></div>
+                      <div><span style="color: var(--neutral-500);">过期时间:</span> <span id="geminiExpiresAt" style="font-weight: 500;">-</span></div>
+                    </div>
+                  </div>
+
+                  <div style="display: flex; gap: 8px;">
+                    <button type="button" id="startGeminiOAuthBtn" class="btn btn-primary btn-sm" onclick="startGeminiOAuth()" style="padding: 8px 16px;">
+                      🚀 开始 Google OAuth 授权
+                    </button>
+                    <button type="button" id="refreshGeminiTokenBtn" class="btn btn-secondary btn-sm" onclick="refreshGeminiToken()" style="padding: 8px 16px; display: none;">
+                      🔄 刷新 Token
+                    </button>
+                    <button type="button" id="clearGeminiTokenBtn" class="btn btn-secondary btn-sm" onclick="clearGeminiToken()" style="padding: 8px 16px; display: none;">
+                      🗑️ 清除授权
+                    </button>
+                  </div>
+
+                  <div style="margin-top: 12px; font-size: 12px; color: var(--neutral-500);">
+                    <p style="margin: 0;">点击授权后将跳转到 Google 登录页面，完成后请复制 URL 中的授权码并粘贴到下方。</p>
+                  </div>
+
+                  <!-- 手动输入授权码 -->
+                  <div id="geminiManualCodeSection" style="margin-top: 12px;">
+                    <div style="font-size: 12px; color: var(--neutral-500); margin-bottom: 8px;">
+                      授权码（URL 中 <code style="background: var(--neutral-100); padding: 1px 4px; border-radius: 3px;">code=</code> 后的值）
+                    </div>
+                    <div style="display: flex; gap: 8px;">
+                      <input type="text" id="geminiManualCodeInput" class="form-input" placeholder="粘贴 code=... 后的值" style="flex: 1; font-size: 12px;">
+                      <button type="button" class="btn btn-secondary btn-sm" onclick="submitManualGeminiCode()" style="padding: 6px 12px; font-size: 12px;">
+                        提交
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>

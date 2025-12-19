@@ -71,9 +71,12 @@ type proxyRequestContext struct {
 	clientIP      string // 客户端IP地址（用于日志记录，2025-12新增）
 
 	// Codex 专用字段（2025-12新增）
-	isCodex       bool              // 是否为 Codex 渠道
-	codexToken    *CodexOAuthToken  // Codex OAuth Token（解析后）
-	codexHeaders  *CodexExtraHeaders // Codex 额外请求头
+	isCodex      bool               // 是否为 Codex 渠道
+	codexToken   *CodexOAuthToken   // Codex OAuth Token（解析后）
+	codexHeaders *CodexExtraHeaders // Codex 额外请求头
+
+	// Gemini CLI 专用字段（2025-12新增）
+	isGeminiCLI bool // 是否为 Gemini CLI 官方预设
 }
 
 // proxyResult 代理请求结果

@@ -127,7 +127,7 @@ func (s *Server) handleSpecialRoutes(c *gin.Context) bool {
 
 	switch {
 	case method == http.MethodGet && path == "/v1/models":
-		s.handleListOpenAIModels(c)
+		s.handleListAllModels(c)
 		return true
 	case method == http.MethodGet && path == "/v1beta/models":
 		s.handleListGeminiModels(c)

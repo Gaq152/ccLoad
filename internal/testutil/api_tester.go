@@ -320,12 +320,21 @@ func (t *OpenAITester) Parse(statusCode int, respBody []byte) map[string]any {
 // GeminiTester 实现 Google Gemini 测试协议
 type GeminiTester struct{}
 
+// Gemini CLI 配置常量（与 gemini_auth.go 保持一致）
+const (
+	geminiCLIEndpoint  = "https://cloudcode-pa.googleapis.com"
+	geminiCLIProjectID = "causal-voltage-327sp"
+	geminiCLIUserAgent = "GeminiCLI/v22.21.0 (ccload; proxy)"
+	geminiCLIAPIClient = "gl-node/22.21.0 grpc/1.24.0"
+)
+
 func (t *GeminiTester) Build(cfg *model.Config, apiKey string, req *TestChannelRequest) (string, http.Header, []byte, error) {
 	testContent := req.Content
 	if strings.TrimSpace(testContent) == "" {
 		testContent = "test"
 	}
 
+	// 标准 Gemini API 请求体格式
 	msg := map[string]any{
 		"contents": []map[string]any{
 			{
@@ -338,19 +347,68 @@ func (t *GeminiTester) Build(cfg *model.Config, apiKey string, req *TestChannelR
 		},
 	}
 
-	body, err := sonic.Marshal(msg)
-	if err != nil {
-		return "", nil, nil, err
-	}
-
-	baseURL := strings.TrimRight(cfg.URL, "/")
-	// Gemini API 路径格式: /v1beta/models/{model}:streamGenerateContent（流式）
-	fullURL := baseURL + "/v1beta/models/" + req.Model + ":streamGenerateContent?alt=sse"
-
+	var body []byte
+	var err error
+	var fullURL string
 	h := make(http.Header)
 	h.Set("Content-Type", "application/json")
-	h.Set("x-goog-api-key", apiKey)
-	h.Set("Accept", "text/event-stream")
+
+	// 检测端点类型
+	isCLIEndpoint := strings.Contains(cfg.URL, "cloudcode-pa.googleapis.com")
+
+	// 根据预设类型和端点选择不同的 API 格式
+	if cfg.Preset == "official" && isCLIEndpoint {
+		// Gemini CLI 官方预设（cloudcode-pa 端点）：使用 v1internal 端点和 CLI 格式
+		// 转换请求体为 CLI 格式
+		cliBody := map[string]any{
+			"model":          req.Model,
+			"project":        geminiCLIProjectID,
+			"user_prompt_id": generateUUID() + "########0",
+			"request":        msg, // 嵌套原始请求
+		}
+		body, err = sonic.Marshal(cliBody)
+		if err != nil {
+			return "", nil, nil, err
+		}
+
+		// 使用 Gemini CLI 端点
+		fullURL = geminiCLIEndpoint + "/v1internal:streamGenerateContent?alt=sse"
+
+		// CLI 特殊请求头 + OAuth 认证
+		h.Set("Authorization", "Bearer "+apiKey)
+		h.Set("User-Agent", geminiCLIUserAgent)
+		h.Set("x-goog-api-client", geminiCLIAPIClient)
+		h.Set("Accept", "*/*")
+	} else if cfg.Preset == "official" {
+		// Gemini 标准 API 端点（generativelanguage 等）+ OAuth 认证
+		// 不需要请求体转换，只需替换认证方式
+		body, err = sonic.Marshal(msg)
+		if err != nil {
+			return "", nil, nil, err
+		}
+
+		baseURL := strings.TrimRight(cfg.URL, "/")
+		// Gemini API 路径格式: /v1beta/models/{model}:streamGenerateContent（流式）
+		fullURL = baseURL + "/v1beta/models/" + req.Model + ":streamGenerateContent?alt=sse"
+
+		// OAuth Bearer 认证（而非 API Key）
+		h.Set("Authorization", "Bearer "+apiKey)
+		h.Set("Accept", "text/event-stream")
+	} else {
+		// 自定义预设或默认：使用标准 Gemini API + API Key
+		body, err = sonic.Marshal(msg)
+		if err != nil {
+			return "", nil, nil, err
+		}
+
+		baseURL := strings.TrimRight(cfg.URL, "/")
+		// Gemini API 路径格式: /v1beta/models/{model}:streamGenerateContent（流式）
+		fullURL = baseURL + "/v1beta/models/" + req.Model + ":streamGenerateContent?alt=sse"
+
+		// API Key 认证
+		h.Set("x-goog-api-key", apiKey)
+		h.Set("Accept", "text/event-stream")
+	}
 
 	return fullURL, h, body, nil
 }

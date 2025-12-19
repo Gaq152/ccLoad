@@ -48,6 +48,7 @@ type jsonUsageParser struct {
 	buffer      bytes.Buffer
 	truncated   bool
 	channelType string // 渠道类型(anthropic/openai/codex/gemini),用于精确平台判断
+	requestURL  string // 请求URL，用于调试日志
 }
 
 type usageParser interface {
@@ -75,8 +76,9 @@ func newSSEUsageParser(channelType string) *sseUsageParser {
 
 // newJSONUsageParser 创建JSON响应的usage解析器
 // channelType: 渠道类型(anthropic/openai/codex/gemini),用于精确识别平台usage格式
-func newJSONUsageParser(channelType string) *jsonUsageParser {
-	return &jsonUsageParser{channelType: channelType}
+// requestURL: 请求URL，用于调试日志
+func newJSONUsageParser(channelType, requestURL string) *jsonUsageParser {
+	return &jsonUsageParser{channelType: channelType, requestURL: requestURL}
 }
 
 // Feed 喂入数据进行解析（供streamCopySSE调用）
@@ -265,7 +267,20 @@ func (p *jsonUsageParser) GetUsage() (inputTokens, outputTokens, cacheRead, cach
 
 	var payload map[string]any
 	if err := json.Unmarshal(data, &payload); err != nil {
-		log.Printf("WARN: usage json parse failed: %v", err)
+		// [FIX] 检测 HTML 响应，记录详细信息便于调试
+		preview := string(data)
+		if len(preview) > 200 {
+			preview = preview[:200] + "..."
+		}
+		if len(data) > 0 && data[0] == '<' {
+			// HTML 响应（可能是错误页面或 Cloudflare 挑战页）
+			log.Printf("WARN: [%s] usage parse skipped: received HTML response\n  URL: %s\n  preview: %s",
+				p.channelType, p.requestURL, preview)
+			return 0, 0, 0, 0
+		}
+		// 其他解析错误
+		log.Printf("WARN: [%s] usage json parse failed: %v\n  URL: %s\n  preview: %s",
+			p.channelType, err, p.requestURL, preview)
 		return 0, 0, 0, 0
 	}
 
