@@ -2,6 +2,8 @@ package testutil
 
 import (
 	"crypto/rand"
+	"encoding/base64"
+	_ "embed"
 	"fmt"
 	"net/http"
 	"strings"
@@ -10,6 +12,9 @@ import (
 
 	"github.com/bytedance/sonic"
 )
+
+//go:embed codex_instructions.txt
+var codexDefaultInstructions string
 
 // ChannelTester 定义不同渠道类型的测试协议（OCP：新增类型无需修改调用方）
 type ChannelTester interface {
@@ -46,16 +51,37 @@ func getSliceItem[T any](slice []any, index int) (T, bool) {
 // CodexTester 兼容 Codex 风格（渠道类型: codex）
 type CodexTester struct{}
 
+// codexDefaultTools Codex 测试用的最小工具集
+var codexDefaultTools = []map[string]any{
+	{
+		"type":        "function",
+		"name":        "shell_command",
+		"description": "Runs a shell command and returns its output.",
+		"strict":      false,
+		"parameters": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"command": map[string]any{
+					"type":        "string",
+					"description": "The shell command to execute",
+				},
+			},
+			"required":             []string{"command"},
+			"additionalProperties": false,
+		},
+	},
+}
+
 func (t *CodexTester) Build(cfg *model.Config, apiKey string, req *TestChannelRequest) (string, http.Header, []byte, error) {
 	testContent := req.Content
 	if strings.TrimSpace(testContent) == "" {
 		testContent = "test"
 	}
 
+	// 构建符合官方格式的请求体
 	msg := map[string]any{
 		"model":        req.Model,
-		"stream":       req.Stream,
-		"instructions": "You are Codex, based on GPT-5. You are running as a coding agent in the Codex CLI on a user's computer.",
+		"instructions": codexDefaultInstructions,
 		"input": []map[string]any{
 			{
 				"type": "message",
@@ -68,6 +94,17 @@ func (t *CodexTester) Build(cfg *model.Config, apiKey string, req *TestChannelRe
 				},
 			},
 		},
+		"tools":               codexDefaultTools,
+		"tool_choice":         "auto",
+		"parallel_tool_calls": false,
+		"reasoning": map[string]any{
+			"effort":  "medium",
+			"summary": "auto",
+		},
+		"store":            false,
+		"stream":           true, // Codex API 要求必须流式
+		"include":          []string{"reasoning.encrypted_content"},
+		"prompt_cache_key": generateUUID(),
 	}
 
 	body, err := sonic.Marshal(msg)
@@ -75,33 +112,29 @@ func (t *CodexTester) Build(cfg *model.Config, apiKey string, req *TestChannelRe
 		return "", nil, nil, err
 	}
 
+	// 统一使用 /responses 路径（不加 v1，因为 Codex API 原生路径就是 /responses）
 	baseURL := strings.TrimRight(cfg.URL, "/")
-	var fullURL string
+	fullURL := baseURL + "/responses"
 
 	h := make(http.Header)
 	h.Set("Content-Type", "application/json")
 	h.Set("Authorization", "Bearer "+apiKey)
 
-	// [FIX] 根据预设类型选择不同的 URL 路径和请求头
+	// 官方预设需要额外的请求头
 	if cfg.Preset == "official" {
-		// 官方预设：/responses 路径 + 完整 Codex 请求头
-		fullURL = baseURL + "/responses"
-
-		// 注入 Codex 官方 API 需要的额外请求头
 		h.Set("Openai-Conversation-Id", "conv-test-"+generateUUID())
 		h.Set("Openai-Request-Id", "req-test-"+generateUUID())
 		h.Set("Openai-Sentinel-Chat-Requirements-Token", generateChatToken())
-	} else {
-		// 自定义预设：/v1/responses 路径
-		fullURL = baseURL + "/v1/responses"
+		// 关键：从 JWT 提取 account_id 并设置请求头
+		if accountID := extractAccountIDFromJWT(apiKey); accountID != "" {
+			h.Set("chatgpt-account-id", accountID)
+		}
 	}
 
 	h.Set("User-Agent", "codex_cli_rs/0.41.0 (Mac OS 26.0.0; arm64) iTerm.app/3.6.1")
 	h.Set("Openai-Beta", "responses=experimental")
 	h.Set("Originator", "codex_cli_rs")
-	if req.Stream {
-		h.Set("Accept", "text/event-stream")
-	}
+	h.Set("Accept", "text/event-stream") // Codex 必须流式
 
 	return fullURL, h, body, nil
 }
@@ -117,6 +150,48 @@ func generateUUID() string {
 func generateChatToken() string {
 	// 这是一个简化的 token，实际可能需要更复杂的生成逻辑
 	return "gAAAAAB" + generateUUID()
+}
+
+// extractAccountIDFromJWT 从 JWT access_token 中提取 chatgpt_account_id
+func extractAccountIDFromJWT(accessToken string) string {
+	if accessToken == "" {
+		return ""
+	}
+
+	parts := strings.Split(accessToken, ".")
+	if len(parts) != 3 {
+		return ""
+	}
+
+	// 解码 payload（URL-safe base64）
+	payload := parts[1]
+	payload = strings.ReplaceAll(payload, "-", "+")
+	payload = strings.ReplaceAll(payload, "_", "/")
+	switch len(payload) % 4 {
+	case 2:
+		payload += "=="
+	case 3:
+		payload += "="
+	}
+
+	decoded, err := base64.StdEncoding.DecodeString(payload)
+	if err != nil {
+		return ""
+	}
+
+	var claims map[string]any
+	if err := sonic.Unmarshal(decoded, &claims); err != nil {
+		return ""
+	}
+
+	// 路径: claims["https://api.openai.com/auth"]["chatgpt_account_id"]
+	auth, ok := claims["https://api.openai.com/auth"].(map[string]any)
+	if !ok {
+		return ""
+	}
+
+	accountID, _ := auth["chatgpt_account_id"].(string)
+	return accountID
 }
 
 // extractCodexResponseText 从Codex响应中提取文本（消除6层嵌套）
@@ -185,7 +260,7 @@ func (t *OpenAITester) Build(cfg *model.Config, apiKey string, req *TestChannelR
 		testContent = "test"
 	}
 
-	// 标准OpenAI Chat Completions格式
+	// 标准OpenAI Chat Completions格式（测试默认开启流式）
 	msg := map[string]any{
 		"model": req.Model,
 		"messages": []map[string]any{
@@ -195,7 +270,7 @@ func (t *OpenAITester) Build(cfg *model.Config, apiKey string, req *TestChannelR
 			},
 		},
 		"max_tokens": req.MaxTokens,
-		"stream":     req.Stream,
+		"stream":     true,
 	}
 
 	body, err := sonic.Marshal(msg)
@@ -210,9 +285,7 @@ func (t *OpenAITester) Build(cfg *model.Config, apiKey string, req *TestChannelR
 	h := make(http.Header)
 	h.Set("Content-Type", "application/json")
 	h.Set("Authorization", "Bearer "+apiKey)
-	if req.Stream {
-		h.Set("Accept", "text/event-stream")
-	}
+	h.Set("Accept", "text/event-stream")
 
 	return fullURL, h, body, nil
 }
@@ -271,12 +344,13 @@ func (t *GeminiTester) Build(cfg *model.Config, apiKey string, req *TestChannelR
 	}
 
 	baseURL := strings.TrimRight(cfg.URL, "/")
-	// Gemini API 路径格式: /v1beta/models/{model}:generateContent
-	fullURL := baseURL + "/v1beta/models/" + req.Model + ":generateContent"
+	// Gemini API 路径格式: /v1beta/models/{model}:streamGenerateContent（流式）
+	fullURL := baseURL + "/v1beta/models/" + req.Model + ":streamGenerateContent?alt=sse"
 
 	h := make(http.Header)
 	h.Set("Content-Type", "application/json")
 	h.Set("x-goog-api-key", apiKey)
+	h.Set("Accept", "text/event-stream")
 
 	return fullURL, h, body, nil
 }
@@ -351,7 +425,7 @@ func (t *AnthropicTester) Build(cfg *model.Config, apiKey string, req *TestChann
 				"cache_control": map[string]any{"type": "ephemeral"},
 			},
 		},
-		"stream": req.Stream,
+		"stream": true, // 测试默认开启流式
 		"messages": []map[string]any{
 			{
 				"content": []map[string]any{
@@ -399,9 +473,7 @@ func (t *AnthropicTester) Build(cfg *model.Config, apiKey string, req *TestChann
 	h.Set("x-stainless-runtime", "node")
 	h.Set("x-stainless-runtime-version", "v24.3.0")
 	h.Set("x-stainless-timeout", "600")
-	if req.Stream {
-		h.Set("Accept", "text/event-stream")
-	}
+	h.Set("Accept", "text/event-stream")
 
 	return fullURL, h, body, nil
 }
