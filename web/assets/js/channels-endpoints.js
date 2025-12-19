@@ -354,8 +354,9 @@
       const successCount = results.filter(r => r.latency_ms >= 0).length;
       const failCount = results.filter(r => r.latency_ms < 0).length;
       const fastestResult = results.filter(r => r.latency_ms >= 0).sort((a, b) => a.latency_ms - b.latency_ms)[0];
+      const testCount = results.length > 0 ? (results[0].test_count || 3) : 3;
 
-      let msg = `测速完成（每端点测试3次取平均）：${successCount} 成功`;
+      let msg = `测速完成（每端点测试${testCount}次取平均）：${successCount} 成功`;
       if (failCount > 0) msg += `，${failCount} 失败`;
       if (fastestResult) msg += `，最快 ${fastestResult.latency_ms}ms`;
       showSuccess(msg);
