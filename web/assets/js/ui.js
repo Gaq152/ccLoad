@@ -267,20 +267,23 @@
       pointer-events: auto;
     `;
     if (type === 'success') {
-      // 高可读：浅底深字
-      el.style.background = 'var(--success-50)';
-      el.style.color = 'var(--success-600)';
-      el.style.borderColor = 'var(--success-500)';
+      // 高对比度：深色背景 + 白色文字
+      el.style.background = 'var(--theme-toast-success-bg)';
+      el.style.color = '#ffffff';
+      el.style.borderColor = 'transparent';
+      el.style.textShadow = '0 1px 2px rgba(0,0,0,0.2)';
       el.classList.add('shadow-pulse-success');
     } else if (type === 'error') {
-      el.style.background = 'var(--error-50)';
-      el.style.color = 'var(--error-600)';
-      el.style.borderColor = 'var(--error-500)';
+      el.style.background = 'var(--theme-toast-error-bg)';
+      el.style.color = '#ffffff';
+      el.style.borderColor = 'transparent';
+      el.style.textShadow = '0 1px 2px rgba(0,0,0,0.2)';
       el.classList.add('shadow-pulse-error');
     } else if (type === 'info') {
-      el.style.background = 'var(--info-50)';
-      el.style.color = 'var(--neutral-800)';
-      el.style.borderColor = 'rgba(0,0,0,0.08)';
+      el.style.background = 'var(--theme-toast-info-bg)';
+      el.style.color = '#ffffff';
+      el.style.borderColor = 'transparent';
+      el.style.textShadow = '0 1px 2px rgba(0,0,0,0.2)';
     }
     el.textContent = message;
     const host = ensureNotifyHost();
