@@ -70,6 +70,15 @@ func (s *Server) handleQuotaFetch(c *gin.Context) {
 			return
 		}
 
+		// 渠道被禁用时跳过用量查询
+		if !config.Enabled {
+			c.JSON(http.StatusBadRequest, QuotaFetchResponse{
+				Success: false,
+				Error:   "channel is disabled",
+			})
+			return
+		}
+
 		if config.QuotaConfig == nil || !config.QuotaConfig.Enabled {
 			c.JSON(http.StatusBadRequest, QuotaFetchResponse{
 				Success: false,
