@@ -258,9 +258,11 @@ func (s *Server) testChannelAPI(cfg *model.Config, apiKey string, testReq *testu
 	}
 	defer resp.Body.Close()
 
-	// 判断是否为SSE响应，以及是否请求了流式
+	// 判断是否为SSE响应
 	contentType := resp.Header.Get("Content-Type")
-	isEventStream := strings.Contains(strings.ToLower(contentType), "text/event-stream")
+	// Codex API 流式响应不返回 Content-Type，需要根据请求参数判断
+	isEventStream := strings.Contains(strings.ToLower(contentType), "text/event-stream") ||
+		(channelType == "codex" && testReq.Stream)
 
 	// 通用结果初始化
 	result := map[string]any{
@@ -336,6 +338,13 @@ func (s *Server) testChannelAPI(cfg *model.Config, apiKey string, testReq *testu
 							textBuilder.WriteString(tx)
 							continue
 						}
+					}
+				}
+				// Codex: type == response.output_text.done 包含完整文本
+				if typ == "response.output_text.done" {
+					if text, ok := obj["text"].(string); ok && text != "" {
+						textBuilder.WriteString(text)
+						continue
 					}
 				}
 			}
