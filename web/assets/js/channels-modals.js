@@ -1702,13 +1702,13 @@ async function refreshCodexToken() {
   refreshBtn.textContent = '刷新中...';
 
   try {
+    // 刷新使用 Codex CLI 的 client_id（与授权时相同）
     const body = new URLSearchParams({
       grant_type: 'refresh_token',
       refresh_token: token.refresh_token,
-      client_id: 'pdlLIX2Y72MIl2rhLhTE9VV9bN905kBh' // 刷新使用不同的 client_id
+      client_id: 'app_EMoamEEZ73f0CkXaXp7hrann'
     });
 
-    // 刷新使用 auth0.openai.com
     const res = await fetchWithAuth('/admin/oauth/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
