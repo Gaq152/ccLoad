@@ -41,11 +41,14 @@ func (s *Server) buildProxyRequest(
 ) (*http.Request, error) {
 	// 1. 构建完整 URL
 	var upstreamURL string
-	if codexHeaders != nil {
-		// Codex 官方预设：转换路径格式
-		// 客户端发送 /v1/responses，官方 API 是 /responses
+	if cfg.ChannelType == "codex" {
+		// Codex 渠道（官方和非官方）：统一去掉 /v1 前缀
+		// Codex CLI 发送 /v1/responses，但上游 API 期望 /responses
 		codexPath := strings.TrimPrefix(requestPath, "/v1")
 		upstreamURL = strings.TrimRight(cfg.URL, "/") + codexPath
+		if rawQuery != "" {
+			upstreamURL += "?" + rawQuery
+		}
 	} else {
 		// 其他渠道：URL + 请求路径
 		upstreamURL = buildUpstreamURL(cfg, requestPath, rawQuery)
@@ -160,10 +163,22 @@ func (s *Server) handleErrorResponse(
 }
 
 // streamAndParseResponse 根据Content-Type选择合适的流式传输策略并解析usage
+// requestPath: 请求路径，用于判断是否需要格式转换
 // 返回: (usageParser, streamErr)
-func streamAndParseResponse(ctx context.Context, body io.ReadCloser, w http.ResponseWriter, contentType string, channelType string, isStreaming bool) (usageParser, error) {
-	// [INFO] Codex 渠道: 需要将 Codex SSE 转换为 OpenAI SSE 格式
+func streamAndParseResponse(ctx context.Context, body io.ReadCloser, w http.ResponseWriter, contentType string, channelType string, isStreaming bool, requestPath string) (usageParser, error) {
+	// [INFO] Codex 渠道特殊处理
 	if channelType == util.ChannelTypeCodex && strings.Contains(contentType, "text/event-stream") {
+		// 判断是否为原生 Responses API 请求（/v1/responses 或 /responses）
+		// 如果是，直接透传 Responses API 格式，不进行转换
+		// 只有 /v1/chat/completions 等非原生路径才需要转换
+		isResponsesAPI := strings.HasSuffix(requestPath, "/responses")
+		if isResponsesAPI {
+			// 原生 Codex 客户端请求，直接透传，不转换格式
+			parser := newSSEUsageParser(channelType)
+			err := streamCopySSE(ctx, body, w, parser.Feed)
+			return parser, err
+		}
+		// 非原生路径（如 /v1/chat/completions），需要将 Responses API 转换为 Chat Completions 格式
 		transformer, err := StreamCopyCodexSSE(ctx, body, w)
 		// 使用 codexUsageAdapter 包装 transformer 以实现 usageParser 接口
 		return &codexUsageAdapter{transformer: transformer}, err
@@ -241,6 +256,7 @@ func buildStreamDiagnostics(streamErr error, readStats *streamReadStats, streamC
 }
 
 // handleSuccessResponse 处理成功响应（流式传输）
+// requestPath: 请求路径，用于判断 Codex 渠道是否需要格式转换
 func (s *Server) handleSuccessResponse(
 	reqCtx *requestContext,
 	resp *http.Response,
@@ -250,6 +266,7 @@ func (s *Server) handleSuccessResponse(
 	channelType string,
 	_ *int64,
 	_ string,
+	requestPath string,
 ) (*fwResult, float64, error) {
 	// 写入响应头
 	filterAndWriteResponseHeaders(w, resp.Header)
@@ -271,7 +288,7 @@ func (s *Server) handleSuccessResponse(
 	// 流式传输并解析usage
 	contentType := resp.Header.Get("Content-Type")
 	usageParser, streamErr := streamAndParseResponse(
-		reqCtx.ctx, resp.Body, w, contentType, channelType, reqCtx.isStreaming,
+		reqCtx.ctx, resp.Body, w, contentType, channelType, reqCtx.isStreaming, requestPath,
 	)
 
 	// 构建结果
@@ -337,6 +354,7 @@ func looksLikeSSE(data []byte) bool {
 // channelType: 渠道类型,用于精确识别usage格式
 // cfg: 渠道配置,用于提取渠道ID
 // apiKey: 使用的API Key,用于日志记录
+// requestPath: 请求路径，用于判断 Codex 渠道是否需要格式转换
 func (s *Server) handleResponse(
 	reqCtx *requestContext,
 	resp *http.Response,
@@ -345,6 +363,7 @@ func (s *Server) handleResponse(
 	channelType string,
 	cfg *model.Config,
 	apiKey string,
+	requestPath string,
 ) (*fwResult, float64, error) {
 	hdrClone := resp.Header.Clone()
 
@@ -376,7 +395,7 @@ func (s *Server) handleResponse(
 
 	// 成功状态：流式转发（传递渠道信息用于日志记录）
 	channelID := &cfg.ID
-	return s.handleSuccessResponse(reqCtx, resp, firstByteTime, hdrClone, w, channelType, channelID, apiKey)
+	return s.handleSuccessResponse(reqCtx, resp, firstByteTime, hdrClone, w, channelType, channelID, apiKey, requestPath)
 }
 
 // ============================================================================
@@ -434,7 +453,7 @@ func (s *Server) forwardOnceAsync(ctx context.Context, cfg *model.Config, apiKey
 	firstByteTime := reqCtx.Duration()
 
 	// 5. 处理响应(传递channelType用于精确识别usage格式,传递渠道信息用于日志记录)
-	return s.handleResponse(reqCtx, resp, firstByteTime, w, cfg.ChannelType, cfg, apiKey)
+	return s.handleResponse(reqCtx, resp, firstByteTime, w, cfg.ChannelType, cfg, apiKey, requestPath)
 }
 
 // ============================================================================
