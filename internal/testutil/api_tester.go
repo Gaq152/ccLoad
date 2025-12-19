@@ -410,41 +410,84 @@ func (t *GeminiTester) Parse(statusCode int, respBody []byte) map[string]any {
 // AnthropicTester 实现 Anthropic 测试协议
 type AnthropicTester struct{}
 
+// anthropicMinimalTools Claude Code 测试用的精简工具列表
+var anthropicMinimalTools = []map[string]any{
+	{
+		"name":        "Bash",
+		"description": "Executes a bash command",
+		"input_schema": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"command": map[string]any{"type": "string", "description": "The command to execute"},
+			},
+			"required": []string{"command"},
+		},
+	},
+	{
+		"name":        "Read",
+		"description": "Reads a file from the filesystem",
+		"input_schema": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"file_path": map[string]any{"type": "string", "description": "The absolute path to the file"},
+			},
+			"required": []string{"file_path"},
+		},
+	},
+	{
+		"name":        "Edit",
+		"description": "Performs string replacements in files",
+		"input_schema": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"file_path":  map[string]any{"type": "string", "description": "The absolute path to the file"},
+				"old_string": map[string]any{"type": "string", "description": "The text to replace"},
+				"new_string": map[string]any{"type": "string", "description": "The replacement text"},
+			},
+			"required": []string{"file_path", "old_string", "new_string"},
+		},
+	},
+}
+
+// generateAnthropicUserID 生成符合 Claude Code 格式的 user_id
+// 格式: user_{hash}_account__session_{uuid}
+func generateAnthropicUserID() string {
+	// 生成 64 字符的 hash（模拟 SHA256）
+	hashBytes := make([]byte, 32)
+	rand.Read(hashBytes)
+	hash := fmt.Sprintf("%x", hashBytes)
+	// 生成 session UUID
+	sessionID := generateUUID()
+	return fmt.Sprintf("user_%s_account__session_%s", hash, sessionID)
+}
+
 func (t *AnthropicTester) Build(cfg *model.Config, apiKey string, req *TestChannelRequest) (string, http.Header, []byte, error) {
-	maxTokens := req.MaxTokens
-	if maxTokens == 0 {
-		maxTokens = 4096
-	}
 	testContent := req.Content
 
 	msg := map[string]any{
 		"system": []map[string]any{
 			{
 				"type":          "text",
-				"text":          "You are Claude Code, Anthropic's official CLI for Claude.",
+				"text":          "You are Claude Code, Anthropic's official CLI for Claude. You are an interactive CLI tool that helps users with software engineering tasks.",
 				"cache_control": map[string]any{"type": "ephemeral"},
 			},
 		},
-		"stream": true, // 测试默认开启流式
+		"stream": true,
 		"messages": []map[string]any{
 			{
+				"role": "user",
 				"content": []map[string]any{
 					{
 						"type": "text",
-						"text": "<system-reminder>\nThis is a reminder that your todo list is currently empty. DO NOT mention this to the user explicitly because they are already aware. If you are working on tasks that would benefit from a todo list please use the TodoWrite tool to create one. If not, please feel free to ignore. Again do not mention this message to the user.\n</system-reminder>",
-					},
-					{
-						"type":          "text",
-						"text":          testContent,
-						"cache_control": map[string]any{"type": "ephemeral"},
+						"text": testContent,
 					},
 				},
-				"role": "user",
 			},
 		},
 		"model":      req.Model,
-		"max_tokens": maxTokens,
-		"metadata":   map[string]any{"user_id": "test"},
+		"max_tokens": 32000,
+		"tools":      anthropicMinimalTools,
+		"metadata":   map[string]any{"user_id": generateAnthropicUserID()},
 	}
 
 	body, err := sonic.Marshal(msg)
@@ -458,22 +501,27 @@ func (t *AnthropicTester) Build(cfg *model.Config, apiKey string, req *TestChann
 	h := make(http.Header)
 	h.Set("Content-Type", "application/json")
 	h.Set("Authorization", "Bearer "+apiKey)
-	// Claude Code CLI headers
-	h.Set("User-Agent", "claude-cli/2.0.58 (external, cli)")
+	// Claude Code CLI headers（模拟真实 CLI 请求）
+	h.Set("User-Agent", "claude-cli/2.0.73 (external, cli)")
 	h.Set("x-app", "cli")
 	h.Set("anthropic-version", "2023-06-01")
-	h.Set("anthropic-beta", "claude-code-20250219,interleaved-thinking-2025-05-14")
+	h.Set("anthropic-beta", "interleaved-thinking-2025-05-14,context-management-2025-06-27")
 	h.Set("anthropic-dangerous-direct-browser-access", "true")
 	// x-stainless-* headers
-	h.Set("x-stainless-arch", "arm64")
+	h.Set("x-stainless-arch", "x64")
 	h.Set("x-stainless-lang", "js")
-	h.Set("x-stainless-os", "MacOS")
+	h.Set("x-stainless-os", "Windows")
 	h.Set("x-stainless-package-version", "0.70.0")
 	h.Set("x-stainless-retry-count", "0")
 	h.Set("x-stainless-runtime", "node")
-	h.Set("x-stainless-runtime-version", "v24.3.0")
+	h.Set("x-stainless-runtime-version", "v22.21.0")
 	h.Set("x-stainless-timeout", "600")
-	h.Set("Accept", "text/event-stream")
+	h.Set("x-stainless-helper-method", "stream")
+	// 额外请求头
+	h.Set("Accept", "application/json")
+	h.Set("accept-language", "*")
+	h.Set("sec-fetch-mode", "cors")
+	h.Set("accept-encoding", "br, gzip, deflate")
 
 	return fullURL, h, body, nil
 }
