@@ -260,14 +260,11 @@ const QuotaManager = {
         method: 'POST'
       });
 
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
-      }
-
       const result = await res.json();
 
-      if (!result.success) {
-        throw new Error(result.error || '请求失败');
+      // [FIX] 统一错误处理：优先使用后端返回的错误信息
+      if (!res.ok || !result.success) {
+        throw new Error(result.error || `HTTP ${res.status}`);
       }
 
       // 检查上游 HTTP 状态码（非 2xx 视为错误）

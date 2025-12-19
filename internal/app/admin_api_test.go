@@ -334,7 +334,7 @@ func TestAdminAPI_ImportChannelsCSV_InvalidURLRejected(t *testing.T) {
 	defer cleanup()
 
 	csvContent := `name,url,priority,models,model_redirects,channel_type,enabled,api_key,key_strategy
-Bad-URL,https://bad.example.com/v1,10,test-model,{},anthropic,true,sk-import-key-1,sequential
+Bad-URL,https://bad.example.com/v1/messages,10,test-model,{},anthropic,true,sk-import-key-1,sequential
 Good-URL,https://good.example.com,10,test-model,{},anthropic,true,sk-import-key-2,sequential
 `
 

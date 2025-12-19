@@ -85,6 +85,7 @@ var basePricing = map[string]ModelPricing{
 		InputPrice: 2.00, OutputPrice: 12.00,
 		InputPriceHigh: 4.00, OutputPriceHigh: 18.00,
 	},
+	"gemini-3-flash": {InputPrice: 0.40, OutputPrice: 3.00}, // Gemini 3 Flash 系列
 	"gemini-2.5-pro": {
 		InputPrice: 1.25, OutputPrice: 10.00,
 		InputPriceHigh: 2.50, OutputPriceHigh: 15.00,
@@ -151,6 +152,10 @@ var modelAliases = map[string]string{
 
 	// o系列别名
 	"o4-mini-deep-research": "o3-deep-research", // 相同定价
+
+	// Gemini别名
+	"gemini-3-flash-preview": "gemini-3-flash",
+	"gemini-3-pro-preview":   "gemini-3-pro",
 }
 
 // getPricing 获取模型定价（先查别名再查基础表）
@@ -351,9 +356,10 @@ func fuzzyMatchModel(model string) (ModelPricing, bool) {
 		"claude-opus", "claude-sonnet", "claude-haiku", // 通用兜底
 
 		// Gemini模型（按版本降序，更长的前缀优先）
+		"gemini-3-flash", "gemini-3-pro", // Gemini 3 系列
 		"gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-2.5-pro",
 		"gemini-2.0-flash-lite", "gemini-2.0-flash",
-		"gemini-3-pro", "gemini-1.5-pro", "gemini-1.5-flash",
+		"gemini-1.5-pro", "gemini-1.5-flash",
 
 		// OpenAI GPT系列（更长的前缀优先，避免gpt-4o-legacy被gpt-4o截断）
 		"gpt-5.2-pro", "gpt-5.2", // 5.2系列必须在5.x之前

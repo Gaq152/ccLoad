@@ -522,6 +522,28 @@ func (s *Server) getModelsByChannelType(ctx context.Context, channelType string)
 	return models, nil
 }
 
+// getAllModels 获取所有启用渠道的去重模型列表
+func (s *Server) getAllModels(ctx context.Context) ([]string, error) {
+	channels, err := s.store.ListConfigs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	modelSet := make(map[string]struct{})
+	for _, cfg := range channels {
+		if !cfg.Enabled {
+			continue
+		}
+		for _, modelName := range cfg.Models {
+			modelSet[modelName] = struct{}{}
+		}
+	}
+	models := make([]string, 0, len(modelSet))
+	for name := range modelSet {
+		models = append(models, name)
+	}
+	return models, nil
+}
+
 // [INFO] 修复：handleChannelKeys 路由处理器(2025-10新架构支持)
 // GET /admin/channels/:id/keys - 获取渠道的所有API Keys
 func (s *Server) HandleChannelKeys(c *gin.Context) {

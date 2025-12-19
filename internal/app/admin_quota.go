@@ -70,14 +70,8 @@ func (s *Server) handleQuotaFetch(c *gin.Context) {
 			return
 		}
 
-		// 渠道被禁用时跳过用量查询
-		if !config.Enabled {
-			c.JSON(http.StatusBadRequest, QuotaFetchResponse{
-				Success: false,
-				Error:   "channel is disabled",
-			})
-			return
-		}
+		// [FIX] 渠道禁用不阻止用量查询（手动刷新仍可用）
+		// 禁用渠道只影响前端自动轮询，不影响手动刷新
 
 		if config.QuotaConfig == nil || !config.QuotaConfig.Enabled {
 			c.JSON(http.StatusBadRequest, QuotaFetchResponse{

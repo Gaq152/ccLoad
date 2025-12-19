@@ -435,7 +435,7 @@ func TestJSONUsageParser_OpenAIChatCompletionsFormat(t *testing.T) {
 	// 测试普通JSON格式的OpenAI Chat Completions响应
 	jsonData := `{"id":"chatcmpl-789","object":"chat.completion","created":1677652288,"model":"gpt-4o-mini","choices":[{"index":0,"message":{"role":"assistant","content":"测试响应"},"finish_reason":"stop"}],"usage":{"prompt_tokens":25,"completion_tokens":10,"total_tokens":35}}`
 
-	parser := newJSONUsageParser("openai") // OpenAI平台测试
+	parser := newJSONUsageParser("openai", "https://test.example.com/v1/chat/completions") // OpenAI平台测试
 	if err := parser.Feed([]byte(jsonData)); err != nil {
 		t.Fatalf("Feed失败: %v", err)
 	}
@@ -455,7 +455,7 @@ func TestJSONUsageParser_OpenAIChatCompletionsWithCacheFormat(t *testing.T) {
 	// [INFO] 重构后：GetUsage()返回归一化的billable input (500-350=150)
 	jsonData := `{"id":"chatcmpl-abc","object":"chat.completion","created":1677652288,"model":"gpt-4o","choices":[{"index":0,"message":{"role":"assistant","content":"测试响应"},"finish_reason":"stop"}],"usage":{"prompt_tokens":500,"completion_tokens":200,"total_tokens":700,"prompt_tokens_details":{"cached_tokens":350,"audio_tokens":0},"completion_tokens_details":{"reasoning_tokens":0,"audio_tokens":0}}}`
 
-	parser := newJSONUsageParser("openai") // OpenAI平台测试
+	parser := newJSONUsageParser("openai", "https://test.example.com/v1/chat/completions") // OpenAI平台测试
 	if err := parser.Feed([]byte(jsonData)); err != nil {
 		t.Fatalf("Feed失败: %v", err)
 	}

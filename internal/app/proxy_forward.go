@@ -29,6 +29,7 @@ const (
 // buildProxyRequest 构建上游代理请求（统一处理URL、Header、认证）
 // 从proxy.go提取，遵循SRP原则
 // codexHeaders: Codex 渠道的额外请求头（非 Codex 渠道传 nil）
+// isGeminiCLI: 是否为 Gemini CLI 官方预设（需要特殊认证）
 func (s *Server) buildProxyRequest(
 	reqCtx *requestContext,
 	cfg *model.Config,
@@ -38,6 +39,7 @@ func (s *Server) buildProxyRequest(
 	hdr http.Header,
 	rawQuery, requestPath string,
 	codexHeaders *CodexExtraHeaders,
+	isGeminiCLI bool,
 ) (*http.Request, error) {
 	// 1. 构建完整 URL
 	var upstreamURL string
@@ -48,6 +50,18 @@ func (s *Server) buildProxyRequest(
 		upstreamURL = strings.TrimRight(cfg.URL, "/") + codexPath
 		if rawQuery != "" {
 			upstreamURL += "?" + rawQuery
+		}
+	} else if cfg.ChannelType == "gemini" && cfg.Preset == "official" {
+		// Gemini 官方预设：根据端点类型决定是否转换
+		if IsGeminiCLIEndpoint(cfg.URL) {
+			// cloudcode-pa 端点：转换路径格式
+			// /v1beta/models/gemini-2.5-flash:streamGenerateContent → /v1internal:streamGenerateContent?alt=sse
+			geminiPath := ConvertGeminiPath(requestPath)
+			upstreamURL = strings.TrimRight(cfg.URL, "/") + geminiPath
+			// Gemini CLI 路径已包含查询参数（?alt=sse），不再追加 rawQuery
+		} else {
+			// generativelanguage 等标准端点：保持原路径，只用 Bearer 认证
+			upstreamURL = buildUpstreamURL(cfg, requestPath, rawQuery)
 		}
 	} else {
 		// 其他渠道：URL + 请求路径
@@ -67,6 +81,13 @@ func (s *Server) buildProxyRequest(
 	if codexHeaders != nil {
 		// Codex 渠道使用专用头注入
 		injectCodexHeaders(req, apiKey, codexHeaders)
+	} else if isGeminiCLI {
+		// Gemini CLI 官方预设（cloudcode-pa 端点）使用专用头注入
+		InjectGeminiCLIHeaders(req, apiKey)
+	} else if cfg.ChannelType == "gemini" && cfg.Preset == "official" {
+		// Gemini 标准 API 端点（generativelanguage 等）使用 OAuth Bearer 认证
+		// 与 CLI 端点不同，标准 API 不需要路径/请求体转换，只需替换认证方式
+		InjectGeminiOAuthHeaders(req, apiKey)
 	} else {
 		// 其他渠道使用通用头注入
 		injectAPIKeyHeaders(req, apiKey, requestPath)
@@ -164,8 +185,9 @@ func (s *Server) handleErrorResponse(
 
 // streamAndParseResponse 根据Content-Type选择合适的流式传输策略并解析usage
 // requestPath: 请求路径，用于判断是否需要格式转换
+// requestURL: 完整请求URL，用于调试日志
 // 返回: (usageParser, streamErr)
-func streamAndParseResponse(ctx context.Context, body io.ReadCloser, w http.ResponseWriter, contentType string, channelType string, isStreaming bool, requestPath string) (usageParser, error) {
+func streamAndParseResponse(ctx context.Context, body io.ReadCloser, w http.ResponseWriter, contentType string, channelType string, isStreaming bool, requestPath string, requestURL string) (usageParser, error) {
 	// [INFO] Codex 渠道特殊处理
 	if channelType == util.ChannelTypeCodex && strings.Contains(contentType, "text/event-stream") {
 		// 判断是否为原生 Responses API 请求（/v1/responses 或 /responses）
@@ -201,13 +223,13 @@ func streamAndParseResponse(ctx context.Context, body io.ReadCloser, w http.Resp
 			err := streamCopySSE(ctx, io.NopCloser(reader), w, parser.Feed)
 			return parser, err
 		}
-		parser := newJSONUsageParser(channelType)
+		parser := newJSONUsageParser(channelType, requestURL)
 		err := streamCopy(ctx, io.NopCloser(reader), w, parser.Feed)
 		return parser, err
 	}
 
 	// 非SSE响应：边转发边缓存
-	parser := newJSONUsageParser(channelType)
+	parser := newJSONUsageParser(channelType, requestURL)
 	err := streamCopy(ctx, body, w, parser.Feed)
 	return parser, err
 }
@@ -257,6 +279,7 @@ func buildStreamDiagnostics(streamErr error, readStats *streamReadStats, streamC
 
 // handleSuccessResponse 处理成功响应（流式传输）
 // requestPath: 请求路径，用于判断 Codex 渠道是否需要格式转换
+// requestURL: 完整请求URL，用于调试日志
 func (s *Server) handleSuccessResponse(
 	reqCtx *requestContext,
 	resp *http.Response,
@@ -267,6 +290,7 @@ func (s *Server) handleSuccessResponse(
 	_ *int64,
 	_ string,
 	requestPath string,
+	requestURL string,
 ) (*fwResult, float64, error) {
 	// 写入响应头
 	filterAndWriteResponseHeaders(w, resp.Header)
@@ -288,7 +312,7 @@ func (s *Server) handleSuccessResponse(
 	// 流式传输并解析usage
 	contentType := resp.Header.Get("Content-Type")
 	usageParser, streamErr := streamAndParseResponse(
-		reqCtx.ctx, resp.Body, w, contentType, channelType, reqCtx.isStreaming, requestPath,
+		reqCtx.ctx, resp.Body, w, contentType, channelType, reqCtx.isStreaming, requestPath, requestURL,
 	)
 
 	// 构建结果
@@ -395,7 +419,8 @@ func (s *Server) handleResponse(
 
 	// 成功状态：流式转发（传递渠道信息用于日志记录）
 	channelID := &cfg.ID
-	return s.handleSuccessResponse(reqCtx, resp, firstByteTime, hdrClone, w, channelType, channelID, apiKey, requestPath)
+	requestURL := cfg.URL + requestPath // 构建完整请求URL用于调试日志
+	return s.handleSuccessResponse(reqCtx, resp, firstByteTime, hdrClone, w, channelType, channelID, apiKey, requestPath, requestURL)
 }
 
 // ============================================================================
@@ -407,13 +432,14 @@ func (s *Server) handleResponse(
 // 参数新增 apiKey 用于直接传递已选中的API Key（从KeySelector获取）
 // 参数新增 method 用于支持任意HTTP方法（GET、POST、PUT、DELETE等）
 // 参数新增 codexHeaders 用于 Codex 渠道的额外请求头（非 Codex 渠道传 nil）
-func (s *Server) forwardOnceAsync(ctx context.Context, cfg *model.Config, apiKey string, method string, body []byte, hdr http.Header, rawQuery, requestPath string, w http.ResponseWriter, codexHeaders *CodexExtraHeaders) (*fwResult, float64, error) {
+// 参数新增 isGeminiCLI 用于 Gemini CLI 官方预设的特殊认证
+func (s *Server) forwardOnceAsync(ctx context.Context, cfg *model.Config, apiKey string, method string, body []byte, hdr http.Header, rawQuery, requestPath string, w http.ResponseWriter, codexHeaders *CodexExtraHeaders, isGeminiCLI bool) (*fwResult, float64, error) {
 	// 1. 创建请求上下文（处理超时）
 	reqCtx := s.newRequestContext(ctx, requestPath, body)
 	defer reqCtx.cleanup() // [INFO] 统一清理：定时器 + context（总是安全）
 
 	// 2. 构建上游请求
-	req, err := s.buildProxyRequest(reqCtx, cfg, apiKey, method, body, hdr, rawQuery, requestPath, codexHeaders)
+	req, err := s.buildProxyRequest(reqCtx, cfg, apiKey, method, body, hdr, rawQuery, requestPath, codexHeaders, isGeminiCLI)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -485,9 +511,9 @@ func (s *Server) forwardAttempt(
 	}
 
 	// 转发请求（传递实际的API Key字符串）
-	// [INFO] Codex 渠道额外传递 codexHeaders
+	// [INFO] Codex 渠道额外传递 codexHeaders，Gemini CLI 传递 isGeminiCLI 标志
 	res, duration, err := s.forwardOnceAsync(ctx, cfg, selectedKey, reqCtx.requestMethod,
-		bodyToSend, reqCtx.header, reqCtx.rawQuery, reqCtx.requestPath, w, reqCtx.codexHeaders)
+		bodyToSend, reqCtx.header, reqCtx.rawQuery, reqCtx.requestPath, w, reqCtx.codexHeaders, reqCtx.isGeminiCLI)
 
 	// 处理网络错误或异常响应（如空响应）
 	// [INFO] 修复：handleResponse可能返回err即使StatusCode=200（例如Content-Length=0）
@@ -591,6 +617,30 @@ func (s *Server) tryChannelWithKeys(ctx context.Context, cfg *model.Config, reqC
 		bodyToSend = codexBody
 	}
 
+	// [INFO] Gemini 官方预设预处理：根据端点类型决定是否转换
+	// - cloudcode-pa.googleapis.com (Gemini CLI 内部端点)：需要路径+请求体转换
+	// - generativelanguage.googleapis.com (标准 API)：不需要转换，只需 Bearer 认证
+	isGeminiOfficial := cfg.ChannelType == util.ChannelTypeGemini && cfg.Preset == "official"
+	isGeminiCLIEndpoint := isGeminiOfficial && IsGeminiCLIEndpoint(cfg.URL)
+	if isGeminiOfficial {
+		reqCtx.isGeminiCLI = isGeminiCLIEndpoint // 仅 CLI 端点需要特殊认证头
+	}
+	if isGeminiCLIEndpoint {
+		// 仅 cloudcode-pa 端点需要转换请求体
+		// 提取模型名称
+		model := ExtractModelFromGeminiPath(reqCtx.requestPath)
+		if model == "" {
+			model = actualModel // 回退使用请求体中的模型名
+		}
+		// 转换请求体到 Gemini CLI 格式
+		geminiBody, err := TransformGeminiCLIRequestBody(bodyToSend, model)
+		if err != nil {
+			log.Printf("[ERROR] [Gemini CLI] 请求体转换失败: %v", err)
+			return nil, fmt.Errorf("gemini cli request transform failed: %w", err)
+		}
+		bodyToSend = geminiBody
+	}
+
 	// Key重试循环
 	for range maxKeyRetries {
 		// 选择可用的API Key（直接传入apiKeys，避免重复查询）
@@ -641,6 +691,44 @@ func (s *Server) tryChannelWithKeys(ctx context.Context, cfg *model.Config, reqC
 			reqCtx.codexToken = refreshedToken
 			// 生成新的请求头（每次请求使用新的 UUID）
 			reqCtx.codexHeaders = NewCodexExtraHeaders(refreshedToken.AccountID)
+		}
+
+		// [INFO] Gemini 官方预设：处理 OAuth 认证（适用于所有端点）
+		// - cloudcode-pa 端点：使用 CLI 格式请求头 + Bearer 认证
+		// - generativelanguage 等标准端点：直接使用 Bearer 认证
+		if isGeminiOfficial {
+			// 官方预设：从 apiKeys 中查找对应的 OAuth Token 字段
+			var foundKey *model.APIKey
+			for _, ak := range apiKeys {
+				if ak.KeyIndex == keyIndex {
+					foundKey = ak
+					break
+				}
+			}
+
+			if foundKey == nil || foundKey.AccessToken == "" {
+				log.Printf("[WARN] [Gemini] 官方预设 Key#%d 没有 AccessToken，跳过", keyIndex)
+				continue
+			}
+
+			// 从数据库字段构建 OAuth Token 对象
+			oauthToken := &GeminiOAuthToken{
+				Type:         "oauth",
+				AccessToken:  foundKey.AccessToken,
+				RefreshToken: foundKey.RefreshToken,
+				IDToken:      foundKey.IDToken,
+				ExpiresAt:    foundKey.TokenExpiresAt,
+				Email:        ExtractEmailFromGoogleIDToken(foundKey.IDToken),
+			}
+
+			// 检查并刷新 Token
+			refreshedKey, _, err := s.RefreshGeminiTokenIfNeeded(ctx, cfg.ID, keyIndex, oauthToken)
+			if err != nil {
+				log.Printf("[ERROR] [Gemini] Token 刷新失败: %v", err)
+				continue
+			}
+
+			actualKey = refreshedKey
 		}
 		// 自定义预设或其他：直接使用普通 API Key，无需特殊处理
 

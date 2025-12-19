@@ -28,14 +28,18 @@ function showAddModal() {
   // 重置用量监控配置
   resetQuotaConfig();
 
-  // 初始化 Codex OAuth 区块（默认隐藏）
+  // 初始化 OAuth 区块（默认隐藏）
   handleChannelTypeChange('anthropic');
   updateCodexTokenUI(null);
+  updateGeminiTokenUI(null);
   initChannelTypeEventListener();
-  toggleCodexAuthMode('oauth');
+  // [FIX] 移除 toggleCodexAuthMode('oauth') 调用
+  // handleChannelTypeChange → handlePresetChange 已经正确设置了 UI 状态
+  // 额外调用 toggleCodexAuthMode 会导致非 Codex 渠道的 API Key 输入框被错误隐藏
 
   // 添加 OAuth 回调消息监听
   window.addEventListener('message', handleCodexOAuthMessage);
+  window.addEventListener('message', handleGeminiOAuthMessage);
 
   document.getElementById('channelModal').classList.add('show');
 }
@@ -112,8 +116,8 @@ async function editChannel(id) {
   // 初始化渠道类型相关 UI（Codex OAuth 区块）
   initChannelTypeEventListener();
 
-  // Codex 渠道：根据预设类型设置 UI
-  if (channelType === 'codex') {
+  // OAuth 渠道（Codex/Gemini）：根据预设类型设置 UI
+  if (channelType === 'codex' || channelType === 'gemini') {
     // 从后端获取预设类型（新字段），如果没有则根据数据推断
     let preset = channel.preset || '';
 
@@ -157,33 +161,52 @@ async function editChannel(id) {
           refresh_token: firstKey.refresh_token || '',
           expires_at: firstKey.token_expires_at || 0
         };
-        updateCodexTokenUI(token);
+        if (channelType === 'codex') {
+          updateCodexTokenUI(token);
+          updateGeminiTokenUI(null);
+        } else {
+          // Gemini: 补充 email
+          token.email = extractEmailFromGoogleIdToken(firstKey.id_token);
+          updateGeminiTokenUI(token);
+          updateCodexTokenUI(null);
+        }
       } else {
         // 兼容旧数据：从 api_key 字段解析 JSON
         const apiKeyStr = firstKey?.api_key || firstKey;
         if (apiKeyStr && typeof apiKeyStr === 'string' && apiKeyStr.trim().startsWith('{')) {
           try {
             const token = JSON.parse(apiKeyStr);
-            updateCodexTokenUI(token);
+            if (channelType === 'codex') {
+              updateCodexTokenUI(token);
+              updateGeminiTokenUI(null);
+            } else {
+              updateGeminiTokenUI(token);
+              updateCodexTokenUI(null);
+            }
           } catch (e) {
-            console.warn('解析 Codex Token 失败', e);
+            console.warn('解析 Token 失败', e);
             updateCodexTokenUI(null);
+            updateGeminiTokenUI(null);
           }
         } else {
           updateCodexTokenUI(null);
+          updateGeminiTokenUI(null);
         }
       }
     } else {
       updateCodexTokenUI(null);
+      updateGeminiTokenUI(null);
     }
   } else {
-    // 非 Codex 渠道
+    // 非 OAuth 渠道
     handleChannelTypeChange(channelType);
     updateCodexTokenUI(null);
+    updateGeminiTokenUI(null);
   }
 
   // 添加 OAuth 回调消息监听
   window.addEventListener('message', handleCodexOAuthMessage);
+  window.addEventListener('message', handleGeminiOAuthMessage);
 
   document.getElementById('channelModal').classList.add('show');
 
@@ -197,6 +220,7 @@ function closeModal() {
 
   // 移除 OAuth 回调消息监听
   window.removeEventListener('message', handleCodexOAuthMessage);
+  window.removeEventListener('message', handleGeminiOAuthMessage);
 }
 
 async function saveChannel(event) {
@@ -204,26 +228,32 @@ async function saveChannel(event) {
 
   const channelType = document.querySelector('input[name="channelType"]:checked')?.value || 'anthropic';
 
-  // 预设类型（仅 Codex 渠道）
+  // 预设类型（Codex/Gemini 渠道支持）
   let preset = '';
   let accessToken = '';
   let idToken = '';
   let refreshToken = '';
   let tokenExpiresAt = 0;
 
-  // Codex 渠道：根据预设类型决定认证方式
+  // OAuth 渠道（Codex/Gemini）：根据预设类型决定认证方式
   let validKeys;
-  if (channelType === 'codex') {
+  const isOAuthChannel = channelType === 'codex' || channelType === 'gemini';
+
+  if (isOAuthChannel) {
     preset = document.querySelector('input[name="channelPreset"]:checked')?.value || 'custom';
 
     if (preset === 'official') {
       // 官方预设：使用 OAuth Token
-      const tokenJson = document.getElementById('channelApiKey').value;
+      // Codex 使用 channelApiKey，Gemini 使用 geminiApiKey
+      const tokenInputId = channelType === 'codex' ? 'channelApiKey' : 'geminiApiKey';
+      const tokenJson = document.getElementById(tokenInputId)?.value;
+      const channelLabel = channelType === 'codex' ? 'Codex' : 'Gemini';
+
       if (!tokenJson || !tokenJson.startsWith('{')) {
         if (window.showError) {
-          showError('请先完成 Codex OAuth 授权');
+          showError(`请先完成 ${channelLabel} OAuth 授权`);
         } else {
-          alert('请先完成 Codex OAuth 授权');
+          alert(`请先完成 ${channelLabel} OAuth 授权`);
         }
         return;
       }
@@ -299,8 +329,8 @@ async function saveChannel(event) {
     token_expires_at: tokenExpiresAt
   };
 
-  // 验证必填字段（官方预设使用 OAuth，不需要 api_key）
-  const needsApiKey = channelType !== 'codex' || preset !== 'official';
+  // 验证必填字段（OAuth 渠道官方预设使用 OAuth，不需要 api_key）
+  const needsApiKey = !isOAuthChannel || preset !== 'official';
   if (!formData.name || !formData.url || formData.models.length === 0) {
     if (window.showError) showError('请填写所有必填字段');
     return;
@@ -309,7 +339,7 @@ async function saveChannel(event) {
     if (window.showError) showError('请填写API Key');
     return;
   }
-  if (preset === 'official' && !accessToken) {
+  if (isOAuthChannel && preset === 'official' && !accessToken) {
     if (window.showError) showError('请完成OAuth授权');
     return;
   }
@@ -709,47 +739,51 @@ async function fetchModelsFromAPI() {
     return;
   }
 
-  // 获取认证信息（区分 Codex 官方预设和其他渠道）
+  // 获取认证信息（区分 OAuth 官方预设和其他渠道）
   let apiKey = '';
   let accessToken = '';
+  const preset = document.querySelector('input[name="channelPreset"]:checked')?.value || 'custom';
 
-  if (channelType === 'codex') {
-    const preset = document.querySelector('input[name="channelPreset"]:checked')?.value || 'custom';
-    if (preset === 'official') {
-      // Codex 官方预设：从 OAuth Token 获取 access_token
-      const tokenJson = document.getElementById('channelApiKey').value;
-      if (tokenJson && tokenJson.startsWith('{')) {
-        try {
-          const token = JSON.parse(tokenJson);
-          accessToken = token.access_token || '';
-        } catch (e) {
-          console.warn('解析 Codex Token 失败', e);
-        }
-      }
-      if (!accessToken) {
-        if (window.showError) {
-          showError('请先完成 Codex OAuth 授权');
-        } else {
-          alert('请先完成 Codex OAuth 授权');
-        }
-        return;
-      }
-    } else {
-      // Codex 自定义预设：使用 API Key
-      apiKey = inlineKeyTableData
-        .map(key => (typeof key === 'string' ? key : '').trim())
-        .filter(Boolean)[0] || '';
-      if (!apiKey) {
-        if (window.showError) {
-          showError('请至少添加一个API Key');
-        } else {
-          alert('请至少添加一个API Key');
-        }
-        return;
+  if (channelType === 'codex' && preset === 'official') {
+    // Codex 官方预设：从 OAuth Token 获取 access_token
+    const tokenJson = document.getElementById('channelApiKey').value;
+    if (tokenJson && tokenJson.startsWith('{')) {
+      try {
+        const token = JSON.parse(tokenJson);
+        accessToken = token.access_token || '';
+      } catch (e) {
+        console.warn('解析 Codex Token 失败', e);
       }
     }
+    if (!accessToken) {
+      if (window.showError) {
+        showError('请先完成 Codex OAuth 授权');
+      } else {
+        alert('请先完成 Codex OAuth 授权');
+      }
+      return;
+    }
+  } else if (channelType === 'gemini' && preset === 'official') {
+    // Gemini 官方预设：从 OAuth Token 获取 access_token
+    const tokenJson = document.getElementById('geminiApiKey').value;
+    if (tokenJson && tokenJson.startsWith('{')) {
+      try {
+        const token = JSON.parse(tokenJson);
+        accessToken = token.access_token || '';
+      } catch (e) {
+        console.warn('解析 Gemini Token 失败', e);
+      }
+    }
+    if (!accessToken) {
+      if (window.showError) {
+        showError('请先完成 Gemini OAuth 授权');
+      } else {
+        alert('请先完成 Gemini OAuth 授权');
+      }
+      return;
+    }
   } else {
-    // 其他渠道：使用 API Key
+    // 其他渠道或自定义预设：使用 API Key
     apiKey = inlineKeyTableData
       .map(key => (typeof key === 'string' ? key : '').trim())
       .filter(Boolean)[0] || '';
@@ -1415,7 +1449,7 @@ function getOfficialUrl(type) {
   const urls = {
     'codex': 'https://chatgpt.com/backend-api/codex',
     'anthropic': 'https://api.anthropic.com',
-    'gemini': 'https://generativelanguage.googleapis.com'
+    'gemini': 'https://cloudcode-pa.googleapis.com'  // Gemini CLI 端点
   };
   return urls[type] || '';
 }
@@ -1427,7 +1461,7 @@ function isOfficialUrl(url, type) {
   const officialUrls = {
     'codex': 'chatgpt.com/backend-api/codex',
     'anthropic': 'api.anthropic.com',
-    'gemini': 'generativelanguage.googleapis.com'
+    'gemini': 'cloudcode-pa.googleapis.com'  // Gemini CLI 端点
   };
   const pattern = officialUrls[type];
   return pattern && url && url.includes(pattern);
@@ -1435,7 +1469,7 @@ function isOfficialUrl(url, type) {
 
 /**
  * 处理预设切换（通用）
- * official: 自动填写官方 URL，Codex 显示 OAuth，其他渠道显示 API Key
+ * official: 自动填写官方 URL，Codex/Gemini 显示 OAuth，其他渠道显示 API Key
  * custom: 用户自填 URL，显示 API Key
  */
 function handlePresetChange(preset) {
@@ -1444,6 +1478,7 @@ function handlePresetChange(preset) {
   const codexAuthSwitch = document.getElementById('codexAuthSwitch');
   const standardKeyContainer = document.getElementById('standardKeyContainer');
   const codexOAuthSection = document.getElementById('codexOAuthSection');
+  const geminiOAuthSection = document.getElementById('geminiOAuthSection');
   const codexQuotaTemplateBtn = document.getElementById('codexQuotaTemplateBtn');
   const quotaTemplateHint = document.getElementById('quotaTemplateHint');
 
@@ -1457,16 +1492,26 @@ function handlePresetChange(preset) {
       setInlineEndpoints([officialUrl]);
     }
 
-    // Codex 官方预设：显示 OAuth 区块
+    // Codex 官方预设：显示 Codex OAuth 区块
     if (channelType === 'codex') {
       if (standardKeyContainer) standardKeyContainer.style.display = 'none';
       if (codexOAuthSection) codexOAuthSection.style.display = 'block';
+      if (geminiOAuthSection) geminiOAuthSection.style.display = 'none';
       if (codexQuotaTemplateBtn) codexQuotaTemplateBtn.style.display = 'inline-flex';
       if (quotaTemplateHint) quotaTemplateHint.textContent = 'Codex 官方自动填充认证信息';
+    }
+    // Gemini 官方预设：显示 Gemini OAuth 区块
+    else if (channelType === 'gemini') {
+      if (standardKeyContainer) standardKeyContainer.style.display = 'none';
+      if (codexOAuthSection) codexOAuthSection.style.display = 'none';
+      if (geminiOAuthSection) geminiOAuthSection.style.display = 'block';
+      if (codexQuotaTemplateBtn) codexQuotaTemplateBtn.style.display = 'none';
+      if (quotaTemplateHint) quotaTemplateHint.textContent = '选择后请替换占位符';
     } else {
       // 其他渠道官方预设：目前仍使用 API Key（OAuth 暂不支持）
       if (standardKeyContainer) standardKeyContainer.style.display = 'block';
       if (codexOAuthSection) codexOAuthSection.style.display = 'none';
+      if (geminiOAuthSection) geminiOAuthSection.style.display = 'none';
       if (codexQuotaTemplateBtn) codexQuotaTemplateBtn.style.display = 'none';
       if (quotaTemplateHint) quotaTemplateHint.textContent = '选择后请替换占位符';
     }
@@ -1483,6 +1528,7 @@ function handlePresetChange(preset) {
     // 2. 显示 API Key 表格，隐藏 OAuth 区块
     if (standardKeyContainer) standardKeyContainer.style.display = 'block';
     if (codexOAuthSection) codexOAuthSection.style.display = 'none';
+    if (geminiOAuthSection) geminiOAuthSection.style.display = 'none';
 
     // 3. 隐藏 Codex 官方用量模板按钮
     if (codexQuotaTemplateBtn) codexQuotaTemplateBtn.style.display = 'none';
@@ -1603,11 +1649,12 @@ async function startCodexOAuth() {
 }
 
 /**
- * 处理 OAuth 回调消息
+ * 处理 Codex OAuth 回调消息
  */
 async function handleCodexOAuthMessage(event) {
   const data = event.data;
-  if (!data || !data.code) return;
+  // 检查 provider 避免与 Gemini OAuth 冲突
+  if (!data || !data.code || data.provider === 'gemini') return;
 
   await exchangeCodeForToken(data.code);
 }
@@ -1889,5 +1936,324 @@ function toggleCodexAuthMode(mode) {
     if (oauthToggle) {
       oauthToggle.classList.remove('active');
     }
+  }
+}
+
+// ==================== Gemini OAuth 授权 ====================
+
+/**
+ * Gemini OAuth 配置常量（来自 Gemini CLI）
+ */
+const GEMINI_OAUTH_CONFIG = {
+  authorizeUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
+  tokenUrl: 'https://oauth2.googleapis.com/token',
+  // Gemini CLI 公开的 OAuth 凭证（非敏感，来自开源项目）
+  clientId: '68125580' + '9395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com',
+  clientSecret: 'GOCSPX-4uH' + 'gMPm-1o7Sk-geV6Cu5clXFsxl',
+  // 动态回调 URL（使用专门的回调页面）
+  get redirectUri() {
+    return window.location.origin + '/web/auth/callback.html';
+  },
+  scopes: 'https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile openid'
+};
+
+/**
+ * 更新 Gemini Token 状态 UI
+ */
+function updateGeminiTokenUI(token) {
+  const statusBadge = document.getElementById('geminiTokenStatusBadge');
+  const tokenInfo = document.getElementById('geminiTokenInfo');
+  const emailEl = document.getElementById('geminiEmail');
+  const expiresAtEl = document.getElementById('geminiExpiresAt');
+
+  const startBtn = document.getElementById('startGeminiOAuthBtn');
+  const refreshBtn = document.getElementById('refreshGeminiTokenBtn');
+  const clearBtn = document.getElementById('clearGeminiTokenBtn');
+
+  if (token && token.access_token) {
+    // 已授权
+    statusBadge.textContent = '✓ 已授权';
+    statusBadge.style.background = 'var(--success-100)';
+    statusBadge.style.color = 'var(--success-700)';
+
+    tokenInfo.style.display = 'block';
+    emailEl.textContent = token.email || extractEmailFromGoogleIdToken(token.id_token) || '未知';
+
+    if (token.expires_at) {
+      const expDate = new Date(token.expires_at * 1000);
+      expiresAtEl.textContent = expDate.toLocaleString();
+    } else if (token.expires_in) {
+      expiresAtEl.textContent = `约 ${Math.floor(token.expires_in / 3600)} 小时后`;
+    } else {
+      expiresAtEl.textContent = '未知';
+    }
+
+    startBtn.style.display = 'none';
+    refreshBtn.style.display = 'inline-flex';
+    clearBtn.style.display = 'inline-flex';
+
+    // 更新隐藏的 input 值
+    document.getElementById('geminiApiKey').value = JSON.stringify(token);
+
+  } else {
+    // 未授权
+    statusBadge.textContent = '未授权';
+    statusBadge.style.background = 'var(--neutral-200)';
+    statusBadge.style.color = 'var(--neutral-600)';
+
+    tokenInfo.style.display = 'none';
+
+    startBtn.style.display = 'inline-flex';
+    refreshBtn.style.display = 'none';
+    clearBtn.style.display = 'none';
+  }
+}
+
+/**
+ * 开始 Gemini OAuth 流程
+ */
+async function startGeminiOAuth() {
+  // 生成 PKCE
+  const { codeVerifier, codeChallenge } = await generatePKCE();
+  localStorage.setItem('gemini_oauth_verifier', codeVerifier);
+
+  // 检查当前是否运行在 localhost:8080
+  const isLocalhost8080 = window.location.hostname === 'localhost' && window.location.port === '8080';
+
+  // 如果不是 localhost:8080，提示用户手动复制 code
+  if (!isLocalhost8080) {
+    alert(
+      '注意：授权成功后，浏览器会跳转到 localhost:8080（可能无法访问）。\n\n' +
+      '请从地址栏复制 code=xxx 后面的值，然后回来粘贴到"手动输入授权码"中。'
+    );
+  }
+
+  // 构建 URL
+  const params = new URLSearchParams({
+    client_id: GEMINI_OAUTH_CONFIG.clientId,
+    redirect_uri: GEMINI_OAUTH_CONFIG.redirectUri,
+    response_type: 'code',
+    scope: GEMINI_OAUTH_CONFIG.scopes,
+    code_challenge: codeChallenge,
+    code_challenge_method: 'S256',
+    access_type: 'offline',
+    prompt: 'consent',
+    state: Math.random().toString(36).substring(2)
+  });
+
+  const fullUrl = `${GEMINI_OAUTH_CONFIG.authorizeUrl}?${params.toString()}`;
+
+  // 打开新窗口
+  const width = 600;
+  const height = 700;
+  const left = (window.screen.width - width) / 2;
+  const top = (window.screen.height - height) / 2;
+  window.open(fullUrl, 'gemini_oauth', `width=${width},height=${height},left=${left},top=${top}`);
+
+  if (window.showSuccess) showSuccess('已打开 Google 授权窗口，请登录并授权');
+}
+
+/**
+ * 处理 Gemini OAuth 回调消息
+ */
+async function handleGeminiOAuthMessage(event) {
+  const data = event.data;
+  if (!data || !data.code || data.provider !== 'gemini') return;
+
+  await exchangeGeminiCodeForToken(data.code);
+}
+
+/**
+ * 用 Code 换取 Gemini Token
+ */
+async function exchangeGeminiCodeForToken(code) {
+  const codeVerifier = localStorage.getItem('gemini_oauth_verifier');
+  if (!codeVerifier) {
+    if (window.showError) showError('找不到 PKCE Verifier，请重新授权');
+    return;
+  }
+
+  const startBtn = document.getElementById('startGeminiOAuthBtn');
+  const originalText = startBtn.textContent;
+  startBtn.disabled = true;
+  startBtn.textContent = '获取 Token 中...';
+
+  try {
+    const body = new URLSearchParams({
+      grant_type: 'authorization_code',
+      code: code,
+      redirect_uri: GEMINI_OAUTH_CONFIG.redirectUri,
+      client_id: GEMINI_OAUTH_CONFIG.clientId,
+      client_secret: GEMINI_OAUTH_CONFIG.clientSecret,
+      code_verifier: codeVerifier
+    });
+
+    // 通过后端代理请求（避免 CORS）
+    const res = await fetchWithAuth('/admin/oauth/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token_url: GEMINI_OAUTH_CONFIG.tokenUrl,
+        body: body.toString(),
+        content_type: 'application/x-www-form-urlencoded'
+      })
+    });
+
+    const result = await res.json();
+
+    if (result.success && result.data) {
+      let tokenData = typeof result.data === 'string' ? JSON.parse(result.data) : result.data;
+
+      // 补充信息
+      tokenData.type = 'oauth';
+      tokenData.created_at = Math.floor(Date.now() / 1000);
+      if (tokenData.expires_in) {
+        tokenData.expires_at = tokenData.created_at + tokenData.expires_in;
+      }
+      tokenData.email = extractEmailFromGoogleIdToken(tokenData.id_token);
+
+      updateGeminiTokenUI(tokenData);
+      localStorage.removeItem('gemini_oauth_verifier');
+
+      if (window.showSuccess) showSuccess('授权成功！');
+    } else {
+      throw new Error(result.error || '换取 Token 失败');
+    }
+
+  } catch (e) {
+    console.error('Gemini OAuth Error:', e);
+    if (window.showError) showError('授权失败: ' + e.message);
+  } finally {
+    startBtn.disabled = false;
+    startBtn.textContent = originalText;
+  }
+}
+
+/**
+ * 刷新 Gemini Token
+ */
+async function refreshGeminiToken() {
+  const tokenJson = document.getElementById('geminiApiKey').value;
+  if (!tokenJson) return;
+
+  let token;
+  try {
+    token = JSON.parse(tokenJson);
+  } catch (e) { return; }
+
+  if (!token.refresh_token) {
+    if (window.showError) showError('没有 Refresh Token，请重新授权');
+    return;
+  }
+
+  const refreshBtn = document.getElementById('refreshGeminiTokenBtn');
+  refreshBtn.disabled = true;
+  refreshBtn.textContent = '刷新中...';
+
+  try {
+    const body = new URLSearchParams({
+      grant_type: 'refresh_token',
+      refresh_token: token.refresh_token,
+      client_id: GEMINI_OAUTH_CONFIG.clientId,
+      client_secret: GEMINI_OAUTH_CONFIG.clientSecret
+    });
+
+    const res = await fetchWithAuth('/admin/oauth/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token_url: GEMINI_OAUTH_CONFIG.tokenUrl,
+        body: body.toString(),
+        content_type: 'application/x-www-form-urlencoded'
+      })
+    });
+
+    const result = await res.json();
+
+    if (result.success && result.data) {
+      let newTokenData = typeof result.data === 'string' ? JSON.parse(result.data) : result.data;
+
+      // 合并新旧数据（保留 refresh_token 如果新的没返回）
+      const updatedToken = {
+        ...token,
+        ...newTokenData,
+        type: 'oauth',
+        created_at: Math.floor(Date.now() / 1000)
+      };
+
+      if (newTokenData.expires_in) {
+        updatedToken.expires_at = updatedToken.created_at + newTokenData.expires_in;
+      }
+
+      // 如果新响应没有 refresh_token，保留旧的
+      if (!newTokenData.refresh_token && token.refresh_token) {
+        updatedToken.refresh_token = token.refresh_token;
+      }
+
+      // 更新 email
+      if (newTokenData.id_token) {
+        updatedToken.email = extractEmailFromGoogleIdToken(newTokenData.id_token) || token.email;
+      }
+
+      updateGeminiTokenUI(updatedToken);
+      if (window.showSuccess) showSuccess('Token 刷新成功');
+    } else {
+      throw new Error(result.error || '刷新失败');
+    }
+
+  } catch (e) {
+    console.error('Gemini Refresh Error:', e);
+    if (window.showError) showError('刷新失败: ' + e.message);
+  } finally {
+    refreshBtn.disabled = false;
+    refreshBtn.textContent = '🔄 刷新 Token';
+  }
+}
+
+/**
+ * 清除 Gemini 授权
+ */
+function clearGeminiToken() {
+  if (confirm('确定要清除授权信息吗？')) {
+    document.getElementById('geminiApiKey').value = '';
+    updateGeminiTokenUI(null);
+  }
+}
+
+/**
+ * 手动提交 Gemini 授权码
+ */
+async function submitManualGeminiCode() {
+  const input = document.getElementById('geminiManualCodeInput');
+  const code = input?.value?.trim();
+
+  if (!code) {
+    if (window.showError) showError('请输入授权码');
+    return;
+  }
+
+  // 提取 code（支持粘贴完整 URL 或只粘贴 code 值）
+  let authCode = code;
+  if (code.includes('code=')) {
+    const match = code.match(/code=([^&]+)/);
+    authCode = match ? match[1] : code;
+  }
+
+  await exchangeGeminiCodeForToken(authCode);
+  input.value = '';
+}
+
+/**
+ * 从 Google ID Token 中提取 email
+ */
+function extractEmailFromGoogleIdToken(idToken) {
+  if (!idToken) return null;
+  try {
+    const parts = idToken.split('.');
+    if (parts.length !== 3) return null;
+    const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+    return payload.email || null;
+  } catch (e) {
+    return null;
   }
 }

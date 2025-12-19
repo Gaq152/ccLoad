@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -177,11 +178,32 @@ type geminiModelsResponse struct {
 
 func (f *GeminiModelsFetcher) FetchModels(ctx context.Context, baseURL string, apiKey string) ([]string, error) {
 	// Gemini Models API: https://ai.google.dev/api/rest/v1beta/models/list
-	endpoint := baseURL + "/v1beta/models?key=" + apiKey
+	// 支持两种认证方式：
+	// 1. API Key: ?key=xxx（标准 Gemini API）
+	// 2. OAuth Bearer Token（Gemini CLI 官方端点）
 
-	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
-	if err != nil {
-		return nil, fmt.Errorf("创建请求失败: %w", err)
+	var endpoint string
+	var req *http.Request
+	var err error
+
+	// 判断认证方式：OAuth Token 以 ya29. 开头，或者 baseURL 是 Gemini CLI 端点
+	isOAuthToken := strings.HasPrefix(apiKey, "ya29.") || strings.Contains(baseURL, "cloudcode-pa.googleapis.com")
+
+	if isOAuthToken {
+		// OAuth Bearer Token 认证
+		endpoint = baseURL + "/v1beta/models"
+		req, err = http.NewRequestWithContext(ctx, "GET", endpoint, nil)
+		if err != nil {
+			return nil, fmt.Errorf("创建请求失败: %w", err)
+		}
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+	} else {
+		// API Key 认证
+		endpoint = baseURL + "/v1beta/models?key=" + apiKey
+		req, err = http.NewRequestWithContext(ctx, "GET", endpoint, nil)
+		if err != nil {
+			return nil, fmt.Errorf("创建请求失败: %w", err)
+		}
 	}
 
 	// 使用公共HTTP请求函数 (ctx已包含在req中)

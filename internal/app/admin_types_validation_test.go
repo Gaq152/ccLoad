@@ -32,10 +32,9 @@ func TestChannelRequestValidation_ChannelType(t *testing.T) {
 			wantNormalized: "anthropic",
 		},
 		{
-			name:        "gemini 应该通过",
+			name:        "gemini 无 preset 应该拒绝",
 			channelType: "gemini",
-			wantErr:     false,
-			wantNormalized: "gemini",
+			wantErr:     true,
 		},
 		{
 			name:        "codex 无 preset 应该拒绝",
@@ -81,12 +80,14 @@ func TestChannelRequestValidation_ChannelType(t *testing.T) {
 			}
 
 			if tt.wantErr && err != nil {
-				// codex 无 preset 的错误信息不同
-				if tt.channelType == "codex" {
-					if !strings.Contains(err.Error(), "Codex") {
-						t.Errorf("错误信息应该包含 'Codex', got: %v", err)
+				// Gemini/Codex 无 preset 的错误信息与非法 channel_type 不同
+				errStr := err.Error()
+				isOAuthChannel := tt.channelType == "codex" || tt.channelType == "gemini"
+				if isOAuthChannel {
+					if !strings.Contains(errStr, "预设类型") {
+						t.Errorf("错误信息应该包含 '预设类型', got: %v", err)
 					}
-				} else if !strings.Contains(err.Error(), "invalid channel_type") {
+				} else if !strings.Contains(errStr, "invalid channel_type") {
 					t.Errorf("错误信息应该包含 'invalid channel_type', got: %v", err)
 				}
 			}

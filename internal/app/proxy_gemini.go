@@ -41,12 +41,13 @@ func (s *Server) handleListGeminiModels(c *gin.Context) {
 	})
 }
 
-// handleListOpenAIModels 处理 GET /v1/models 请求，返回本地 OpenAI 模型列表
-func (s *Server) handleListOpenAIModels(c *gin.Context) {
+// handleListAllModels 处理 GET /v1/models 请求，返回所有渠道的模型列表
+// 合并 anthropic, openai, codex, gemini 所有渠道的模型
+func (s *Server) handleListAllModels(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	// 获取所有 openai 渠道的去重模型列表
-	models, err := s.getModelsByChannelType(ctx, "openai")
+	// 获取所有渠道的模型（去重）
+	models, err := s.getAllModels(ctx)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load models"})
 		return
