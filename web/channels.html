@@ -525,12 +525,12 @@ function(response) {
         <div class="models-hint">默认内容从系统设置加载，可在"系统设置"页面修改</div>
       </div>
 
-      <div class="form-group">
+      <div class="form-group" id="streamGroup">
         <label class="form-label" style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-          <input type="checkbox" id="testStreamEnabled" style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--primary-500);">
+          <input type="checkbox" id="testStreamEnabled" checked style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--primary-500);">
           <span>启用流式请求（Stream）</span>
         </label>
-        <div id="streamHint" class="models-hint">默认使用非流模式测试，可根据需要开启流式</div>
+        <div id="streamHint" class="models-hint">默认开启流式测试</div>
       </div>
 
       <div class="form-group">

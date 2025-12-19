@@ -1,3 +1,22 @@
+// 更新流式开关状态（Codex 强制流式）
+function updateStreamCheckbox() {
+  const channelType = document.getElementById('testChannelType').value;
+  const streamCheckbox = document.getElementById('testStreamEnabled');
+  const streamHint = document.getElementById('streamHint');
+
+  if (channelType === 'codex') {
+    streamCheckbox.checked = true;
+    streamCheckbox.disabled = true;
+    streamHint.textContent = 'Codex API 要求必须使用流式';
+  } else {
+    streamCheckbox.disabled = false;
+    streamHint.textContent = '默认开启流式测试';
+  }
+}
+
+// 全局函数供 HTML onchange 调用
+window.updateTestURL = updateStreamCheckbox;
+
 async function testChannel(id, name) {
   const channel = channels.find(c => c.id === id);
   if (!channel) return;
@@ -59,6 +78,9 @@ async function testChannel(id, name) {
   const channelType = channel.channel_type || 'anthropic';
   await window.ChannelTypeManager.renderChannelTypeSelect('testChannelType', channelType);
 
+  // 根据渠道类型更新流式开关状态
+  updateStreamCheckbox();
+
   document.getElementById('testModal').classList.add('show');
 }
 
@@ -76,6 +98,9 @@ function resetTestModal() {
   document.getElementById('testContentInput').value = defaultTestContent;
   document.getElementById('testChannelType').value = 'anthropic';
   document.getElementById('testConcurrency').value = '10';
+  // 重置流式开关为默认启用状态
+  document.getElementById('testStreamEnabled').checked = true;
+  document.getElementById('testStreamEnabled').disabled = false;
 }
 
 async function runChannelTest() {
