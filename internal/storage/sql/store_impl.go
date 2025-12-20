@@ -113,7 +113,8 @@ func (s *SQLStore) Close() error {
 
 // CleanupLogsBefore 清理指定时间之前的日志
 func (s *SQLStore) CleanupLogsBefore(ctx context.Context, cutoff time.Time) error {
-	query := "DELETE FROM logs WHERE timestamp < ?"
-	_, err := s.db.ExecContext(ctx, query, timeToUnix(cutoff))
+	// 日志表 time 字段存储的是毫秒级时间戳
+	query := "DELETE FROM logs WHERE time < ?"
+	_, err := s.db.ExecContext(ctx, query, cutoff.UnixMilli())
 	return err
 }
