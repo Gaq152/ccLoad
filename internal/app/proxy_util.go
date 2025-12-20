@@ -213,6 +213,11 @@ func copyRequestHeaders(dst *http.Request, src http.Header) {
 		if strings.EqualFold(k, "Accept-Encoding") {
 			continue
 		}
+		// [FIX] 不透传 Content-Length，因为请求体可能被转换（如 Gemini CLI/Codex 格式包装）
+		// 让 http.Client 根据实际 body 大小自动设置 Content-Length
+		if strings.EqualFold(k, "Content-Length") {
+			continue
+		}
 		for _, v := range vs {
 			dst.Header.Add(k, v)
 		}
