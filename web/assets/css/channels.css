@@ -637,3 +637,279 @@ html.dark .quota-countdown:hover {
   border-color: rgba(255, 255, 255, 0.2);
   color: var(--neutral-200);
 }
+
+/* ============================================================================
+ * 渠道分组折叠（2025-12新增）
+ * ============================================================================ */
+
+/* 分组容器 */
+.channel-type-group {
+  margin-bottom: 16px;
+}
+
+.channel-type-group:last-child {
+  margin-bottom: 0;
+}
+
+/* 分组头部 */
+.channel-group-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: var(--card-bg);
+  border: 1px solid var(--neutral-200);
+  border-radius: 10px;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.2s;
+  margin-bottom: 12px;
+}
+
+.channel-group-header:hover {
+  background: var(--neutral-50);
+  border-color: var(--neutral-300);
+}
+
+.channel-group-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* 折叠图标 */
+.channel-group-toggle {
+  font-size: 14px;
+  color: var(--neutral-500);
+  transition: transform 0.2s;
+  width: 20px;
+  text-align: center;
+}
+
+/* 分组标题 */
+.channel-group-title {
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--neutral-800);
+}
+
+/* 分组徽章（类型标识） */
+.channel-group-badge {
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+
+.channel-group-badge.anthropic {
+  background: var(--theme-badge-purple-bg);
+  color: var(--theme-badge-purple-text);
+  border: 1px solid var(--theme-badge-purple-border);
+}
+
+.channel-group-badge.codex {
+  background: var(--theme-badge-success-bg);
+  color: var(--theme-badge-success-text);
+  border: 1px solid var(--theme-badge-success-border);
+}
+
+.channel-group-badge.gemini {
+  background: var(--theme-badge-info-bg);
+  color: var(--theme-badge-info-text);
+  border: 1px solid var(--theme-badge-info-border);
+}
+
+/* 分组统计 */
+.channel-group-stats {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--neutral-600);
+}
+
+.channel-group-count {
+  background: var(--neutral-100);
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-weight: 500;
+}
+
+/* 分组内容 */
+.channel-group-content {
+  display: grid;
+  gap: 12px;
+  padding-left: 0;
+  transition: all 0.2s;
+}
+
+/* 折叠状态 */
+.channel-type-group.is-collapsed .channel-group-content {
+  display: none;
+}
+
+.channel-type-group.is-collapsed .channel-group-toggle {
+  transform: rotate(-90deg);
+}
+
+.channel-type-group.is-collapsed .channel-group-header {
+  margin-bottom: 0;
+}
+
+/* 暗色主题适配 */
+html.dark .channel-group-header {
+  background: var(--card-bg);
+  border-color: var(--neutral-700);
+}
+
+html.dark .channel-group-header:hover {
+  background: var(--neutral-800);
+  border-color: var(--neutral-600);
+}
+
+html.dark .channel-group-title {
+  color: var(--neutral-200);
+}
+
+html.dark .channel-group-count {
+  background: var(--neutral-700);
+  color: var(--neutral-300);
+}
+
+/* ============================================================================
+ * 操作按钮图标化（2025-12新增）
+ * ============================================================================ */
+
+/* 操作按钮容器 - 必须允许溢出以显示 Tooltip */
+.col-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow: visible !important;
+  position: relative;
+}
+
+/* 允许 Tooltip 溢出渠道卡片（仅限渠道管理页面） */
+#channels-container .glass-card {
+  overflow: visible;
+}
+
+#channels-container .channel-row {
+  overflow: visible;
+}
+
+/* 分组内容也需要允许溢出 */
+.channel-group-content {
+  overflow: visible;
+}
+
+/* 通用图标按钮 */
+.btn-icon {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background-color: transparent;
+  color: var(--neutral-500);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-icon svg {
+  width: 18px;
+  height: 18px;
+  stroke-width: 2px;
+}
+
+/* 悬浮状态 */
+.btn-icon:hover {
+  background-color: var(--neutral-100);
+  color: var(--primary-600);
+  transform: translateY(-1px);
+}
+
+.btn-icon:active {
+  transform: translateY(0);
+  background-color: var(--neutral-200);
+}
+
+/* 删除按钮（危险操作） */
+.btn-icon.btn-danger:hover {
+  background-color: var(--error-50);
+  color: var(--error-600);
+}
+
+/* --- 纯 CSS Tooltip --- */
+.btn-icon::after,
+.btn-icon::before {
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s;
+  pointer-events: none;
+  z-index: 100;
+}
+
+.btn-icon:hover::after,
+.btn-icon:hover::before {
+  opacity: 1;
+  visibility: visible;
+  transition-delay: 0.15s;
+}
+
+/* Tooltip 主体 */
+.btn-icon::after {
+  content: attr(aria-label);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: var(--neutral-800);
+  color: var(--neutral-50);
+  font-size: 12px;
+  white-space: nowrap;
+  padding: 6px 10px;
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+
+/* Tooltip 小三角 */
+.btn-icon::before {
+  content: '';
+  position: absolute;
+  bottom: calc(100% + 3px);
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: var(--neutral-800);
+}
+
+/* --- 暗色主题适配 --- */
+html.dark .btn-icon {
+  color: var(--neutral-400);
+}
+
+html.dark .btn-icon:hover {
+  background-color: var(--neutral-700);
+  color: var(--primary-400);
+}
+
+html.dark .btn-icon.btn-danger:hover {
+  background-color: rgba(239, 68, 68, 0.2);
+  color: var(--error-400);
+}
+
+html.dark .btn-icon::after {
+  background-color: var(--neutral-700);
+  border: 1px solid var(--neutral-600);
+}
+
+html.dark .btn-icon::before {
+  border-top-color: var(--neutral-600);
+}

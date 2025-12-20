@@ -212,7 +212,11 @@ function createChannelCard(channel) {
     statsHtml: statsHtml,
     enabled: channel.enabled,
     toggleText: channel.enabled ? '禁用' : '启用',
-    toggleTitle: channel.enabled ? '禁用渠道' : '启用渠道'
+    toggleTitle: channel.enabled ? '禁用渠道' : '启用渠道',
+    // 禁用/启用图标：启用状态显示暂停图标，禁用状态显示播放图标
+    toggleIcon: channel.enabled
+      ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>'
+      : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>'
   };
 
   // 使用模板引擎渲染
@@ -269,6 +273,23 @@ function initChannelEventDelegation() {
   });
 }
 
+// 渠道分组折叠状态（记忆用户操作）
+const channelGroupCollapsed = {};
+
+/**
+ * 切换渠道分组折叠状态
+ */
+function toggleChannelGroup(type) {
+  const group = document.querySelector(`.channel-type-group[data-type="${type}"]`);
+  if (group) {
+    group.classList.toggle('is-collapsed');
+    channelGroupCollapsed[type] = group.classList.contains('is-collapsed');
+  }
+}
+
+/**
+ * 渲染渠道列表（按类型分组）
+ */
 function renderChannels(channelsToRender = channels) {
   const el = document.getElementById('channels-container');
   if (!channelsToRender || channelsToRender.length === 0) {
@@ -279,11 +300,72 @@ function renderChannels(channelsToRender = channels) {
   // 初始化事件委托（仅一次）
   initChannelEventDelegation();
 
-  // 使用DocumentFragment优化批量DOM操作
-  const fragment = document.createDocumentFragment();
+  // 按 channel_type 分组
+  const groups = {};
   channelsToRender.forEach(channel => {
-    const card = createChannelCard(channel);
-    if (card) fragment.appendChild(card);
+    const type = (channel.channel_type || 'anthropic').toLowerCase();
+    if (!groups[type]) {
+      groups[type] = [];
+    }
+    groups[type].push(channel);
+  });
+
+  // 类型显示名称和排序优先级
+  const typeConfig = {
+    'anthropic': { name: 'Anthropic (Claude)', order: 1 },
+    'codex': { name: 'Codex', order: 2 },
+    'gemini': { name: 'Gemini', order: 3 },
+    'openai': { name: 'OpenAI', order: 4 }
+  };
+
+  // 按优先级排序类型
+  const sortedTypes = Object.keys(groups).sort((a, b) => {
+    const orderA = typeConfig[a]?.order || 99;
+    const orderB = typeConfig[b]?.order || 99;
+    return orderA - orderB;
+  });
+
+  // 使用 DocumentFragment 优化
+  const fragment = document.createDocumentFragment();
+
+  sortedTypes.forEach(type => {
+    const channelsInGroup = groups[type];
+    const config = typeConfig[type] || { name: type.toUpperCase(), order: 99 };
+    const enabledCount = channelsInGroup.filter(c => c.enabled).length;
+    const isCollapsed = channelGroupCollapsed[type] || false;
+
+    // 创建分组容器
+    const groupDiv = document.createElement('div');
+    groupDiv.className = `channel-type-group${isCollapsed ? ' is-collapsed' : ''}`;
+    groupDiv.dataset.type = type;
+
+    // 分组头部
+    const header = document.createElement('div');
+    header.className = 'channel-group-header';
+    header.onclick = () => toggleChannelGroup(type);
+    header.innerHTML = `
+      <div class="channel-group-left">
+        <span class="channel-group-toggle">▼</span>
+        <span class="channel-group-badge ${type}">${type.toUpperCase()}</span>
+        <span class="channel-group-title">${config.name}</span>
+      </div>
+      <div class="channel-group-stats">
+        <span class="channel-group-count">${enabledCount}/${channelsInGroup.length} 启用</span>
+      </div>
+    `;
+
+    // 分组内容
+    const content = document.createElement('div');
+    content.className = 'channel-group-content';
+
+    channelsInGroup.forEach(channel => {
+      const card = createChannelCard(channel);
+      if (card) content.appendChild(card);
+    });
+
+    groupDiv.appendChild(header);
+    groupDiv.appendChild(content);
+    fragment.appendChild(groupDiv);
   });
 
   el.innerHTML = '';
