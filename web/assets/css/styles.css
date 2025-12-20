@@ -1616,11 +1616,11 @@
   position: relative;
   width: 100%;
   height: 500px;
-  background: rgba(255, 255, 255, 0.95);
+  background: var(--theme-bg-card);
   border-radius: var(--radius-lg);
-  border: 1px solid var(--neutral-200);
+  border: 1px solid var(--theme-border-light);
   overflow: hidden;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  box-shadow: var(--theme-shadow-sm);
 }
 
 .chart-loading,
@@ -1665,6 +1665,144 @@
   gap: var(--space-2);
 }
 
+/* ===== 趋势控制面板样式 ===== */
+.trend-control-panel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-4);
+  background: var(--theme-bg-card-alpha, rgba(255, 255, 255, 0.03));
+  border-radius: var(--radius-md);
+  border: 1px solid var(--theme-border-light);
+}
+
+/* 亮色主题下的控制面板 */
+[data-theme="light"] .trend-control-panel {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+/* 暗色主题下的控制面板 */
+[data-theme="dark"] .trend-control-panel {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.trend-filter-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.trend-filter-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.trend-filter-item label {
+  font-size: var(--text-xs);
+  color: var(--theme-text-subtle);
+  font-weight: var(--font-medium);
+}
+
+.trend-filter-select {
+  background: var(--theme-bg-input);
+  color: var(--theme-text-main);
+  border: 1px solid var(--theme-border);
+  border-radius: var(--radius-sm);
+  padding: 6px 28px 6px 10px;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  outline: none;
+  min-width: 90px;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.trend-filter-select:hover {
+  border-color: var(--theme-text-subtle);
+}
+
+.trend-filter-select:focus {
+  border-color: var(--theme-accent);
+  box-shadow: 0 0 0 2px var(--theme-accent-alpha);
+}
+
+.trend-view-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+/* 指标切换按钮组 */
+.trend-metric-tabs {
+  display: flex;
+  background: var(--theme-bg-card);
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--theme-border-light);
+}
+
+.trend-metric-btn {
+  background: transparent;
+  border: none;
+  color: var(--theme-text-subtle);
+  padding: 6px 10px;
+  font-size: var(--text-sm);
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.trend-metric-btn:hover {
+  color: var(--theme-text-main);
+}
+
+.trend-metric-btn.active {
+  background: var(--theme-accent);
+  color: white;
+  font-weight: var(--font-medium);
+}
+
+/* 渠道筛选按钮 */
+.trend-channel-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--theme-bg-input);
+  border: 1px solid var(--theme-border);
+  color: var(--theme-text-main);
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.trend-channel-btn:hover {
+  background: var(--theme-bg-hover);
+  border-color: var(--theme-text-subtle);
+}
+
+.trend-channel-badge {
+  background: var(--theme-accent);
+  color: white;
+  font-size: 11px;
+  font-weight: var(--font-semibold);
+  padding: 1px 6px;
+  border-radius: 10px;
+  min-width: 18px;
+  text-align: center;
+}
+
 /* ===== 渠道筛选器样式 ===== */
 .channel-filter-container {
   position: relative;
@@ -1677,10 +1815,10 @@
   right: 0;
   min-width: 250px;
   max-width: 350px;
-  background: var(--card-bg);
-  border: 1px solid var(--neutral-200);
+  background: var(--theme-bg-card);
+  border: 1px solid var(--theme-border);
   border-radius: var(--radius-md);
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--theme-shadow-lg);
   z-index: 1000;
   margin-top: 4px;
 }
@@ -1690,9 +1828,9 @@
   justify-content: space-between;
   align-items: center;
   padding: var(--space-3) var(--space-4);
-  border-bottom: 1px solid var(--neutral-200);
+  border-bottom: 1px solid var(--theme-border);
   font-weight: var(--font-medium);
-  color: var(--neutral-800);
+  color: var(--theme-text-main);
 }
 
 .filter-actions {
@@ -1703,7 +1841,7 @@
 .filter-action {
   background: none;
   border: none;
-  color: var(--primary-600);
+  color: var(--theme-accent);
   cursor: pointer;
   font-size: var(--text-sm);
   padding: 2px 4px;
@@ -1712,7 +1850,7 @@
 }
 
 .filter-action:hover {
-  background-color: var(--primary-50);
+  background-color: var(--theme-bg-hover);
 }
 
 .filter-content {
@@ -1732,23 +1870,23 @@
 }
 
 .channel-filter-item:hover {
-  background-color: var(--neutral-50);
+  background-color: var(--theme-bg-hover);
 }
 
 .channel-checkbox {
   width: 16px;
   height: 16px;
-  border: 1.5px solid var(--neutral-300);
+  border: 1.5px solid var(--theme-border);
   border-radius: 3px;
-  background: var(--input-bg);
+  background: var(--theme-bg-input);
   cursor: pointer;
   position: relative;
   transition: all 0.2s;
 }
 
 .channel-checkbox.checked {
-  background: var(--primary-500);
-  border-color: var(--primary-500);
+  background: var(--theme-accent);
+  border-color: var(--theme-accent);
 }
 
 .channel-checkbox.checked::after {
@@ -1765,13 +1903,13 @@
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  border: 1px solid rgba(0, 0, 0, 0.1);
+  border: 1px solid var(--theme-border-light);
 }
 
-.channel-name {
+.channel-filter-item .channel-name {
   flex: 1;
   font-size: var(--text-sm);
-  color: var(--neutral-700);
+  color: var(--theme-text-main);
 }
 
 /* ===== 登录页面样式 ===== */

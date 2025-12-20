@@ -117,11 +117,13 @@ func (s *SQLStore) Aggregate(ctx context.Context, since time.Time, bucket time.D
 			helper.durationCount += durationSuccessCount
 		}
 
-		channelKey := "未知渠道"
-		if channelID.Valid {
-			channelKey = fmt.Sprintf("ch_%d", channelID.Int64)
-			channelIDsToFetch[channelID.Int64] = true
+		// channel_id = 0 或 NULL 的是系统日志，不计入渠道统计
+		if !channelID.Valid || channelID.Int64 == 0 {
+			continue
 		}
+
+		channelKey := fmt.Sprintf("ch_%d", channelID.Int64)
+		channelIDsToFetch[channelID.Int64] = true
 
 		// 准备渠道指标的指针
 		var avgFBT *float64
@@ -165,17 +167,13 @@ func (s *SQLStore) Aggregate(ctx context.Context, since time.Time, bucket time.D
 	for bucketTs, mp := range mapp {
 		newChannels := make(map[string]model.ChannelMetric)
 		for key, metric := range mp.Channels {
-			if key == "未知渠道" {
-				newChannels[key] = metric
+			var channelID int64
+			fmt.Sscanf(key, "ch_%d", &channelID)
+			if name, ok := channelNames[channelID]; ok {
+				newChannels[name] = metric
 			} else {
-				// 解析 ch_123 格式
-				var channelID int64
-				fmt.Sscanf(key, "ch_%d", &channelID)
-				if name, ok := channelNames[channelID]; ok {
-					newChannels[name] = metric
-				} else {
-					newChannels["未知渠道"] = metric
-				}
+				// 渠道已删除但日志还在
+				newChannels["未知渠道"] = metric
 			}
 		}
 		mp.Channels = newChannels
@@ -312,11 +310,13 @@ func (s *SQLStore) AggregateRange(ctx context.Context, since, until time.Time, b
 			helper.durationCount += durationSuccessCount
 		}
 
-		channelKey := "未知渠道"
-		if channelID.Valid {
-			channelKey = fmt.Sprintf("ch_%d", channelID.Int64)
-			channelIDsToFetch[channelID.Int64] = true
+		// channel_id = 0 或 NULL 的是系统日志，不计入渠道统计
+		if !channelID.Valid || channelID.Int64 == 0 {
+			continue
 		}
+
+		channelKey := fmt.Sprintf("ch_%d", channelID.Int64)
+		channelIDsToFetch[channelID.Int64] = true
 
 		var avgFBT *float64
 		if avgFirstByteTime.Valid {
@@ -356,16 +356,13 @@ func (s *SQLStore) AggregateRange(ctx context.Context, since, until time.Time, b
 	for bucketTs, mp := range mapp {
 		newChannels := make(map[string]model.ChannelMetric)
 		for key, metric := range mp.Channels {
-			if key == "未知渠道" {
-				newChannels[key] = metric
+			var channelID int64
+			fmt.Sscanf(key, "ch_%d", &channelID)
+			if name, ok := channelNames[channelID]; ok {
+				newChannels[name] = metric
 			} else {
-				var channelID int64
-				fmt.Sscanf(key, "ch_%d", &channelID)
-				if name, ok := channelNames[channelID]; ok {
-					newChannels[name] = metric
-				} else {
-					newChannels["未知渠道"] = metric
-				}
+				// 渠道已删除但日志还在
+				newChannels["未知渠道"] = metric
 			}
 		}
 		mp.Channels = newChannels
