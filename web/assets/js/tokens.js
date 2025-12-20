@@ -142,17 +142,11 @@
 
       const tbody = document.createElement('tbody');
 
-      // 使用模板引擎渲染行，降级处理
-      if (typeof TemplateEngine !== 'undefined') {
-        allTokens.forEach(token => {
-          const row = createTokenRowWithTemplate(token);
-          if (row) tbody.appendChild(row);
-        });
-      } else {
-        // 降级：模板引擎不可用时使用原有方式
-        console.warn('[Tokens] TemplateEngine not available, using fallback rendering');
-        tbody.innerHTML = allTokens.map(token => createTokenRowFallback(token)).join('');
-      }
+      // 使用模板引擎渲染行
+      allTokens.forEach(token => {
+        const row = createTokenRowWithTemplate(token);
+        if (row) tbody.appendChild(row);
+      });
 
       table.appendChild(tbody);
       container.innerHTML = '';
@@ -358,58 +352,6 @@
       if (num < 3) return 'response-fast';
       if (num < 6) return 'response-medium';
       return 'response-slow';
-    }
-
-    /**
-     * 降级：模板引擎不可用时的渲染方式
-     */
-    function createTokenRowFallback(token) {
-      const status = getTokenStatus(token);
-      const createdAt = new Date(token.created_at).toLocaleString('zh-CN');
-      const lastUsed = token.last_used_at ? new Date(token.last_used_at).toLocaleString('zh-CN') : '从未使用';
-      const expiresAt = token.expires_at ? new Date(token.expires_at).toLocaleString('zh-CN') : '永不过期';
-
-      // 计算统计信息
-      const successCount = token.success_count || 0;
-      const failureCount = token.failure_count || 0;
-      const totalCount = successCount + failureCount;
-
-      // 预构建HTML片段
-      const callsHtml = buildCallsHtml(successCount, failureCount, totalCount);
-      const successRate = totalCount > 0 ? ((successCount / totalCount) * 100).toFixed(1) : 0;
-      const successRateHtml = buildSuccessRateHtml(successRate, totalCount);
-      const tokensHtml = buildTokensHtml(token);
-      const costHtml = buildCostHtml(token.total_cost_usd);
-      const streamAvgHtml = buildResponseTimeHtml(token.stream_avg_ttfb, token.stream_count);
-      const nonStreamAvgHtml = buildResponseTimeHtml(token.non_stream_avg_rt, token.non_stream_count);
-
-      return `
-        <tr data-token-id="${token.id}">
-          <td style="font-weight: 500;">${escapeHtml(token.description)}</td>
-          <td>
-            <div><span class="token-display token-display-${status.class}">${escapeHtml(token.token)}</span></div>
-            <div style="font-size: 12px; color: var(--neutral-500); margin-top: 4px;">${createdAt}创建 · ${expiresAt}</div>
-          </td>
-          <td style="text-align: center;">${callsHtml}</td>
-          <td style="text-align: center;">${successRateHtml}</td>
-          <td style="text-align: center;">${tokensHtml}</td>
-          <td style="text-align: center;">${costHtml}</td>
-          <td style="text-align: center;">${streamAvgHtml}</td>
-          <td style="text-align: center;">${nonStreamAvgHtml}</td>
-          <td style="color: var(--neutral-600);">${lastUsed}</td>
-          <td>
-            <div class="action-btn-group">
-              <button class="btn-action btn-edit" aria-label="编辑配置">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-              </button>
-              ${buildToggleBtnHtml(token)}
-              <button class="btn-action delete btn-delete" aria-label="删除令牌">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-              </button>
-            </div>
-          </td>
-        </tr>
-      `;
     }
 
     function getTokenStatus(token) {
@@ -887,11 +829,20 @@
       openDrawer('create');
     }
 
-    function copyToken() {
+    async function copyToken() {
       const textarea = document.getElementById('newTokenValue');
-      textarea.select();
-      document.execCommand('copy');
-      showToast('已复制到剪贴板', 'success');
+      const text = textarea.value;
+
+      try {
+        // 优先使用现代 Clipboard API
+        await navigator.clipboard.writeText(text);
+        showToast('已复制到剪贴板', 'success');
+      } catch (err) {
+        // 降级方案：使用传统 execCommand
+        textarea.select();
+        document.execCommand('copy');
+        showToast('已复制到剪贴板', 'success');
+      }
     }
 
     function closeTokenResultModal() {

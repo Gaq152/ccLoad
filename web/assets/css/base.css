@@ -1,0 +1,294 @@
+/* =================================================================
+   Base CSS - 基础样式模块
+   包含：CSS 变量、重置样式、排版系统、动画
+   ================================================================= */
+
+/* ===== CSS 变量和设计令牌 ===== */
+/*
+ * 变量层级说明：
+ * - theme.css 定义语义化主题变量（--theme-*），处理亮/暗模式切换
+ * - 本文件将其映射为设计系统变量（--neutral-*、--primary-* 等）
+ * - 组件样式应优先使用语义化的 --theme-* 变量
+ * - --neutral-* 系列保留用于向后兼容和渐进式迁移
+ *
+ * 语义映射关系：
+ * | 用途     | 推荐变量                | 等效的 neutral |
+ * |----------|-------------------------|----------------|
+ * | 页面背景 | --theme-bg-body         | --neutral-50   |
+ * | 卡片背景 | --theme-bg-card         | --neutral-100  |
+ * | 边框     | --theme-border          | --neutral-200  |
+ * | 浅边框   | --theme-border-light    | --neutral-300  |
+ * | 弱文本   | --theme-text-subtle     | --neutral-400  |
+ * | 次要文本 | --theme-text-muted      | --neutral-500  |
+ * | 主要文本 | --theme-text-main       | --neutral-700+ |
+ */
+:root {
+  /* 中性色映射（向后兼容层，新代码请直接使用 --theme-* 变量） */
+  --neutral-50:  var(--theme-bg-body);      /* 页面背景 */
+  --neutral-100: var(--theme-bg-card);      /* 卡片/容器背景 */
+  --neutral-200: var(--theme-border);       /* 默认边框 */
+  --neutral-300: var(--theme-border-light); /* 浅色边框 */
+  --neutral-400: var(--theme-text-subtle);  /* 微弱文本 */
+  --neutral-500: var(--theme-text-muted);   /* 次要文本 */
+  --neutral-600: var(--theme-text-muted);   /* 次要文本（别名） */
+  --neutral-700: var(--theme-text-main);    /* 主要文本 */
+  --neutral-800: var(--theme-text-main);    /* 主要文本（别名） */
+  --neutral-900: var(--theme-text-main);    /* 主要文本（别名） */
+
+  /* 功能色映射（向后兼容层） */
+  --primary-500: var(--theme-accent);
+  --primary-600: var(--theme-accent);
+  --primary-700: var(--theme-accent);
+  --success-500: var(--theme-success);
+  --success-600: var(--theme-success);
+  --warning-500: var(--theme-warning);
+  --warning-600: var(--theme-warning);
+  --error-500: var(--theme-error);
+  --error-600: var(--theme-error);
+  --info-500: var(--theme-info);
+  --info-600: var(--theme-info);
+
+  /* 玻璃态效果 */
+  --glass-bg: var(--theme-glass-bg);
+  --glass-border: var(--theme-glass-border);
+  --glass-shadow: var(--theme-glass-shadow);
+  --glass-shadow-hover: var(--theme-glass-shadow);
+
+  /* 组件变量 */
+  --card-bg: var(--theme-bg-card);
+  --input-bg: var(--theme-bg-input);
+  --input-focus-bg: var(--theme-bg-input-focus);
+  --text-main: var(--theme-text-main);
+
+  /* 新拟态效果 */
+  --neumorphism-light: #ffffff;
+  --neumorphism-dark: #d1d5db;
+  --neumorphism-shadow-1: 8px 8px 16px var(--neumorphism-dark);
+  --neumorphism-shadow-2: -8px -8px 16px var(--neumorphism-light);
+
+  /* 字体系统 */
+  --font-family-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-family-mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
+
+  --text-xs: 0.75rem;      /* 12px */
+  --text-sm: 0.875rem;     /* 14px */
+  --text-base: 1rem;       /* 16px */
+  --text-lg: 1.125rem;     /* 18px */
+  --text-xl: 1.25rem;      /* 20px */
+  --text-2xl: 1.5rem;      /* 24px */
+  --text-3xl: 1.875rem;    /* 30px */
+  --text-4xl: 2.25rem;     /* 36px */
+
+  --leading-tight: 1.25;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.75;
+
+  --font-normal: 400;
+  --font-medium: 500;
+  --font-semibold: 600;
+  --font-bold: 700;
+
+  /* 间距系统 */
+  --space-1: 0.25rem;    /* 4px */
+  --space-2: 0.5rem;     /* 8px */
+  --space-3: 0.75rem;    /* 12px */
+  --space-4: 1rem;       /* 16px */
+  --space-5: 1.25rem;    /* 20px */
+  --space-6: 1.5rem;     /* 24px */
+  --space-8: 2rem;       /* 32px */
+  --space-10: 2.5rem;    /* 40px */
+  --space-12: 3rem;      /* 48px */
+  --space-16: 4rem;      /* 64px */
+  --space-20: 5rem;      /* 80px */
+
+  /* 圆角系统 */
+  --radius-sm: 0.375rem;   /* 6px */
+  --radius-base: 0.5rem;   /* 8px */
+  --radius-lg: 0.75rem;    /* 12px */
+  --radius-xl: 1rem;       /* 16px */
+  --radius-2xl: 1.5rem;    /* 24px */
+  --radius-full: 9999px;
+
+  /*
+   * 阴影系统
+   * 统一光源方向：从上方偏左（Y 偏移 > X 偏移）
+   * 层级对应浮层高度：sm < base < md < lg < xl
+   */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-base: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.07), 0 2px 4px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1), 0 4px 6px rgba(0, 0, 0, 0.05);
+  --shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.1), 0 10px 10px rgba(0, 0, 0, 0.04);
+
+  /* 卡片阴影（用于 .glass-card, .channel-card 等） */
+  --shadow-card: 0 4px 16px rgba(0, 0, 0, 0.06), 0 1px 4px rgba(0, 0, 0, 0.04);
+  --shadow-card-hover: 0 8px 24px rgba(0, 0, 0, 0.1), 0 2px 8px rgba(0, 0, 0, 0.06);
+
+  /* 强调色阴影（用于 primary 按钮、徽章等） */
+  --shadow-primary: 0 4px 12px rgba(99, 102, 241, 0.25);
+  --shadow-primary-hover: 0 8px 24px rgba(99, 102, 241, 0.35);
+  --shadow-success: 0 4px 12px rgba(16, 185, 129, 0.25);
+  --shadow-error: 0 4px 12px rgba(239, 68, 68, 0.25);
+
+  /* 动画时间 */
+  --duration-fast: 0.15s;
+  --duration-normal: 0.3s;
+  --duration-slow: 0.5s;
+  --timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* 布局 */
+  --topbar-height: 64px;
+  --container-max-width: 100%;
+
+  /* Topbar 前景色 */
+  --topbar-fg: var(--theme-text-main);
+  --topbar-fg-muted: var(--theme-text-muted);
+}
+
+
+/* ===== 基础重置和全局样式 ===== */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+*:focus-visible {
+  outline: 2px solid var(--primary-500);
+  outline-offset: 2px;
+}
+
+html {
+  scroll-behavior: smooth;
+  font-size: 16px;
+}
+
+body {
+  font-family: var(--font-family-sans);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  color: var(--theme-text-main);
+  background-color: var(--theme-bg-body);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* 选择文本颜色 */
+::selection {
+  background-color: rgba(59, 130, 246, 0.3);
+  color: inherit;
+}
+
+/* 输入框内文本选中 */
+input::selection,
+textarea::selection {
+  background-color: rgba(59, 130, 246, 0.3);
+  color: inherit;
+}
+
+/* ===== 动画和关键帧 ===== */
+@keyframes slideInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(-30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes shimmerBg {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes btn-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* 动画类 */
+.animate-slide-up {
+  animation: slideInUp 0.6s var(--timing-function);
+}
+
+.animate-slide-right {
+  animation: slideInRight 0.6s var(--timing-function);
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.4s ease-out;
+}
+
+.animate-pulse {
+  animation: pulse 2s infinite;
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+/* 动画延迟工具类 */
+.animate-slide-up[style*="animation-delay: 0.1s"] { animation-delay: 0.1s; }
+.animate-slide-up[style*="animation-delay: 0.2s"] { animation-delay: 0.2s; }
+.animate-slide-up[style*="animation-delay: 0.3s"] { animation-delay: 0.3s; }
+.animate-slide-up[style*="animation-delay: 0.4s"] { animation-delay: 0.4s; }
+
+/* ===== 可访问性 ===== */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

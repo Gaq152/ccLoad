@@ -179,151 +179,190 @@
       tbody.innerHTML = '';
 
       for (const entry of data) {
-        // === 预处理数据：构建复杂HTML片段 ===
-
-        // 0. 客户端IP显示
-        const clientIPDisplay = entry.client_ip ?
-          escapeHtml(entry.client_ip) :
-          '<span style="color: var(--neutral-400);">-</span>';
-
-        // 1. 渠道信息显示（含 API URL）
-        const configInfo = entry.channel_name ||
-          (entry.channel_id ? `渠道 #${entry.channel_id}` :
-           (entry.message === 'exhausted backends' ? '系统（所有渠道失败）' :
-            entry.message === 'no available upstream (all cooled or none)' ? '系统（无可用渠道）' : '系统'));
-        const apiUrlDisplay = entry.api_base_url ?
-          `<div style="font-size: 0.8em; color: var(--neutral-500); margin-top: 2px;" title="${escapeHtml(entry.api_base_url)}">${escapeHtml(extractUrlHost(entry.api_base_url))}</div>` : '';
-        const configDisplay = entry.channel_id ?
-          `<a class="channel-link" href="/web/channels.html?id=${entry.channel_id}#channel-${entry.channel_id}">${escapeHtml(entry.channel_name||'')} <small>(#${entry.channel_id})</small></a>${apiUrlDisplay}` :
-          `<span style="color: var(--neutral-500);">${escapeHtml(configInfo)}</span>`;
-
-        // 2. 状态码样式
-        const statusClass = (entry.status_code >= 200 && entry.status_code < 300) ?
-          'status-success' : 'status-error';
-        const statusCode = entry.status_code;
-
-        // 3. 模型显示
-        const modelDisplay = entry.model ?
-          `<span class="model-tag">${escapeHtml(entry.model)}</span>` :
-          '<span style="color: var(--neutral-500);">-</span>';
-
-        // 4. 响应时间显示(流式/非流式)
-        const hasDuration = entry.duration !== undefined && entry.duration !== null;
-        const durationDisplay = hasDuration ?
-          `<span style="color: var(--neutral-700);">${entry.duration.toFixed(3)}</span>` :
-          '<span style="color: var(--neutral-500);">-</span>';
-
-        const streamFlag = entry.is_streaming ?
-          '<span class="stream-flag">流</span>' :
-          '<span class="stream-flag placeholder">流</span>';
-
-        let responseTimingDisplay;
-        if (entry.is_streaming) {
-          const hasFirstByte = entry.first_byte_time !== undefined && entry.first_byte_time !== null;
-          const firstByteDisplay = hasFirstByte ?
-            `<span style="color: var(--success-600);">${entry.first_byte_time.toFixed(3)}</span>` :
-            '<span style="color: var(--neutral-500);">-</span>';
-          responseTimingDisplay = `
-            <span style="display: inline-flex; align-items: center; justify-content: flex-end; gap: 4px; white-space: nowrap;">
-              ${firstByteDisplay}
-              <span style="color: var(--neutral-400);">/</span>
-              ${durationDisplay}
-            </span>
-            ${streamFlag}
-          `;
-        } else {
-          responseTimingDisplay = `
-            <span style="display: inline-flex; align-items: center; justify-content: flex-end; gap: 4px; white-space: nowrap;">
-              ${durationDisplay}
-            </span>
-            ${streamFlag}
-          `;
-        }
-
-        // 5. API Key显示(含按钮组)
-        let apiKeyDisplay = '';
-        if (entry.api_key_used && entry.channel_id && entry.model) {
-          const statusCode = entry.status_code || 0;
-          const showTestBtn = statusCode !== 200;
-          const showDeleteBtn = statusCode === 403;
-
-          let buttons = '';
-          if (showTestBtn) {
-            buttons += `
-              <button
-                class="test-key-btn"
-                data-action="test"
-                data-channel-id="${entry.channel_id}"
-                data-channel-name="${escapeHtml(entry.channel_name || '').replace(/"/g, '&quot;')}"
-                data-api-key="${escapeHtml(entry.api_key_used).replace(/"/g, '&quot;')}"
-                data-model="${escapeHtml(entry.model).replace(/"/g, '&quot;')}"
-                title="测试此 API Key">
-                ⚡
-              </button>
-            `;
-          }
-          if (showDeleteBtn) {
-            buttons += `
-              <button
-                class="test-key-btn"
-                style="color: var(--error-600);"
-                data-action="delete"
-                data-channel-id="${entry.channel_id}"
-                data-channel-name="${escapeHtml(entry.channel_name || '').replace(/"/g, '&quot;')}"
-                data-api-key="${escapeHtml(entry.api_key_used).replace(/"/g, '&quot;')}"
-                title="删除此 API Key">
-                🗑
-              </button>
-            `;
-          }
-
-          apiKeyDisplay = `
-            <div style="display: flex; align-items: center; gap: 6px; justify-content: center;">
-              <code style="font-size: 0.9em; color: var(--neutral-600);">${escapeHtml(entry.api_key_used)}</code>
-              ${buttons}
-            </div>
-          `;
-        } else if (entry.api_key_used) {
-          apiKeyDisplay = `<code style="font-size: 0.9em; color: var(--neutral-600);">${escapeHtml(entry.api_key_used)}</code>`;
-        } else {
-          apiKeyDisplay = '<span style="color: var(--neutral-500);">-</span>';
-        }
-
-        // 6. Token统计显示(0值为空)
-        const tokenValue = (value, color) => {
-          if (value === undefined || value === null || value === 0) {
-            return '';
-          }
-          return `<span class="token-metric-value" style="color: ${color};">${value.toLocaleString()}</span>`;
-        };
-        const inputTokensDisplay = tokenValue(entry.input_tokens, 'var(--neutral-700)');
-        const outputTokensDisplay = tokenValue(entry.output_tokens, 'var(--neutral-700)');
-        const cacheReadDisplay = tokenValue(entry.cache_read_input_tokens, 'var(--success-600)');
-        const cacheCreationDisplay = tokenValue(entry.cache_creation_input_tokens, 'var(--primary-600)');
-
-        // 7. 成本显示(0值为空)
-        const costDisplay = entry.cost ?
-          `<span style="color: var(--warning-600); font-weight: 500;">${formatCost(entry.cost)}</span>` :
-          '';
-
-        // === 渲染行 ===
-        const rowEl = TemplateEngine.render('tpl-log-row', {
-          time: formatTime(entry.time),
-          clientIPDisplay,
-          modelDisplay,
-          configDisplay,
-          apiKeyDisplay,
-          statusClass,
-          statusCode,
-          responseTimingDisplay,
-          inputTokensDisplay,
-          outputTokensDisplay,
-          cacheReadDisplay,
-          cacheCreationDisplay,
-          costDisplay,
-          message: entry.message || ''
-        });
+        const rowEl = createLogRow(entry);
         if (rowEl) tbody.appendChild(rowEl);
+      }
+    }
+
+    // ============================================================
+    // 性能优化：独立行渲染函数（用于复用）
+    // ============================================================
+    function createLogRow(entry) {
+      // 0. 客户端IP显示
+      const clientIPDisplay = entry.client_ip ?
+        escapeHtml(entry.client_ip) :
+        '<span style="color: var(--neutral-400);">-</span>';
+
+      // 1. 渠道信息显示（含 API URL）
+      const configInfo = entry.channel_name ||
+        (entry.channel_id ? `渠道 #${entry.channel_id}` :
+         (entry.message === 'exhausted backends' ? '系统（所有渠道失败）' :
+          entry.message === 'no available upstream (all cooled or none)' ? '系统（无可用渠道）' : '系统'));
+      const apiUrlDisplay = entry.api_base_url ?
+        `<div style="font-size: 0.8em; color: var(--neutral-500); margin-top: 2px;" title="${escapeHtml(entry.api_base_url)}">${escapeHtml(extractUrlHost(entry.api_base_url))}</div>` : '';
+      const configDisplay = entry.channel_id ?
+        `<a class="channel-link" href="/web/channels.html?id=${entry.channel_id}#channel-${entry.channel_id}">${escapeHtml(entry.channel_name||'')} <small>(#${entry.channel_id})</small></a>${apiUrlDisplay}` :
+        `<span style="color: var(--neutral-500);">${escapeHtml(configInfo)}</span>`;
+
+      // 2. 状态码样式
+      const statusClass = (entry.status_code >= 200 && entry.status_code < 300) ?
+        'status-success' : 'status-error';
+      const statusCode = entry.status_code;
+
+      // 3. 模型显示
+      const modelDisplay = entry.model ?
+        `<span class="model-tag">${escapeHtml(entry.model)}</span>` :
+        '<span style="color: var(--neutral-500);">-</span>';
+
+      // 4. 响应时间显示(流式/非流式)
+      const hasDuration = entry.duration !== undefined && entry.duration !== null;
+      const durationDisplay = hasDuration ?
+        `<span style="color: var(--neutral-700);">${entry.duration.toFixed(3)}</span>` :
+        '<span style="color: var(--neutral-500);">-</span>';
+
+      const streamFlag = entry.is_streaming ?
+        '<span class="stream-flag">流</span>' :
+        '<span class="stream-flag placeholder">流</span>';
+
+      let responseTimingDisplay;
+      if (entry.is_streaming) {
+        const hasFirstByte = entry.first_byte_time !== undefined && entry.first_byte_time !== null;
+        const firstByteDisplay = hasFirstByte ?
+          `<span style="color: var(--success-600);">${entry.first_byte_time.toFixed(3)}</span>` :
+          '<span style="color: var(--neutral-500);">-</span>';
+        responseTimingDisplay = `
+          <span style="display: inline-flex; align-items: center; justify-content: flex-end; gap: 4px; white-space: nowrap;">
+            ${firstByteDisplay}
+            <span style="color: var(--neutral-400);">/</span>
+            ${durationDisplay}
+          </span>
+          ${streamFlag}
+        `;
+      } else {
+        responseTimingDisplay = `
+          <span style="display: inline-flex; align-items: center; justify-content: flex-end; gap: 4px; white-space: nowrap;">
+            ${durationDisplay}
+          </span>
+          ${streamFlag}
+        `;
+      }
+
+      // 5. API Key显示(含按钮组)
+      let apiKeyDisplay = '';
+      if (entry.api_key_used && entry.channel_id && entry.model) {
+        const sc = entry.status_code || 0;
+        const showTestBtn = sc !== 200;
+        const showDeleteBtn = sc === 403;
+
+        let buttons = '';
+        if (showTestBtn) {
+          buttons += `
+            <button
+              class="test-key-btn"
+              data-action="test"
+              data-channel-id="${entry.channel_id}"
+              data-channel-name="${escapeHtml(entry.channel_name || '').replace(/"/g, '&quot;')}"
+              data-api-key="${escapeHtml(entry.api_key_used).replace(/"/g, '&quot;')}"
+              data-model="${escapeHtml(entry.model).replace(/"/g, '&quot;')}"
+              title="测试此 API Key">
+              ⚡
+            </button>
+          `;
+        }
+        if (showDeleteBtn) {
+          buttons += `
+            <button
+              class="test-key-btn"
+              style="color: var(--error-600);"
+              data-action="delete"
+              data-channel-id="${entry.channel_id}"
+              data-channel-name="${escapeHtml(entry.channel_name || '').replace(/"/g, '&quot;')}"
+              data-api-key="${escapeHtml(entry.api_key_used).replace(/"/g, '&quot;')}"
+              title="删除此 API Key">
+              🗑
+            </button>
+          `;
+        }
+
+        apiKeyDisplay = `
+          <div style="display: flex; align-items: center; gap: 6px; justify-content: center;">
+            <code style="font-size: 0.9em; color: var(--neutral-600);">${escapeHtml(entry.api_key_used)}</code>
+            ${buttons}
+          </div>
+        `;
+      } else if (entry.api_key_used) {
+        apiKeyDisplay = `<code style="font-size: 0.9em; color: var(--neutral-600);">${escapeHtml(entry.api_key_used)}</code>`;
+      } else {
+        apiKeyDisplay = '<span style="color: var(--neutral-500);">-</span>';
+      }
+
+      // 6. Token统计显示(0值为空)
+      const tokenValue = (value, color) => {
+        if (value === undefined || value === null || value === 0) {
+          return '';
+        }
+        return `<span class="token-metric-value" style="color: ${color};">${value.toLocaleString()}</span>`;
+      };
+      const inputTokensDisplay = tokenValue(entry.input_tokens, 'var(--neutral-700)');
+      const outputTokensDisplay = tokenValue(entry.output_tokens, 'var(--neutral-700)');
+      const cacheReadDisplay = tokenValue(entry.cache_read_input_tokens, 'var(--success-600)');
+      const cacheCreationDisplay = tokenValue(entry.cache_creation_input_tokens, 'var(--primary-600)');
+
+      // 7. 成本显示(0值为空)
+      const costDisplay = entry.cost ?
+        `<span style="color: var(--warning-600); font-weight: 500;">${formatCost(entry.cost)}</span>` :
+        '';
+
+      // 返回 DOM 元素
+      return TemplateEngine.render('tpl-log-row', {
+        time: formatTime(entry.time),
+        clientIPDisplay,
+        modelDisplay,
+        configDisplay,
+        apiKeyDisplay,
+        statusClass,
+        statusCode,
+        responseTimingDisplay,
+        inputTokensDisplay,
+        outputTokensDisplay,
+        cacheReadDisplay,
+        cacheCreationDisplay,
+        costDisplay,
+        message: entry.message || ''
+      });
+    }
+
+    // ============================================================
+    // 性能优化：增量插入实时日志（避免全量重渲染）
+    // ============================================================
+    function prependRealtimeLog(entry) {
+      const tbody = document.getElementById('tbody');
+      // 如果当前显示的是空状态/加载行，先清空
+      const emptyOrLoading = tbody.querySelector('[colspan]');
+      if (emptyOrLoading) {
+        tbody.innerHTML = '';
+      }
+
+      const rowEl = createLogRow(entry);
+      if (rowEl) {
+        // 添加简单的进入动画（使用 styles.css 中定义的 slideInUp）
+        rowEl.style.animation = 'slideInUp 0.25s ease-out';
+        tbody.prepend(rowEl);
+        trimExcessRows();
+      }
+    }
+
+    // ============================================================
+    // 性能优化：限制 DOM 节点数量（防止内存泄漏）
+    // ============================================================
+    function trimExcessRows() {
+      const tbody = document.getElementById('tbody');
+      while (tbody.children.length > logsPageSize) {
+        if (tbody.lastElementChild) {
+          tbody.removeChild(tbody.lastElementChild);
+        } else {
+          break;
+        }
       }
     }
 
@@ -1231,9 +1270,18 @@
           realtimeLogCount++;
           updateRealtimeStatus(`+${realtimeLogCount}`, true);
 
-          // 如果在第一页，刷新显示（会重新获取 totalLogs）；否则显示"有新日志"提示
+          // 如果在第一页，增量插入新行（避免全量重渲染）；否则显示"有新日志"提示
           if (currentLogsPage === 1) {
-            load();
+            prependRealtimeLog(entry);
+            // 增量更新统计计数
+            totalLogs++;
+            const totalCountEl = document.getElementById('totalCount');
+            const displayedCountEl = document.getElementById('displayedCount');
+            if (totalCountEl) totalCountEl.textContent = totalLogs;
+            if (displayedCountEl) {
+              const tbody = document.getElementById('tbody');
+              displayedCountEl.textContent = tbody ? tbody.children.length : 0;
+            }
           } else {
             hasNewLogs = true;
             showNewLogsBadge(realtimeLogCount);
