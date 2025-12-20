@@ -129,8 +129,8 @@
         // 添加令牌筛选参数
         const tokenParam = window.currentAuthToken ? `&auth_token_id=${encodeURIComponent(window.currentAuthToken)}` : '';
 
-        // 添加渠道ID和渠道名筛选参数
-        const channelIdParam = window.currentChannelId ? `&channel_id=${encodeURIComponent(window.currentChannelId)}` : '';
+        // 添加渠道ID和渠道名筛选参数（渠道ID使用前缀匹配）
+        const channelIdParam = window.currentChannelId ? `&channel_id_like=${encodeURIComponent(window.currentChannelId)}` : '';
         const channelNameParam = window.currentChannelName ? `&channel_name_like=${encodeURIComponent(window.currentChannelName)}` : '';
 
         const [metricsRes, channelsRes] = await Promise.all([

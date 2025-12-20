@@ -60,6 +60,10 @@ func (wb *WhereBuilder) ApplyLogFilter(filter *model.LogFilter) *WhereBuilder {
 	if filter.ChannelID != nil {
 		wb.AddCondition("channel_id = ?", *filter.ChannelID)
 	}
+	// 渠道ID前缀匹配（CAST 为字符串后使用 LIKE）
+	if filter.ChannelIDLike != "" {
+		wb.AddCondition("CAST(channel_id AS TEXT) LIKE ?", filter.ChannelIDLike+"%")
+	}
 	// 注意：ChannelName和ChannelNameLike需要JOIN channels表才能使用
 	// 当前ListLogs查询不包含JOIN，因此这些过滤器会被忽略
 	if filter.Model != "" {
@@ -70,6 +74,10 @@ func (wb *WhereBuilder) ApplyLogFilter(filter *model.LogFilter) *WhereBuilder {
 	}
 	if filter.StatusCode != nil {
 		wb.AddCondition("status_code = ?", *filter.StatusCode)
+	}
+	// 状态码前缀匹配（CAST 为字符串后使用 LIKE）
+	if filter.StatusCodeLike != "" {
+		wb.AddCondition("CAST(status_code AS TEXT) LIKE ?", filter.StatusCodeLike+"%")
 	}
 	if filter.AuthTokenID != nil {
 		wb.AddCondition("auth_token_id = ?", *filter.AuthTokenID)

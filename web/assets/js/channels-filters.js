@@ -5,12 +5,18 @@ function filterChannels() {
       return false;
     }
 
+    // ID 前缀匹配（支持逗号分隔多个值，每个值都是前缀匹配）
     if (filters.id) {
       const idStr = filters.id.trim();
       if (idStr) {
-        const ids = idStr.split(',').map(id => id.trim()).filter(id => id);
-        if (ids.length > 0 && !ids.includes(String(channel.id))) {
-          return false;
+        const prefixes = idStr.split(',').map(id => id.trim()).filter(id => id);
+        if (prefixes.length > 0) {
+          const channelIdStr = String(channel.id);
+          // 任意一个前缀匹配即可
+          const matched = prefixes.some(prefix => channelIdStr.startsWith(prefix));
+          if (!matched) {
+            return false;
+          }
         }
       }
     }
