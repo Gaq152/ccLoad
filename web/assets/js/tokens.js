@@ -71,6 +71,22 @@
           if (tokenId) deleteToken(tokenId);
           return;
         }
+
+        // 处理禁用/启用按钮
+        const toggleBtn = target.closest('.btn-toggle-status');
+        if (toggleBtn) {
+          const row = toggleBtn.closest('tr');
+          const tokenId = row ? parseInt(row.dataset.tokenId) : null;
+          const action = toggleBtn.dataset.action;  // 'disable' 或 'enable'
+          if (tokenId && action) {
+            if (action === 'disable') {
+              showDisableConfirmModal(tokenId);
+            } else {
+              enableToken(tokenId);  // 启用无需确认
+            }
+          }
+          return;
+        }
       });
     }
 
@@ -172,6 +188,7 @@
       const costHtml = buildCostHtml(token.total_cost_usd);
       const streamAvgHtml = buildResponseTimeHtml(token.stream_avg_ttfb, token.stream_count);
       const nonStreamAvgHtml = buildResponseTimeHtml(token.non_stream_avg_rt, token.non_stream_count);
+      const toggleBtnHtml = buildToggleBtnHtml(token);
 
       // 使用模板引擎渲染
       return TemplateEngine.render('tpl-token-row', {
@@ -187,8 +204,33 @@
         costHtml: costHtml,
         streamAvgHtml: streamAvgHtml,
         nonStreamAvgHtml: nonStreamAvgHtml,
-        lastUsed: lastUsed
+        lastUsed: lastUsed,
+        toggleBtnHtml: toggleBtnHtml
       });
+    }
+
+    /**
+     * 构建禁用/启用按钮HTML
+     * @param {Object} token - 令牌对象
+     * @returns {string} 按钮HTML
+     */
+    function buildToggleBtnHtml(token) {
+      // 暂停图标 (用于禁用按钮)
+      const pauseIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="10" y1="15" x2="10" y2="9"></line><line x1="14" y1="15" x2="14" y2="9"></line></svg>';
+      // 播放图标 (用于启用按钮)
+      const playIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polygon points="10 8 16 12 10 16 10 8"></polygon></svg>';
+
+      // 过期的令牌：按钮禁用
+      if (token.is_expired) {
+        return `<button class="btn-action btn-disable" disabled title="令牌已过期，无法操作">${pauseIcon} 禁用</button>`;
+      }
+
+      // 根据 is_active 状态显示不同按钮
+      if (token.is_active) {
+        return `<button class="btn-action btn-disable btn-toggle-status" data-action="disable">${pauseIcon} 禁用</button>`;
+      } else {
+        return `<button class="btn-action btn-enable btn-toggle-status" data-action="enable">${playIcon} 启用</button>`;
+      }
     }
 
     /**
@@ -361,6 +403,7 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
                 编辑
               </button>
+              ${buildToggleBtnHtml(token)}
               <button class="btn-action delete btn-delete">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
                 删除
@@ -373,7 +416,7 @@
 
     function getTokenStatus(token) {
       if (token.is_expired) return { class: 'expired', text: '已过期' };
-      if (!token.is_active) return { class: 'inactive', text: '未启用' };
+      if (!token.is_active) return { class: 'inactive', text: '已禁用' };
       return { class: 'active', text: '正常' };
     }
 
@@ -740,6 +783,99 @@
       } catch (error) {
         console.error('删除失败:', error);
         showToast('删除失败: ' + error.message, 'error');
+      }
+    }
+
+    // ============================================================================
+    // 禁用/启用令牌功能（2025-12新增）
+    // ============================================================================
+
+    // 待禁用的令牌ID
+    let disablingTokenId = null;
+
+    /**
+     * 显示禁用确认对话框
+     */
+    function showDisableConfirmModal(id) {
+      disablingTokenId = id;
+
+      // 修改删除确认对话框的文案为禁用文案
+      const titleEl = document.querySelector('#deleteConfirmModal .delete-modal-title');
+      const descEl = document.querySelector('#deleteConfirmModal .delete-modal-desc');
+      const confirmBtn = document.querySelector('#deleteConfirmModal .btn-danger');
+
+      if (titleEl) titleEl.textContent = '禁用 API 令牌';
+      if (descEl) descEl.textContent = '确定要禁用此令牌吗？禁用后所有使用此令牌的请求将被拒绝（返回 403 错误）。您可以随时重新启用。';
+      if (confirmBtn) {
+        confirmBtn.textContent = '确认禁用';
+        confirmBtn.onclick = confirmDisableToken;
+      }
+
+      const modal = document.getElementById('deleteConfirmModal');
+      requestAnimationFrame(() => {
+        modal.classList.add('active');
+      });
+    }
+
+    /**
+     * 关闭禁用确认对话框并恢复删除对话框的原始状态
+     */
+    function closeDisableConfirmModal() {
+      const modal = document.getElementById('deleteConfirmModal');
+      modal.classList.remove('active');
+      disablingTokenId = null;
+
+      // 恢复删除对话框的原始文案
+      const titleEl = document.querySelector('#deleteConfirmModal .delete-modal-title');
+      const descEl = document.querySelector('#deleteConfirmModal .delete-modal-desc');
+      const confirmBtn = document.querySelector('#deleteConfirmModal .btn-danger');
+
+      if (titleEl) titleEl.textContent = '删除 API 令牌';
+      if (descEl) descEl.textContent = '确定要删除此令牌吗？此操作无法撤销，删除后使用此令牌的所有请求将失败。';
+      if (confirmBtn) {
+        confirmBtn.textContent = '确认删除';
+        confirmBtn.onclick = confirmDeleteToken;
+      }
+    }
+
+    /**
+     * 确认禁用令牌
+     */
+    async function confirmDisableToken() {
+      if (!disablingTokenId) return;
+
+      try {
+        const response = await fetchWithAuth(`${API_BASE}/auth-tokens/${disablingTokenId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ is_active: false })
+        });
+        if (!response.ok) throw new Error('禁用失败');
+        closeDisableConfirmModal();
+        loadTokens();
+        showToast('令牌已禁用', 'success');
+      } catch (error) {
+        console.error('禁用失败:', error);
+        showToast('禁用失败: ' + error.message, 'error');
+      }
+    }
+
+    /**
+     * 启用令牌（无需确认）
+     */
+    async function enableToken(id) {
+      try {
+        const response = await fetchWithAuth(`${API_BASE}/auth-tokens/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ is_active: true })
+        });
+        if (!response.ok) throw new Error('启用失败');
+        loadTokens();
+        showToast('令牌已启用', 'success');
+      } catch (error) {
+        console.error('启用失败:', error);
+        showToast('启用失败: ' + error.message, 'error');
       }
     }
 
