@@ -333,6 +333,52 @@
     }
 
     // ============================================================
+    // 筛选检查：判断日志是否符合当前筛选条件
+    // ============================================================
+    function matchesCurrentFilter(entry) {
+      // 获取当前筛选条件
+      const channelId = document.getElementById('f_id')?.value?.trim() || '';
+      const channelName = document.getElementById('f_name')?.value?.trim() || '';
+      const model = document.getElementById('f_model')?.value?.trim() || '';
+      const statusCode = document.getElementById('f_status')?.value?.trim() || '';
+      const authTokenId = document.getElementById('f_auth_token')?.value?.trim() || '';
+
+      // 渠道 ID 精确匹配
+      if (channelId && String(entry.channel_id) !== channelId) {
+        return false;
+      }
+
+      // 渠道名称模糊匹配
+      if (channelName && !(entry.channel_name || '').toLowerCase().includes(channelName.toLowerCase())) {
+        return false;
+      }
+
+      // 模型模糊匹配
+      if (model && !(entry.model || '').toLowerCase().includes(model.toLowerCase())) {
+        return false;
+      }
+
+      // 状态码精确匹配
+      if (statusCode && String(entry.status_code) !== statusCode) {
+        return false;
+      }
+
+      // 令牌 ID 精确匹配
+      if (authTokenId && String(entry.auth_token_id) !== authTokenId) {
+        return false;
+      }
+
+      // 渠道类型匹配
+      if (currentChannelType && currentChannelType !== 'all') {
+        if (String(entry.channel_type) !== currentChannelType) {
+          return false;
+        }
+      }
+
+      return true;
+    }
+
+    // ============================================================
     // 性能优化：增量插入实时日志（避免全量重渲染）
     // ============================================================
     function prependRealtimeLog(entry) {
@@ -1270,8 +1316,11 @@
           realtimeLogCount++;
           updateRealtimeStatus(`+${realtimeLogCount}`, true);
 
-          // 如果在第一页，增量插入新行（避免全量重渲染）；否则显示"有新日志"提示
-          if (currentLogsPage === 1) {
+          // 检查是否符合当前筛选条件
+          const matchesFilter = matchesCurrentFilter(entry);
+
+          // 如果在第一页且符合筛选条件，增量插入新行；否则显示"有新日志"提示
+          if (currentLogsPage === 1 && matchesFilter) {
             prependRealtimeLog(entry);
             // 增量更新统计计数
             totalLogs++;
@@ -1282,10 +1331,12 @@
               const tbody = document.getElementById('tbody');
               displayedCountEl.textContent = tbody ? tbody.children.length : 0;
             }
-          } else {
+          } else if (currentLogsPage !== 1) {
+            // 不在第一页时，提示有新日志
             hasNewLogs = true;
             showNewLogsBadge(realtimeLogCount);
           }
+          // 注：不符合筛选条件的日志仍保留在 realtimeBuffer 中，清除筛选后可见
         } catch (err) {
           console.error('[SSE] 解析日志失败:', err);
         }
