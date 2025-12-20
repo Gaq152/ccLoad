@@ -1,0 +1,145 @@
+/* =================================================================
+   Layout CSS - 布局模块
+   包含：容器、Topbar、网格系统、响应式布局
+   ================================================================= */
+
+/* ===== 布局组件 ===== */
+.app-container {
+  display: flex;
+  min-height: 100vh;
+  position: relative;
+}
+
+.main-content {
+  flex: 1;
+  margin-left: 0;
+  min-height: 100vh;
+  padding: var(--space-6);
+  transition: margin-left var(--duration-normal) var(--timing-function);
+}
+
+.content-area {
+  max-width: var(--container-max-width);
+  margin: 0 auto;
+}
+
+/* ===== 顶部导航（Topbar） ===== */
+.top-layout .main-content { margin-left: 0 !important; padding-top: var(--topbar-height); }
+
+.topbar {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: var(--topbar-height);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 var(--space-6);
+  background: var(--glass-bg);
+  backdrop-filter: blur(18px) saturate(160%);
+  border-bottom: 1px solid var(--glass-border);
+  z-index: 300;
+}
+.topbar-left { display: flex; align-items: center; gap: var(--space-4); }
+.brand { display: flex; align-items: center; gap: var(--space-3); }
+.brand-icon {
+  width: 36px; height: 36px; border-radius: var(--radius-lg);
+  box-shadow: 0 4px 16px rgba(99,102,241,0.35);
+}
+.brand-text { color: var(--topbar-fg); font-weight: var(--font-semibold); letter-spacing: .2px; }
+
+.topnav { display: flex; align-items: center; gap: var(--space-2); flex: 1; justify-content: center; }
+.topnav-link {
+  display: inline-flex; align-items: center; gap: .5rem;
+  padding: .5rem .75rem; border-radius: var(--radius-lg);
+  color: var(--topbar-fg); text-decoration: none; font-weight: var(--font-medium);
+  transition: background var(--duration-fast) var(--timing-function), color var(--duration-fast);
+}
+.topnav-link:hover { background: rgba(17,24,39,0.06); color: var(--topbar-fg); }
+.topnav-link.active { background: rgba(17,24,39,0.10); color: var(--topbar-fg); border: 1px solid rgba(17,24,39,0.12); }
+.topbar-right { display: flex; align-items: center; gap: var(--space-3); }
+
+/* 顶部背景（静态渐变，无动画） */
+.bg-anim {
+  position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(550px 300px at 20% 10%, rgba(59,130,246,0.14), transparent 60%),
+    radial-gradient(650px 320px at 80% 5%, rgba(236,72,153,0.12), transparent 60%),
+    radial-gradient(420px 260px at 70% 60%, rgba(16,185,129,0.10), transparent 60%);
+}
+
+/* ===== 网格系统 ===== */
+.grid {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.grid-cols-1 { grid-template-columns: repeat(1, 1fr); }
+.grid-cols-2 { grid-template-columns: repeat(2, 1fr); }
+.grid-cols-3 { grid-template-columns: repeat(3, 1fr); }
+.grid-cols-4 { grid-template-columns: repeat(4, 1fr); }
+
+/* ===== 响应式设计 ===== */
+@media (max-width: 768px) {
+  .topbar { height: 64px; padding: 0 var(--space-4); }
+  .topnav { justify-content: flex-start; overflow-x: auto; white-space: nowrap; gap: .25rem; }
+  .topnav::-webkit-scrollbar { display: none; }
+
+  .main-content {
+    margin-left: 0;
+    padding: var(--space-4);
+  }
+
+  .grid-cols-4 { grid-template-columns: repeat(2, 1fr); }
+  .grid-cols-3 { grid-template-columns: repeat(2, 1fr); }
+  .grid-cols-2 { grid-template-columns: repeat(1, 1fr); }
+}
+
+@media (max-width: 480px) {
+  .grid-cols-4,
+  .grid-cols-3,
+  .grid-cols-2 {
+    grid-template-columns: repeat(1, 1fr);
+  }
+}
+
+/* ===== 筛选器容器样式 ===== */
+.filter-container {
+  display: flex;
+  gap: var(--space-3);
+  margin-bottom: var(--space-6);
+  flex-wrap: wrap;
+}
+
+.filter-container .form-group {
+  flex: 1 1 auto;
+  min-width: 140px;
+}
+
+.filter-container .form-group:first-child,
+.filter-container .form-group:nth-child(2) {
+  flex: 0 0 auto;
+  min-width: 120px;
+}
+
+.filter-container .form-group:last-child {
+  flex: 0 0 auto;
+  min-width: 100px;
+  display: flex;
+  align-items: end;
+}
+
+.filter-container .form-input,
+.filter-container .btn {
+  width: 100%;
+}
+
+/* ===== 响应式筛选器修正 ===== */
+@media (max-width: 768px) {
+  .filter-container {
+    flex-direction: column !important;
+    gap: var(--space-3) !important;
+  }
+
+  .filter-container .form-group {
+    flex: 1 1 100% !important;
+    min-width: unset !important;
+  }
+}
