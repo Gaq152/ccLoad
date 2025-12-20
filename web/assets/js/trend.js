@@ -5,8 +5,6 @@
     window.currentChannelType = 'all'; // 当前选中的渠道类型
     window.currentModel = ''; // 当前选中的模型（空字符串表示全部模型）
     window.currentAuthToken = ''; // 当前选中的令牌（空字符串表示全部令牌）
-    window.currentChannelId = ''; // 当前选中的渠道ID
-    window.currentChannelName = ''; // 当前选中的渠道名称
     window.chartInstance = null;
     window.channels = [];
     window.visibleChannels = new Set(); // 可见渠道集合
@@ -98,16 +96,6 @@
           window.currentAuthToken = tokenSelect.value || '';
         }
 
-        // 读取渠道ID和渠道名筛选
-        const idInput = document.getElementById('f_id');
-        if (idInput) {
-          window.currentChannelId = idInput.value.trim() || '';
-        }
-        const nameInput = document.getElementById('f_name');
-        if (nameInput) {
-          window.currentChannelName = nameInput.value.trim() || '';
-        }
-
         const hours = window.getRangeHours ? getRangeHours(currentRange) : 24;
         window.currentHours = hours; // 同步到全局变量，供 renderChart 使用
         const bucketMin = computeBucketMin(hours);
@@ -129,12 +117,8 @@
         // 添加令牌筛选参数
         const tokenParam = window.currentAuthToken ? `&auth_token_id=${encodeURIComponent(window.currentAuthToken)}` : '';
 
-        // 添加渠道ID和渠道名筛选参数（渠道ID使用前缀匹配）
-        const channelIdParam = window.currentChannelId ? `&channel_id_like=${encodeURIComponent(window.currentChannelId)}` : '';
-        const channelNameParam = window.currentChannelName ? `&channel_name_like=${encodeURIComponent(window.currentChannelName)}` : '';
-
         const [metricsRes, channelsRes] = await Promise.all([
-          fetchWithAuth(metricsUrl + channelTypeParam + modelParam + tokenParam + channelIdParam + channelNameParam),
+          fetchWithAuth(metricsUrl + channelTypeParam + modelParam + tokenParam),
           fetchWithAuth(channelsUrl + (channelTypeParamForList ? '?' + channelTypeParamForList.slice(1) : ''))
         ]);
         
@@ -899,10 +883,10 @@
     function updateChannelFilter() {
       const filterList = document.getElementById('channel-filter-list');
       if (!filterList) return;
-      
+
       // 收集所有有数据的渠道名称
       const allChannelNames = new Set();
-      
+
       // 添加已配置的启用渠道
       if (window.channels) {
         window.channels.forEach(ch => {
@@ -911,7 +895,7 @@
           }
         });
       }
-      
+
       // 添加趋势数据中存在但未配置的渠道（如"未知渠道"）
       if (window.trendData) {
         window.trendData.forEach(point => {
@@ -925,14 +909,14 @@
           }
         });
       }
-      
+
       console.log('筛选器中的所有渠道:', Array.from(allChannelNames));
-      
+
       // 生成颜色映射
       const channelColors = generateChannelColors(allChannelNames);
-      
+
       filterList.innerHTML = '';
-      
+
       // 渲染渠道列表
       Array.from(allChannelNames).sort().forEach(channelName => {
         const item = document.createElement('div');
@@ -946,18 +930,34 @@
           ? `${channelName} ⚠️`
           : channelName;
 
-        const content = TemplateEngine.render('tpl-channel-filter-item', {
-          checkedClass: isVisible ? 'checked' : '',
-          color: channelColors[channelName],
-          displayName: displayName
-        });
-        if (content) {
-          item.innerHTML = '';
-          item.appendChild(content);
-        }
+        // 直接构建 HTML 而不是使用模板（模板只返回第一个元素）
+        const checkedClass = isVisible ? 'checked' : '';
+        const color = channelColors[channelName] || '#888';
+        item.innerHTML = `
+          <div class="channel-checkbox ${checkedClass}"></div>
+          <div class="channel-color-indicator" style="background-color: ${color}"></div>
+          <div class="channel-name">${escapeHtml(displayName)}</div>
+        `;
 
         filterList.appendChild(item);
       });
+
+      // 更新选中渠道数量徽章
+      updateChannelBadge();
+    }
+
+    // 更新选中渠道数量徽章
+    function updateChannelBadge() {
+      const badge = document.getElementById('selected-channel-count');
+      if (!badge) return;
+
+      const count = window.visibleChannels.size;
+      if (count > 0) {
+        badge.textContent = count;
+        badge.style.display = 'inline-block';
+      } else {
+        badge.style.display = 'none';
+      }
     }
     
     // 切换渠道显示/隐藏
@@ -1129,12 +1129,12 @@
     }
 
     function bindToggles() {
-      // 趋势类型切换
+      // 趋势类型切换（新结构使用 .trend-metric-btn）
       const trendTypeGroup = document.getElementById('trend-type-group');
       trendTypeGroup.addEventListener('click', (e) => {
-        const t = e.target.closest('.toggle-btn');
+        const t = e.target.closest('.trend-metric-btn');
         if (!t) return;
-        trendTypeGroup.querySelectorAll('.toggle-btn').forEach(btn => btn.classList.remove('active'));
+        trendTypeGroup.querySelectorAll('.trend-metric-btn').forEach(btn => btn.classList.remove('active'));
         t.classList.add('active');
         const trendType = t.getAttribute('data-type') || 'first_byte';
         window.currentTrendType = trendType;
@@ -1142,7 +1142,7 @@
         renderChart();
       });
 
-      // 时间范围选择 - 使用 f_hours 元素
+      // 时间范围选择
       const rangeSelect = document.getElementById('f_hours');
       if (rangeSelect) {
         rangeSelect.addEventListener('change', (e) => {
@@ -1177,25 +1177,6 @@
           loadData();
         });
       }
-
-      // 输入框自动筛选（防抖）
-      const debouncedFilter = debounce(loadData, 500);
-      ['f_id', 'f_name'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) {
-          el.addEventListener('input', debouncedFilter);
-        }
-      });
-
-      // 回车键筛选
-      ['f_id', 'f_name'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) {
-          el.addEventListener('keydown', e => {
-            if (e.key === 'Enter') loadData();
-          });
-        }
-      });
     }
 
     function persistState() {
@@ -1274,10 +1255,10 @@
         document.getElementById('f_hours').value = window.currentRange;
       }
 
-      // 应用趋势类型UI
+      // 应用趋势类型UI（新结构使用 .trend-metric-btn）
       const trendTypeGroup = document.getElementById('trend-type-group');
       if (trendTypeGroup) {
-        trendTypeGroup.querySelectorAll('.toggle-btn').forEach(btn => {
+        trendTypeGroup.querySelectorAll('.trend-metric-btn').forEach(btn => {
           const type = btn.getAttribute('data-type') || 'first_byte';
           btn.classList.toggle('active', type === window.currentTrendType);
         });
