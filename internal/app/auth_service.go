@@ -20,6 +20,13 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+// TokenInfo 令牌内存缓存信息（2025-12新增）
+// 存储令牌的过期时间和启用状态，支持禁用检查和懒惰过期
+type TokenInfo struct {
+	ExpiresAt int64 // 过期时间（Unix毫秒，0=永不过期）
+	IsActive  bool  // 是否启用（false=管理员禁用）
+}
+
 // TokenChannelConfig 令牌渠道访问配置（2025-12新增）
 type TokenChannelConfig struct {
 	AllChannels bool    // true=允许所有渠道, false=仅允许指定渠道
@@ -42,8 +49,8 @@ type AuthService struct {
 	tokensMux    sync.RWMutex         // 并发保护
 
 	// API 认证（代理 API 使用的数据库令牌）
-	// [FIX] 2025-12: 存储过期时间而非bool，支持懒惰过期校验
-	authTokens        map[string]int64              // Token哈希 → 过期时间(Unix毫秒，0=永不过期)
+	// [FIX] 2025-12: 存储TokenInfo包含过期时间和启用状态，支持禁用检查和懒惰过期
+	authTokens        map[string]*TokenInfo         // Token哈希 → 令牌信息（过期时间+启用状态）
 	authTokenIDs      map[string]int64              // Token哈希 → Token ID 映射（用于日志记录，2025-12新增）
 	authTokenChannels map[int64]*TokenChannelConfig // Token ID → 渠道访问配置（2025-12新增）
 	authTokensMux     sync.RWMutex                  // 并发保护（支持热更新）
@@ -76,7 +83,7 @@ func NewAuthService(
 	s := &AuthService{
 		passwordHash:      passwordHash,
 		validTokens:       make(map[string]time.Time),
-		authTokens:        make(map[string]int64),
+		authTokens:        make(map[string]*TokenInfo),
 		authTokenIDs:      make(map[string]int64),
 		authTokenChannels: make(map[int64]*TokenChannelConfig),
 		loginRateLimiter:  loginRateLimiter,
@@ -317,18 +324,26 @@ func (s *AuthService) RequireAPIAuth() gin.HandlerFunc {
 		tokenHash := model.HashToken(token)
 
 		s.authTokensMux.RLock()
-		expiresAt, exists := s.authTokens[tokenHash]
+		tokenInfo, exists := s.authTokens[tokenHash]
 		tokenID, hasTokenID := s.authTokenIDs[tokenHash]
 		s.authTokensMux.RUnlock()
 
-		if !exists {
+		if !exists || tokenInfo == nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid or missing authorization"})
 			c.Abort()
 			return
 		}
 
+		// [FIX] 2025-12: 禁用检查（优先于过期检查）
+		// 返回 403 Forbidden 而非 401，明确区分"令牌被禁用"和"令牌无效"
+		if !tokenInfo.IsActive {
+			c.JSON(http.StatusForbidden, gin.H{"error": "token disabled"})
+			c.Abort()
+			return
+		}
+
 		// [FIX] 过期校验：expiresAt > 0 表示有过期时间，检查是否已过期
-		if expiresAt > 0 && time.Now().UnixMilli() > expiresAt {
+		if tokenInfo.ExpiresAt > 0 && time.Now().UnixMilli() > tokenInfo.ExpiresAt {
 			// 懒惰剔除：过期时从内存中移除（避免下次还要检查）
 			s.authTokensMux.Lock()
 			delete(s.authTokens, tokenHash)
@@ -476,23 +491,27 @@ func (s *AuthService) HandleLogout(c *gin.Context) {
 
 // ReloadAuthTokens 从数据库重新加载API访问令牌
 // 用于CRUD操作后立即生效，无需重启服务
-// [FIX] 2025-12: 同时加载过期时间，支持懒惰过期校验
+// [FIX] 2025-12: 同时加载过期时间和启用状态，支持禁用检查和懒惰过期
 // [FIX] 2025-12: 同时加载渠道访问配置，支持令牌级渠道控制
 func (s *AuthService) ReloadAuthTokens() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	tokens, err := s.store.ListActiveAuthTokens(ctx)
+	// [FIX] 2025-12: 加载所有令牌（包括禁用的），以便在认证时返回明确的 403 错误
+	tokens, err := s.store.ListAuthTokens(ctx)
 	if err != nil {
 		return fmt.Errorf("reload auth tokens: %w", err)
 	}
 
-	// 构建新的令牌映射（存储过期时间而非bool）
-	newTokens := make(map[string]int64, len(tokens))
+	// 构建新的令牌映射（存储TokenInfo包含过期时间和启用状态）
+	newTokens := make(map[string]*TokenInfo, len(tokens))
 	newTokenIDs := make(map[string]int64, len(tokens))
 	newTokenChannels := make(map[int64]*TokenChannelConfig, len(tokens))
 
-	// 收集需要加载渠道配置的令牌ID
+	// 统计启用/禁用令牌数量
+	activeCount := 0
+
+	// 收集需要加载渠道配置的令牌ID（仅启用的令牌）
 	tokenIDsToLoad := make([]int64, 0, len(tokens))
 	for _, t := range tokens {
 		// ExpiresAt: nil → 0 (永不过期), *int64 → Unix毫秒
@@ -500,8 +519,17 @@ func (s *AuthService) ReloadAuthTokens() error {
 		if t.ExpiresAt != nil {
 			expiresAt = *t.ExpiresAt
 		}
-		newTokens[t.Token] = expiresAt
+
+		// 存储完整的令牌信息（包括启用状态）
+		newTokens[t.Token] = &TokenInfo{
+			ExpiresAt: expiresAt,
+			IsActive:  t.IsActive,
+		}
 		newTokenIDs[t.Token] = t.ID
+
+		if t.IsActive {
+			activeCount++
+		}
 
 		// 初始化渠道配置
 		newTokenChannels[t.ID] = &TokenChannelConfig{
@@ -509,8 +537,8 @@ func (s *AuthService) ReloadAuthTokens() error {
 			ChannelIDs:  nil, // 稍后批量加载
 		}
 
-		// 如果不是AllChannels，需要加载具体的渠道列表
-		if !t.AllChannels {
+		// 如果不是AllChannels且令牌启用，需要加载具体的渠道列表
+		if !t.AllChannels && t.IsActive {
 			tokenIDsToLoad = append(tokenIDsToLoad, t.ID)
 		}
 	}
@@ -537,7 +565,7 @@ func (s *AuthService) ReloadAuthTokens() error {
 	s.authTokenChannels = newTokenChannels
 	s.authTokensMux.Unlock()
 
-	log.Printf("[RELOAD] API令牌已热更新（%d个有效令牌）", len(newTokens))
+	log.Printf("[RELOAD] API令牌已热更新（%d个令牌，其中%d个启用）", len(newTokens), activeCount)
 	return nil
 }
 

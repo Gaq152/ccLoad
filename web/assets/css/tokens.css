@@ -440,6 +440,39 @@
   color: var(--error-700);
 }
 
+/* 禁用按钮（警告色） */
+.btn-action.btn-disable {
+  color: var(--warning-700);
+  border-color: var(--warning-300);
+  background: var(--warning-50);
+}
+
+.btn-action.btn-disable:hover {
+  background: var(--warning-100);
+  border-color: var(--warning-400);
+  color: var(--warning-800);
+}
+
+/* 启用按钮（成功色） */
+.btn-action.btn-enable {
+  color: var(--success-700);
+  border-color: var(--success-300);
+  background: var(--success-50);
+}
+
+.btn-action.btn-enable:hover {
+  background: var(--success-100);
+  border-color: var(--success-400);
+  color: var(--success-800);
+}
+
+/* 禁用状态按钮（灰化） */
+.btn-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
 /* --- 2. 抽屉面板 (Drawer) --- */
 .drawer-overlay {
   position: fixed;
