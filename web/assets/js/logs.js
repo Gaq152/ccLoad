@@ -204,10 +204,18 @@
         `<a class="channel-link" href="/web/channels.html?id=${entry.channel_id}#channel-${entry.channel_id}">${escapeHtml(entry.channel_name||'')} <small>(#${entry.channel_id})</small></a>${apiUrlDisplay}` :
         `<span style="color: var(--neutral-500);">${escapeHtml(configInfo)}</span>`;
 
-      // 2. 状态码样式
+      // 2. 状态码样式 & 行背景样式
       const statusClass = (entry.status_code >= 200 && entry.status_code < 300) ?
         'status-success' : 'status-error';
       const statusCode = entry.status_code;
+
+      // 根据状态码决定行背景色
+      let rowClass = '';
+      if (entry.status_code >= 500) {
+        rowClass = 'log-row-error';
+      } else if (entry.status_code >= 400 || (entry.status_code < 200 && entry.status_code > 0)) {
+        rowClass = 'log-row-warning';
+      }
 
       // 3. 模型显示
       const modelDisplay = entry.model ?
@@ -315,6 +323,7 @@
 
       // 返回 DOM 元素
       return TemplateEngine.render('tpl-log-row', {
+        rowClass,
         time: formatTime(entry.time),
         clientIPDisplay,
         modelDisplay,
