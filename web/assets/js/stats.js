@@ -18,8 +18,9 @@
           range: (u.get('range')||'today')
         });
 
-        // 复用筛选条件
-        if (u.get('channel_id')) params.set('channel_id', u.get('channel_id'));
+        // 复用筛选条件（渠道ID使用前缀匹配）
+        if (u.get('channel_id_like')) params.set('channel_id_like', u.get('channel_id_like'));
+        else if (u.get('channel_id')) params.set('channel_id_like', u.get('channel_id')); // 兼容旧参数
         if (u.get('channel_name')) params.set('channel_name', u.get('channel_name'));
         if (u.get('channel_name_like')) params.set('channel_name_like', u.get('channel_name_like'));
         if (u.get('model')) params.set('model', u.get('model'));
@@ -319,15 +320,21 @@
       // 保存筛选条件到 localStorage
       saveStatsFilters();
 
-      const q = new URLSearchParams(location.search);
-      if (range) q.set('range', range); else q.delete('range');
-      if (id) q.set('channel_id', id); else q.delete('channel_id');
-      if (name) { q.set('channel_name_like', name); q.delete('channel_name'); }
-      else { q.delete('channel_name_like'); }
-      if (model) { q.set('model_like', model); q.delete('model'); }
-      else { q.delete('model_like'); q.delete('model'); }
-      if (authToken) q.set('auth_token_id', authToken); else q.delete('auth_token_id');
-      location.search = '?' + q.toString();
+      // 构建 URL 参数（用于分享链接）
+      const q = new URLSearchParams();
+      if (range && range !== 'today') q.set('range', range);
+      if (id) q.set('channel_id_like', id);
+      if (name) q.set('channel_name_like', name);
+      if (model) q.set('model_like', model);
+      if (authToken) q.set('auth_token_id', authToken);
+      if (currentChannelType && currentChannelType !== 'all') q.set('channel_type', currentChannelType);
+
+      // 使用 replaceState 更新 URL，不刷新页面
+      const newUrl = q.toString() ? '?' + q.toString() : location.pathname;
+      history.replaceState(null, '', newUrl);
+
+      // 重新加载数据
+      loadStats();
     }
 
     function initFilters() {
@@ -336,7 +343,7 @@
       // URL 参数优先，否则从 localStorage 恢复
       const hasUrlParams = u.toString().length > 0;
 
-      const id = u.get('channel_id') || (!hasUrlParams && saved?.channelId) || '';
+      const id = u.get('channel_id_like') || u.get('channel_id') || (!hasUrlParams && saved?.channelId) || '';
       const name = u.get('channel_name_like') || u.get('channel_name') || (!hasUrlParams && saved?.channelName) || '';
       const range = u.get('range') || (!hasUrlParams && saved?.range) || 'today';
       const model = u.get('model_like') || u.get('model') || (!hasUrlParams && saved?.model) || '';
@@ -515,7 +522,7 @@
       if (!hasUrlParams && savedFilters) {
         const q = new URLSearchParams();
         if (savedFilters.range) q.set('range', savedFilters.range);
-        if (savedFilters.channelId) q.set('channel_id', savedFilters.channelId);
+        if (savedFilters.channelId) q.set('channel_id_like', savedFilters.channelId);
         if (savedFilters.channelName) q.set('channel_name_like', savedFilters.channelName);
         if (savedFilters.model) q.set('model_like', savedFilters.model);
         if (savedFilters.authToken) q.set('auth_token_id', savedFilters.authToken);

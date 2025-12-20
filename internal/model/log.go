@@ -61,11 +61,13 @@ type LogEntry struct {
 // LogFilter 日志查询过滤条件
 type LogFilter struct {
 	ChannelID       *int64
+	ChannelIDLike   string // 渠道ID前缀匹配（输入 "1" 匹配 1, 10, 11 等）
 	ChannelName     string
 	ChannelNameLike string
 	Model           string
 	ModelLike       string
 	StatusCode      *int
+	StatusCodeLike  string // 状态码前缀匹配（输入 "4" 匹配 400, 401 等 4xx 错误）
 	ChannelType     string // 渠道类型过滤（anthropic/openai/gemini/codex）
 	AuthTokenID     *int64 // API令牌ID过滤
 }

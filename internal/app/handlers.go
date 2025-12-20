@@ -193,18 +193,26 @@ func BindAndValidate(c *gin.Context, obj RequestValidator) error {
 // BuildLogFilter 从查询参数构建LogFilter（DRY原则：消除重复的过滤逻辑）
 // 支持的查询参数：
 // - channel_id: 精确匹配渠道ID
+// - channel_id_like: 前缀匹配渠道ID（输入 "1" 匹配 1, 10, 11 等）
 // - channel_name: 精确匹配渠道名称
 // - channel_name_like: 模糊匹配渠道名称
 // - model: 精确匹配模型名称
 // - model_like: 模糊匹配模型名称
+// - status_code: 精确匹配状态码
+// - status_code_like: 前缀匹配状态码（输入 "4" 匹配 400, 401 等 4xx 错误）
 func BuildLogFilter(c *gin.Context) model.LogFilter {
 	var lf model.LogFilter
 
-	// 渠道ID过滤
+	// 渠道ID精确过滤
 	if cidStr := strings.TrimSpace(c.Query("channel_id")); cidStr != "" {
 		if id, err := strconv.ParseInt(cidStr, 10, 64); err == nil && id > 0 {
 			lf.ChannelID = &id
 		}
+	}
+
+	// 渠道ID前缀匹配
+	if cidLike := strings.TrimSpace(c.Query("channel_id_like")); cidLike != "" {
+		lf.ChannelIDLike = cidLike
 	}
 
 	// 渠道名称精确匹配
@@ -232,6 +240,11 @@ func BuildLogFilter(c *gin.Context) model.LogFilter {
 		if code, err := strconv.Atoi(scStr); err == nil && code > 0 {
 			lf.StatusCode = &code
 		}
+	}
+
+	// 状态码前缀匹配
+	if scLike := strings.TrimSpace(c.Query("status_code_like")); scLike != "" {
+		lf.StatusCodeLike = scLike
 	}
 
 	// 渠道类型过滤（anthropic/openai/gemini/codex）

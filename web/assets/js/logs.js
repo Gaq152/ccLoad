@@ -64,10 +64,10 @@
               offset: '0'
             });
 
-            if (channelId) params.set('channel_id', channelId);
+            if (channelId) params.set('channel_id_like', channelId);
             if (channelName) params.set('channel_name_like', channelName);
             if (model) params.set('model_like', model);
-            if (statusCode) params.set('status_code', statusCode);
+            if (statusCode) params.set('status_code_like', statusCode);
             if (authTokenId) params.set('auth_token_id', authTokenId);
             if (currentChannelType && currentChannelType !== 'all') {
               params.set('channel_type', currentChannelType);
@@ -107,10 +107,10 @@
             offset: serverOffset.toString()
           });
 
-          if (channelId) params.set('channel_id', channelId);
+          if (channelId) params.set('channel_id_like', channelId);
           if (channelName) params.set('channel_name_like', channelName);
           if (model) params.set('model_like', model);
-          if (statusCode) params.set('status_code', statusCode);
+          if (statusCode) params.set('status_code_like', statusCode);
           if (authTokenId) params.set('auth_token_id', authTokenId);
           if (currentChannelType && currentChannelType !== 'all') {
             params.set('channel_type', currentChannelType);
@@ -352,8 +352,8 @@
       const statusCode = document.getElementById('f_status')?.value?.trim() || '';
       const authTokenId = document.getElementById('f_auth_token')?.value?.trim() || '';
 
-      // 渠道 ID 精确匹配
-      if (channelId && String(entry.channel_id) !== channelId) {
+      // 渠道 ID 前缀匹配（输入 "1" 匹配 1, 10, 11, 12 等）
+      if (channelId && !String(entry.channel_id || '').startsWith(channelId)) {
         return false;
       }
 
@@ -367,17 +367,17 @@
         return false;
       }
 
-      // 状态码精确匹配
-      if (statusCode && String(entry.status_code) !== statusCode) {
+      // 状态码前缀匹配（输入 "4" 匹配 400, 401, 403 等 4xx 错误）
+      if (statusCode && !String(entry.status_code || '').startsWith(statusCode)) {
         return false;
       }
 
-      // 令牌 ID 精确匹配
+      // 令牌 ID 精确匹配（下拉菜单选择）
       if (authTokenId && String(entry.auth_token_id) !== authTokenId) {
         return false;
       }
 
-      // 渠道类型匹配
+      // 渠道类型匹配（下拉菜单选择）
       if (currentChannelType && currentChannelType !== 'all') {
         if (String(entry.channel_type) !== currentChannelType) {
           return false;
@@ -521,20 +521,27 @@
       // 保存筛选条件到 localStorage
       saveLogsFilters();
 
-      const q = new URLSearchParams(location.search);
+      // 构建 URL 参数（用于分享链接）
+      const q = new URLSearchParams();
 
-      if (range) q.set('range', range); else q.delete('range');
-      if (id) q.set('channel_id', id); else q.delete('channel_id');
-      if (name) { q.set('channel_name_like', name); q.delete('channel_name'); }
-      else { q.delete('channel_name_like'); }
-      if (model) { q.set('model_like', model); q.delete('model'); }
-      else { q.delete('model_like'); q.delete('model'); }
-      if (status) { q.set('status_code', status); }
-      else { q.delete('status_code'); }
-      if (authToken) q.set('auth_token_id', authToken); else q.delete('auth_token_id');
-      if (channelType) q.set('channel_type', channelType); else q.set('channel_type', 'all');
+      if (range && range !== 'today') q.set('range', range);
+      if (id) q.set('channel_id_like', id);
+      if (name) q.set('channel_name_like', name);
+      if (model) q.set('model_like', model);
+      if (status) q.set('status_code_like', status);
+      if (authToken) q.set('auth_token_id', authToken);
+      if (channelType && channelType !== 'all') q.set('channel_type', channelType);
 
-      location.search = '?' + q.toString();
+      // 使用 replaceState 更新 URL，不刷新页面
+      const newUrl = q.toString() ? '?' + q.toString() : location.pathname;
+      history.replaceState(null, '', newUrl);
+
+      // 清空实时缓冲区（筛选条件变化后缓冲区数据可能不符合新条件）
+      realtimeBuffer = [];
+      displayedLogIds.clear();
+
+      // 重新加载数据
+      load();
     }
 
     function initFilters() {
@@ -543,11 +550,12 @@
       // URL 参数优先，否则从 localStorage 恢复
       const hasUrlParams = u.toString().length > 0;
 
-      const id = u.get('channel_id') || (!hasUrlParams && saved?.channelId) || '';
+      // 兼容新旧参数名
+      const id = u.get('channel_id_like') || u.get('channel_id') || (!hasUrlParams && saved?.channelId) || '';
       const name = u.get('channel_name_like') || u.get('channel_name') || (!hasUrlParams && saved?.channelName) || '';
       const range = u.get('range') || (!hasUrlParams && saved?.range) || 'today';
       const model = u.get('model_like') || u.get('model') || (!hasUrlParams && saved?.model) || '';
-      const status = u.get('status_code') || (!hasUrlParams && saved?.status) || '';
+      const status = u.get('status_code_like') || u.get('status_code') || (!hasUrlParams && saved?.status) || '';
       const authToken = u.get('auth_token_id') || (!hasUrlParams && saved?.authToken) || '';
       const channelType = u.get('channel_type') || (!hasUrlParams && saved?.channelType) || 'all';
 
@@ -772,10 +780,10 @@
       if (!hasUrlParams && savedFilters) {
         const q = new URLSearchParams();
         if (savedFilters.range) q.set('range', savedFilters.range);
-        if (savedFilters.channelId) q.set('channel_id', savedFilters.channelId);
+        if (savedFilters.channelId) q.set('channel_id_like', savedFilters.channelId);
         if (savedFilters.channelName) q.set('channel_name_like', savedFilters.channelName);
         if (savedFilters.model) q.set('model_like', savedFilters.model);
-        if (savedFilters.status) q.set('status_code', savedFilters.status);
+        if (savedFilters.status) q.set('status_code_like', savedFilters.status);
         if (savedFilters.authToken) q.set('auth_token_id', savedFilters.authToken);
         if (savedFilters.channelType && savedFilters.channelType !== 'all') {
           q.set('channel_type', savedFilters.channelType);
