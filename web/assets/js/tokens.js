@@ -222,14 +222,14 @@
 
       // 过期的令牌：按钮禁用
       if (token.is_expired) {
-        return `<button class="btn-action btn-disable" disabled title="令牌已过期，无法操作">${pauseIcon} 禁用</button>`;
+        return `<button class="btn-action btn-disable" disabled aria-label="令牌已过期">${pauseIcon}</button>`;
       }
 
       // 根据 is_active 状态显示不同按钮
       if (token.is_active) {
-        return `<button class="btn-action btn-disable btn-toggle-status" data-action="disable">${pauseIcon} 禁用</button>`;
+        return `<button class="btn-action btn-disable btn-toggle-status" data-action="disable" aria-label="禁用令牌">${pauseIcon}</button>`;
       } else {
-        return `<button class="btn-action btn-enable btn-toggle-status" data-action="enable">${playIcon} 启用</button>`;
+        return `<button class="btn-action btn-enable btn-toggle-status" data-action="enable" aria-label="启用令牌">${playIcon}</button>`;
       }
     }
 
@@ -399,14 +399,12 @@
           <td style="color: var(--neutral-600);">${lastUsed}</td>
           <td>
             <div class="action-btn-group">
-              <button class="btn-action btn-edit">
+              <button class="btn-action btn-edit" aria-label="编辑配置">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-                编辑
               </button>
               ${buildToggleBtnHtml(token)}
-              <button class="btn-action delete btn-delete">
+              <button class="btn-action delete btn-delete" aria-label="删除令牌">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-                删除
               </button>
             </div>
           </td>
@@ -633,7 +631,7 @@
     }
 
     /**
-     * 渲染抽屉中的渠道列表
+     * 渲染抽屉中的渠道列表（按类型分组）
      */
     function renderDrawerChannelsList(selectedIds) {
       const container = document.getElementById('drawerChannelsList');
@@ -645,31 +643,182 @@
       }
 
       const selectedSet = new Set(selectedIds);
+
+      // 按 channel_type 分组
+      const groups = {};
+      allChannels.forEach(channel => {
+        const type = channel.channel_type || 'anthropic';
+        if (!groups[type]) {
+          groups[type] = [];
+        }
+        groups[type].push(channel);
+      });
+
+      // 渠道类型显示名称映射
+      const typeNames = {
+        'anthropic': 'Anthropic',
+        'codex': 'Codex',
+        'gemini': 'Gemini',
+        'openai': 'OpenAI'
+      };
+
       let html = '';
 
-      allChannels.forEach(channel => {
-        const isChecked = selectedSet.has(channel.id);
-        const statusClass = channel.enabled ? 'enabled' : 'disabled';
-        const statusText = channel.enabled ? '启用' : '禁用';
-        const selectedClass = isChecked ? ' selected' : '';
+      // 按类型渲染分组
+      Object.keys(groups).sort().forEach(type => {
+        const channels = groups[type];
+        const selectedInGroup = channels.filter(c => selectedSet.has(c.id)).length;
+        const totalInGroup = channels.length;
+        const hasSelection = selectedInGroup > 0;
+        const allSelected = selectedInGroup === totalInGroup;
+        const typeName = typeNames[type] || type;
 
         html += `
-          <label class="channel-item${selectedClass}" data-channel-id="${channel.id}">
-            <span class="channel-checkbox">
-              <input type="checkbox" value="${channel.id}" ${isChecked ? 'checked' : ''} onchange="updateDrawerChannelSelection(this)">
-              <span class="checkmark"></span>
-            </span>
-            <span class="channel-info">
-              <span class="channel-name">${escapeHtml(channel.name)}</span>
-              <span class="channel-status ${statusClass}">${statusText}</span>
-            </span>
-            <span class="channel-type">${channel.channel_type || 'anthropic'}</span>
-          </label>
+          <div class="channel-group" data-group="${type}">
+            <div class="group-header${hasSelection ? ' has-selection' : ''}" onclick="toggleGroup('${type}', event)">
+              <div class="header-left">
+                <span class="toggle-icon">▼</span>
+                <input type="checkbox" class="group-checkbox"
+                       id="group-chk-${type}"
+                       ${allSelected ? 'checked' : ''}
+                       onclick="toggleGroupCheckbox('${type}', event)">
+                <label class="group-title" for="group-chk-${type}">${typeName}</label>
+              </div>
+              <span class="group-counter">
+                <span class="count-selected">${selectedInGroup}</span>/<span class="count-total">${totalInGroup}</span>
+              </span>
+            </div>
+            <div class="group-list">
+        `;
+
+        channels.forEach(channel => {
+          const isChecked = selectedSet.has(channel.id);
+          const statusClass = channel.enabled ? 'enabled' : 'disabled';
+          const statusText = channel.enabled ? '启用' : '禁用';
+          const selectedClass = isChecked ? ' selected' : '';
+
+          html += `
+            <label class="channel-item${selectedClass}" data-channel-id="${channel.id}">
+              <span class="channel-checkbox">
+                <input type="checkbox" value="${channel.id}" ${isChecked ? 'checked' : ''} onchange="updateDrawerChannelSelection(this)">
+                <span class="checkmark"></span>
+              </span>
+              <span class="channel-info">
+                <span class="channel-name">${escapeHtml(channel.name)}</span>
+                <span class="channel-status ${statusClass}">${statusText}</span>
+              </span>
+            </label>
+          `;
+        });
+
+        html += `
+            </div>
+          </div>
         `;
       });
 
       container.innerHTML = html;
       updateDrawerChannelCount(selectedIds.length);
+
+      // 设置分组复选框的半选状态
+      Object.keys(groups).forEach(type => {
+        updateGroupCheckboxState(type);
+      });
+    }
+
+    /**
+     * 折叠/展开分组
+     */
+    function toggleGroup(type, event) {
+      // 如果点击的是复选框或其 label，不触发折叠
+      if (event.target.classList.contains('group-checkbox') ||
+          event.target.classList.contains('group-title')) {
+        return;
+      }
+      const group = document.querySelector(`.channel-group[data-group="${type}"]`);
+      if (group) {
+        group.classList.toggle('is-collapsed');
+      }
+    }
+
+    /**
+     * 分组全选/取消全选
+     */
+    function toggleGroupCheckbox(type, event) {
+      event.stopPropagation();  // 阻止触发折叠
+      const checkbox = event.target;
+      const group = document.querySelector(`.channel-group[data-group="${type}"]`);
+      const itemCheckboxes = group.querySelectorAll('.group-list input[type="checkbox"]');
+
+      itemCheckboxes.forEach(cb => {
+        cb.checked = checkbox.checked;
+        const item = cb.closest('.channel-item');
+        if (checkbox.checked) {
+          item.classList.add('selected');
+        } else {
+          item.classList.remove('selected');
+        }
+      });
+
+      // 更新计数器和分组头部状态
+      updateGroupCounter(type);
+      updateTotalChannelCount();
+    }
+
+    /**
+     * 更新分组复选框状态（全选/半选/不选）
+     */
+    function updateGroupCheckboxState(type) {
+      const group = document.querySelector(`.channel-group[data-group="${type}"]`);
+      if (!group) return;
+
+      const groupCheckbox = group.querySelector('.group-checkbox');
+      const itemCheckboxes = group.querySelectorAll('.group-list input[type="checkbox"]');
+      const checkedCount = group.querySelectorAll('.group-list input[type="checkbox"]:checked').length;
+      const totalCount = itemCheckboxes.length;
+
+      if (checkedCount === 0) {
+        groupCheckbox.checked = false;
+        groupCheckbox.indeterminate = false;
+      } else if (checkedCount === totalCount) {
+        groupCheckbox.checked = true;
+        groupCheckbox.indeterminate = false;
+      } else {
+        groupCheckbox.checked = false;
+        groupCheckbox.indeterminate = true;
+      }
+
+      // 更新分组头部 has-selection 状态
+      const header = group.querySelector('.group-header');
+      if (checkedCount > 0) {
+        header.classList.add('has-selection');
+      } else {
+        header.classList.remove('has-selection');
+      }
+    }
+
+    /**
+     * 更新分组计数器
+     */
+    function updateGroupCounter(type) {
+      const group = document.querySelector(`.channel-group[data-group="${type}"]`);
+      if (!group) return;
+
+      const checkedCount = group.querySelectorAll('.group-list input[type="checkbox"]:checked').length;
+      const selectedSpan = group.querySelector('.count-selected');
+      if (selectedSpan) {
+        selectedSpan.textContent = checkedCount;
+      }
+
+      updateGroupCheckboxState(type);
+    }
+
+    /**
+     * 更新总选中数量
+     */
+    function updateTotalChannelCount() {
+      const checkedCount = document.querySelectorAll('#drawerChannelsList input[type="checkbox"]:checked').length;
+      updateDrawerChannelCount(checkedCount);
     }
 
     /**
@@ -691,9 +840,16 @@
       } else {
         channelItem.classList.remove('selected');
       }
-      // 更新计数
-      const checkedCount = document.querySelectorAll('#drawerChannelsList input[type="checkbox"]:checked').length;
-      updateDrawerChannelCount(checkedCount);
+
+      // 获取所属分组并更新分组状态
+      const group = checkbox.closest('.channel-group');
+      if (group) {
+        const type = group.dataset.group;
+        updateGroupCounter(type);
+      }
+
+      // 更新总计数
+      updateTotalChannelCount();
     }
 
     /**
