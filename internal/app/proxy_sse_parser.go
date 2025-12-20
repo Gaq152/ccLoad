@@ -517,9 +517,14 @@ func extractUsage(payload map[string]any) map[string]any {
 		}
 	}
 	// OpenAI部分格式: {"response": {"usage": {...}}}
+	// Gemini CLI格式: {"response": {"usageMetadata": {...}}, "traceId": "..."}
 	if resp, ok := payload["response"].(map[string]any); ok {
 		if usage, ok := resp["usage"].(map[string]any); ok {
 			return usage
+		}
+		// Gemini CLI 端点返回 response.usageMetadata（非标准Gemini API格式）
+		if usageMetadata, ok := resp["usageMetadata"].(map[string]any); ok {
+			return usageMetadata
 		}
 	}
 	// Gemini格式: {"usageMetadata": {...}}
