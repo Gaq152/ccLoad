@@ -419,7 +419,11 @@ func (s *SQLStore) DeleteConfig(ctx context.Context, id int64) error {
 		if _, err := tx.ExecContext(ctx, `DELETE FROM channel_endpoints WHERE channel_id = ?`, id); err != nil {
 			return fmt.Errorf("delete channel_endpoints: %w", err)
 		}
-		// 4. 删除渠道本身
+		// 4. 删除令牌-渠道关联
+		if _, err := tx.ExecContext(ctx, `DELETE FROM token_channels WHERE channel_id = ?`, id); err != nil {
+			return fmt.Errorf("delete token_channels: %w", err)
+		}
+		// 5. 删除渠道本身
 		if _, err := tx.ExecContext(ctx, `DELETE FROM channels WHERE id = ?`, id); err != nil {
 			return fmt.Errorf("delete channel: %w", err)
 		}
