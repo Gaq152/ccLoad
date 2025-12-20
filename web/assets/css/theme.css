@@ -97,6 +97,10 @@
   --theme-btn-delete-hover-border: rgba(239, 68, 68, 0.5);
   --theme-btn-delete-hover-text: #fca5a5;
   --theme-btn-delete-active-bg-gradient: linear-gradient(135deg, rgba(239, 68, 68, 0.2) 0%, rgba(185, 28, 28, 0.2) 100%);
+
+  /* 日志行背景色 */
+  --theme-bg-row-error: rgba(242, 73, 92, 0.12);    /* 5xx: 浅红色 */
+  --theme-bg-row-warning: rgba(242, 204, 12, 0.08); /* 4xx: 浅黄色 */
 }
 
 /* === Light Mode === */
@@ -192,6 +196,10 @@
   --theme-btn-delete-hover-border: #fca5a5;
   --theme-btn-delete-hover-text: #dc2626;
   --theme-btn-delete-active-bg-gradient: linear-gradient(135deg, #fef2f2 0%, #fecaca 100%);
+
+  /* 日志行背景色 */
+  --theme-bg-row-error: rgba(239, 68, 68, 0.15);    /* 5xx: 浅红色 */
+  --theme-bg-row-warning: rgba(245, 158, 11, 0.12); /* 4xx: 浅黄色 */
 }
 
 /* === 过渡动画 === */
@@ -297,4 +305,24 @@ html.theme-transition *::after {
 ::view-transition-new(root) {
   animation: none;
   mix-blend-mode: normal;
+}
+
+/* === 日志行错误状态背景 === */
+.log-row-error {
+  background-color: var(--theme-bg-row-error) !important;
+}
+
+.log-row-warning {
+  background-color: var(--theme-bg-row-warning) !important;
+}
+
+/* 悬停时保持区分度 */
+.modern-table tbody tr.log-row-error:hover {
+  background-color: var(--theme-bg-row-error) !important;
+  filter: brightness(0.95);
+}
+
+.modern-table tbody tr.log-row-warning:hover {
+  background-color: var(--theme-bg-row-warning) !important;
+  filter: brightness(0.95);
 }
