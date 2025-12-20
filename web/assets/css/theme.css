@@ -291,3 +291,10 @@ html.theme-transition *::after {
     background-color: transparent;
   }
 }
+
+/* === View Transitions API (主题切换圆形扩展动画) === */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}

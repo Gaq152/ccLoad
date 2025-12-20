@@ -377,7 +377,7 @@
       const themeBtn = h('button', {
         class: 'theme-toggle',
         id: 'theme-toggle-btn',
-        onclick: () => window.ThemeManager && ThemeManager.toggle(),
+        onclick: (e) => window.ThemeManager && ThemeManager.toggle(e),
         title: '切换主题'
       });
 

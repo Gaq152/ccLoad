@@ -82,13 +82,50 @@ const ThemeManager = (() => {
     setTimeout(() => btn.classList.remove('rotating'), 500);
   }
 
-  // 切换主题
-  function toggle() {
+  // 切换主题（支持 View Transitions API 圆形扩展动画）
+  function toggle(event) {
     const current = getCurrentTheme();
     const next = current === 'dark' ? 'light' : 'dark';
 
-    localStorage.setItem(STORAGE_KEY, next);
-    applyTheme(next, true);
+    // 降级处理：浏览器不支持 View Transitions 或未传入事件对象
+    if (!document.startViewTransition || !event) {
+      localStorage.setItem(STORAGE_KEY, next);
+      applyTheme(next, true);
+      return;
+    }
+
+    // 获取点击位置坐标
+    const x = event.clientX;
+    const y = event.clientY;
+
+    // 计算覆盖整个屏幕所需的最大半径
+    const endRadius = Math.hypot(
+      Math.max(x, innerWidth - x),
+      Math.max(y, innerHeight - y)
+    );
+
+    // 启动视图过渡
+    const transition = document.startViewTransition(() => {
+      localStorage.setItem(STORAGE_KEY, next);
+      applyTheme(next, false); // 禁用原有 CSS 过渡，避免冲突
+    });
+
+    // 准备就绪后执行自定义剪裁动画
+    transition.ready.then(() => {
+      document.documentElement.animate(
+        {
+          clipPath: [
+            `circle(0px at ${x}px ${y}px)`,
+            `circle(${endRadius}px at ${x}px ${y}px)`
+          ]
+        },
+        {
+          duration: 500,
+          easing: 'ease-out',
+          pseudoElement: '::view-transition-new(root)'
+        }
+      );
+    });
   }
 
   // 设置指定主题
