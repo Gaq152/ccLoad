@@ -170,7 +170,8 @@ func (s *Server) applyTokenStatsUpdate(upd tokenStatsUpdate) {
 	updateCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	if err := s.store.UpdateTokenStats(updateCtx, upd.tokenHash, upd.isSuccess, upd.duration, upd.isStreaming, upd.firstByteTime, upd.promptTokens, upd.completionTokens, upd.cacheReadTokens, upd.cacheCreationTokens, upd.costUSD); err != nil {
+	err := s.store.UpdateTokenStats(updateCtx, upd.tokenHash, upd.isSuccess, upd.duration, upd.isStreaming, upd.firstByteTime, upd.promptTokens, upd.completionTokens, upd.cacheReadTokens, upd.cacheCreationTokens, upd.costUSD)
+	if err != nil {
 		log.Printf("ERROR: failed to update token stats for hash=%s: %v", upd.tokenHash, err)
 	}
 }

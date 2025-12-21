@@ -466,6 +466,20 @@
   color: var(--success-800);
 }
 
+/* 过期令牌按钮（灰色，带提示） */
+.btn-action.btn-expired {
+  color: var(--neutral-500);
+  border-color: var(--neutral-300);
+  background: var(--neutral-100);
+  cursor: help;
+}
+
+.btn-action.btn-expired:hover {
+  background: var(--neutral-200);
+  border-color: var(--neutral-400);
+  color: var(--neutral-600);
+}
+
 /* 禁用状态按钮（灰化） */
 .btn-action:disabled {
   opacity: 0.5;
