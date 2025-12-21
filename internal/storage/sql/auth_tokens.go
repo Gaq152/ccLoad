@@ -37,7 +37,8 @@ func (s *SQLStore) CreateAuthToken(ctx context.Context, token *model.AuthToken) 
 			prompt_tokens_total, completion_tokens_total, total_cost_usd
 		)
 		VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 0.0, 0.0, 0, 0, 0, 0, 0.0)
-	`, token.Token, token.Description, token.CreatedAt.UnixMilli(), expiresAt, lastUsedAt, boolToInt(token.IsActive), boolToInt(token.AllChannels))
+	`, token.Token, token.Description, token.CreatedAt.UnixMilli(), expiresAt, lastUsedAt,
+		boolToInt(token.IsActive), boolToInt(token.AllChannels))
 
 	if err != nil {
 		return fmt.Errorf("create auth token: %w", err)
@@ -321,7 +322,8 @@ func (s *SQLStore) UpdateAuthToken(ctx context.Context, token *model.AuthToken) 
 		    is_active = ?,
 		    all_channels = ?
 		WHERE id = ?
-	`, token.Description, expiresAt, lastUsedAt, boolToInt(token.IsActive), boolToInt(token.AllChannels), token.ID)
+	`, token.Description, expiresAt, lastUsedAt, boolToInt(token.IsActive), boolToInt(token.AllChannels),
+		token.ID)
 
 	if err != nil {
 		return fmt.Errorf("update auth token: %w", err)
@@ -486,6 +488,7 @@ func (s *SQLStore) UpdateTokenStats(
 	}
 
 	// 4. 写回数据库
+	now := time.Now()
 	_, err = tx.ExecContext(ctx, `
 		UPDATE auth_tokens
 		SET
@@ -514,7 +517,7 @@ func (s *SQLStore) UpdateTokenStats(
 		stats.CacheReadTokensTotal,
 		stats.CacheCreationTokensTotal,
 		stats.TotalCostUSD,
-		time.Now().UnixMilli(),
+		now.UnixMilli(),
 		tokenHash,
 	)
 

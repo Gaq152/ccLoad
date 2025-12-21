@@ -18,8 +18,8 @@ type AuthToken struct {
 	IsActive    bool      `json:"is_active"`              // 是否启用
 
 	// 渠道访问控制（2025-12新增）
-	AllChannels bool    `json:"all_channels"`           // 是否允许使用所有渠道（true=全部，false=仅指定渠道）
-	ChannelIDs  []int64 `json:"channel_ids,omitempty"`  // 允许使用的渠道ID列表（仅当 AllChannels=false 时有效）
+	AllChannels bool    `json:"all_channels"`          // 是否允许使用所有渠道（true=全部，false=仅指定渠道）
+	ChannelIDs  []int64 `json:"channel_ids,omitempty"` // 允许使用的渠道ID列表（仅当 AllChannels=false 时有效）
 
 	// 统计字段（2025-11新增）
 	SuccessCount   int64   `json:"success_count"`     // 成功调用次数
@@ -35,21 +35,24 @@ type AuthToken struct {
 	CacheReadTokensTotal     int64   `json:"cache_read_tokens_total"`     // 累计缓存读Token数
 	CacheCreationTokensTotal int64   `json:"cache_creation_tokens_total"` // 累计缓存写Token数
 	TotalCostUSD             float64 `json:"total_cost_usd"`              // 累计成本(美元)
+
+	// API 响应计算字段（不存储到数据库）
+	IsExpiredFlag bool `json:"is_expired"` // 是否已过期（API响应时计算）
 }
 
 // AuthTokenRangeStats 某个时间范围内的token统计（从logs表聚合，2025-12新增）
 type AuthTokenRangeStats struct {
-	SuccessCount         int64   `json:"success_count"`           // 成功次数
-	FailureCount         int64   `json:"failure_count"`           // 失败次数
-	PromptTokens         int64   `json:"prompt_tokens"`           // 输入Token总数
-	CompletionTokens     int64   `json:"completion_tokens"`       // 输出Token总数
-	CacheReadTokens      int64   `json:"cache_read_tokens"`       // 缓存读Token总数
-	CacheCreationTokens  int64   `json:"cache_creation_tokens"`   // 缓存写Token总数
-	TotalCost            float64 `json:"total_cost"`              // 总费用(美元)
-	StreamAvgTTFB        float64 `json:"stream_avg_ttfb"`         // 流式请求平均首字节时间
-	NonStreamAvgRT       float64 `json:"non_stream_avg_rt"`       // 非流式请求平均响应时间
-	StreamCount          int64   `json:"stream_count"`            // 流式请求计数
-	NonStreamCount       int64   `json:"non_stream_count"`        // 非流式请求计数
+	SuccessCount        int64   `json:"success_count"`         // 成功次数
+	FailureCount        int64   `json:"failure_count"`         // 失败次数
+	PromptTokens        int64   `json:"prompt_tokens"`         // 输入Token总数
+	CompletionTokens    int64   `json:"completion_tokens"`     // 输出Token总数
+	CacheReadTokens     int64   `json:"cache_read_tokens"`     // 缓存读Token总数
+	CacheCreationTokens int64   `json:"cache_creation_tokens"` // 缓存写Token总数
+	TotalCost           float64 `json:"total_cost"`            // 总费用(美元)
+	StreamAvgTTFB       float64 `json:"stream_avg_ttfb"`       // 流式请求平均首字节时间
+	NonStreamAvgRT      float64 `json:"non_stream_avg_rt"`     // 非流式请求平均响应时间
+	StreamCount         int64   `json:"stream_count"`          // 流式请求计数
+	NonStreamCount      int64   `json:"non_stream_count"`      // 非流式请求计数
 }
 
 // HashToken 计算令牌的SHA256哈希值
@@ -60,8 +63,9 @@ func HashToken(token string) string {
 }
 
 // IsExpired 检查令牌是否已过期
+// expires_at == nil 或 *expires_at == 0 表示永不过期
 func (t *AuthToken) IsExpired() bool {
-	if t.ExpiresAt == nil {
+	if t.ExpiresAt == nil || *t.ExpiresAt == 0 {
 		return false
 	}
 	return time.Now().UnixMilli() > *t.ExpiresAt

@@ -31,9 +31,10 @@ func (s *Server) HandleListAuthTokens(c *gin.Context) {
 		return
 	}
 
-	// 脱敏处理（仅显示前4后4字符）
+	// 脱敏处理 + 计算过期状态
 	for _, t := range tokens {
 		t.Token = model.MaskToken(t.Token)
+		t.IsExpiredFlag = t.IsExpired() // 计算是否过期，供前端使用
 	}
 
 	// 如果请求中包含range参数，则叠加时间范围统计（用于tokens.html页面）
@@ -114,6 +115,7 @@ func (s *Server) HandleCreateAuthToken(c *gin.Context) {
 		Description: req.Description,
 		ExpiresAt:   req.ExpiresAt,
 		IsActive:    true,
+		AllChannels: true, // 默认允许所有渠道
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -178,14 +180,34 @@ func (s *Server) HandleUpdateAuthToken(c *gin.Context) {
 	if req.Description != nil {
 		token.Description = *req.Description
 	}
-	if req.IsActive != nil {
-		token.IsActive = *req.IsActive
-	}
+	// ExpiresAt: 0 表示永不过期，需要显式更新
 	if req.ExpiresAt != nil {
-		token.ExpiresAt = req.ExpiresAt
+		if *req.ExpiresAt == 0 {
+			// 永不过期：设置为 nil（数据库存储为 0）
+			token.ExpiresAt = nil
+		} else {
+			token.ExpiresAt = req.ExpiresAt
+		}
 	}
 	if req.AllChannels != nil {
 		token.AllChannels = *req.AllChannels
+	}
+
+	// 处理启用/禁用请求
+	// 启用时检查过期时间（过期令牌不能启用）
+	if req.IsActive != nil {
+		if *req.IsActive {
+			// 尝试启用令牌：检查过期时间
+			if token.ExpiresAt != nil && *token.ExpiresAt > 0 {
+				if time.Now().UnixMilli() > *token.ExpiresAt {
+					RespondErrorMsg(c, http.StatusBadRequest, "令牌已过期，请先修改过期时间后再启用")
+					return
+				}
+			}
+			token.IsActive = true
+		} else {
+			token.IsActive = false
+		}
 	}
 
 	if err := s.store.UpdateAuthToken(ctx, token); err != nil {
@@ -201,8 +223,9 @@ func (s *Server) HandleUpdateAuthToken(c *gin.Context) {
 
 	log.Printf("[INFO] 更新API令牌: ID=%d", id)
 
-	// 返回脱敏后的令牌信息
+	// 返回脱敏后的令牌信息 + 计算过期状态
 	token.Token = model.MaskToken(token.Token)
+	token.IsExpiredFlag = token.IsExpired()
 	RespondJSON(c, http.StatusOK, token)
 }
 

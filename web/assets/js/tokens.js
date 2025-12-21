@@ -77,12 +77,15 @@
         if (toggleBtn) {
           const row = toggleBtn.closest('tr');
           const tokenId = row ? parseInt(row.dataset.tokenId) : null;
-          const action = toggleBtn.dataset.action;  // 'disable' 或 'enable'
+          const action = toggleBtn.dataset.action;
           if (tokenId && action) {
             if (action === 'disable') {
               showDisableConfirmModal(tokenId);
+            } else if (action === 'enable-expired') {
+              // 过期令牌：提示需要先修改过期时间
+              showToast('令牌已过期，请先编辑修改过期时间后再启用', 'error');
             } else {
-              enableToken(tokenId);  // 启用无需确认
+              enableToken(tokenId);  // 正常启用（包括超限令牌）
             }
           }
           return;
@@ -214,9 +217,12 @@
       // 播放图标 (用于启用按钮)
       const playIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polygon points="10 8 16 12 10 16 10 8"></polygon></svg>';
 
-      // 过期的令牌：按钮禁用
-      if (token.is_expired) {
-        return `<button class="btn-action btn-disable" disabled aria-label="令牌已过期">${pauseIcon}</button>`;
+      // 使用后端返回的 is_expired 字段（统一由后端计算）
+      const isExpired = token.is_expired;
+
+      // 过期的令牌：显示禁用按钮但带特殊提示
+      if (isExpired) {
+        return `<button class="btn-action btn-expired btn-toggle-status" data-action="enable-expired" aria-label="令牌已过期">${playIcon}</button>`;
       }
 
       // 根据 is_active 状态显示不同按钮
@@ -447,8 +453,9 @@
       }
 
       // 解析过期时间
+      // 注意：永不过期发送 0（不是 null），以便后端正确处理
       const expiryType = document.getElementById('drawerExpiryType').value;
-      let expiresAt = null;
+      let expiresAt = 0;  // 0 表示永不过期
       if (expiryType !== 'never') {
         if (expiryType === 'custom') {
           const customDate = document.getElementById('drawerCustomExpiry').value;
@@ -471,7 +478,10 @@
           const response = await fetchWithAuth(`${API_BASE}/auth-tokens`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ description, expires_at: expiresAt, is_active: isActive })
+            body: JSON.stringify({
+              description,
+              expires_at: expiresAt
+            })
           });
           if (!response.ok) throw new Error('创建失败');
           const data = await response.json();
@@ -489,10 +499,16 @@
         } else {
           // 更新令牌
           const tokenId = editingTokenId;
+          const updateData = {
+            description,
+            is_active: isActive,
+            expires_at: expiresAt
+          };
+
           const response = await fetchWithAuth(`${API_BASE}/auth-tokens/${tokenId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ description, is_active: isActive, expires_at: expiresAt })
+            body: JSON.stringify(updateData)
           });
           if (!response.ok) throw new Error('更新失败');
 
@@ -968,7 +984,7 @@
     }
 
     /**
-     * 启用令牌（无需确认）
+     * 启用令牌（带严格检查）
      */
     async function enableToken(id) {
       try {
@@ -977,7 +993,15 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ is_active: true })
         });
-        if (!response.ok) throw new Error('启用失败');
+
+        if (!response.ok) {
+          // 解析后端返回的错误信息
+          const errorData = await response.json();
+          const errorMsg = errorData.error || errorData.message || '启用失败';
+          showToast(errorMsg, 'error');
+          return;
+        }
+
         loadTokens();
         showToast('令牌已启用', 'success');
       } catch (error) {

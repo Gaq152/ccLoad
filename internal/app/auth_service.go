@@ -24,7 +24,7 @@ import (
 // 存储令牌的过期时间和启用状态，支持禁用检查和懒惰过期
 type TokenInfo struct {
 	ExpiresAt int64 // 过期时间（Unix毫秒，0=永不过期）
-	IsActive  bool  // 是否启用（false=管理员禁用）
+	IsActive  bool  // 是否启用
 }
 
 // TokenChannelConfig 令牌渠道访问配置（2025-12新增）
@@ -520,7 +520,7 @@ func (s *AuthService) ReloadAuthTokens() error {
 			expiresAt = *t.ExpiresAt
 		}
 
-		// 存储完整的令牌信息（包括启用状态）
+		// 存储完整的令牌信息
 		newTokens[t.Token] = &TokenInfo{
 			ExpiresAt: expiresAt,
 			IsActive:  t.IsActive,
