@@ -188,10 +188,11 @@
     // 性能优化：独立行渲染函数（用于复用）
     // ============================================================
     function createLogRow(entry) {
-      // 0. 客户端IP显示
-      const clientIPDisplay = entry.client_ip ?
-        escapeHtml(entry.client_ip) :
-        '<span style="color: var(--neutral-400);">-</span>';
+      // 0. 客户端IP和令牌名称显示
+      const ipPart = entry.client_ip ? escapeHtml(entry.client_ip) : '-';
+      const tokenPart = entry.auth_token_name ?
+        `<div style="font-size: 0.8em; color: var(--primary-600); margin-top: 2px;" title="令牌: ${escapeHtml(entry.auth_token_name)}">${escapeHtml(entry.auth_token_name)}</div>` : '';
+      const clientIPDisplay = `${ipPart}${tokenPart}`;
 
       // 1. 渠道信息显示（含 API URL）
       const configInfo = entry.channel_name ||
