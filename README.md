@@ -113,24 +113,24 @@ graph TB
 **使用预构建镜像（推荐）**：
 ```bash
 # 方式 1: 使用 docker-compose（最简单）
-curl -o docker-compose.yml https://raw.githubusercontent.com/caidaoli/ccLoad/master/docker-compose.yml
-curl -o .env https://raw.githubusercontent.com/caidaoli/ccLoad/master/.env.example
+curl -o docker-compose.yml https://raw.githubusercontent.com/Gaq152/ccLoad/master/docker-compose.yml
+curl -o .env https://raw.githubusercontent.com/Gaq152/ccLoad/master/.env.example
 # 编辑 .env 文件设置密码
 docker-compose up -d
 
 # 方式 2: 直接运行镜像
-docker pull ghcr.io/caidaoli/ccload:latest
+docker pull ghcr.io/gaq152/ccload:latest
 docker run -d --name ccload \
   -p 8080:8080 \
   -e CCLOAD_PASS=your_secure_password \
   -v ccload_data:/app/data \
-  ghcr.io/caidaoli/ccload:latest
+  ghcr.io/gaq152/ccload:latest
 ```
 
 **从源码构建**：
 ```bash
 # 克隆项目
-git clone https://github.com/caidaoli/ccLoad.git
+git clone https://github.com/Gaq152/ccLoad.git
 cd ccLoad
 
 # 使用 docker-compose 构建并运行
@@ -149,7 +149,7 @@ docker run -d --name ccload \
 
 ```bash
 # 克隆项目
-git clone https://github.com/caidaoli/ccLoad.git
+git clone https://github.com/Gaq152/ccLoad.git
 cd ccLoad
 
 # 构建项目（默认使用高性能 JSON 库）
@@ -168,7 +168,7 @@ make dev
 
 ```bash
 # 从 GitHub Releases 下载对应平台的二进制文件
-wget https://github.com/caidaoli/ccLoad/releases/latest/download/ccload-linux-amd64
+wget https://github.com/Gaq152/ccLoad/releases/latest/download/ccload-linux-amd64
 chmod +x ccload-linux-amd64
 ./ccload-linux-amd64
 ```
@@ -197,7 +197,7 @@ Hugging Face Spaces 提供免费的容器托管服务，支持 Docker 应用，�
    在 Space 仓库中创建 `Dockerfile` 文件，内容如下：
 
    ```dockerfile
-   FROM ghcr.io/caidaoli/ccload:latest
+   FROM ghcr.io/gaq152/ccload:latest
    ENV TZ=Asia/Shanghai
    ENV PORT=7860
    ENV SQLITE_PATH=/tmp/ccload.db
@@ -221,7 +221,7 @@ Hugging Face Spaces 提供免费的容器托管服务，支持 Docker 应用，�
 
    # 创建 Dockerfile
    cat > Dockerfile << 'EOF'
-   FROM ghcr.io/caidaoli/ccload:latest
+   FROM ghcr.io/gaq152/ccload:latest
    ENV TZ=Asia/Shanghai
    ENV PORT=7860
    ENV SQLITE_PATH=/tmp/ccload.db
@@ -334,7 +334,7 @@ Hugging Face Spaces 提供免费的容器托管服务，支持 Docker 应用，�
 由于使用预构建镜像，更新非常简单：
 
 **自动更新**:
-- 当官方发布新版本镜像（`ghcr.io/caidaoli/ccload:latest`）时
+- 当官方发布新版本镜像（`ghcr.io/gaq152/ccload:latest`）时
 - 在 Space 设置中点击 "Factory reboot" 即可自动拉取最新镜像
 - 或等待 Hugging Face 自动重启（通常 48 小时后）
 
@@ -348,7 +348,7 @@ git push
 **版本锁定**（可选）:
 如果需要锁定特定版本，修改 Dockerfile：
 ```dockerfile
-FROM ghcr.io/caidaoli/ccload:v0.2.0  # 指定版本号
+FROM ghcr.io/gaq152/ccload:v0.2.0  # 指定版本号
 ENV TZ=Asia/Shanghai
 ENV PORT=7860
 ENV SQLITE_PATH=/tmp/ccload.db
@@ -416,7 +416,7 @@ services:
       retries: 5
 
   ccload:
-    image: ghcr.io/caidaoli/ccload:latest
+    image: ghcr.io/gaq152/ccload:latest
     environment:
       CCLOAD_PASS: your_admin_password
       CCLOAD_MYSQL: "ccload:ccloadpass@tcp(mysql:3306)/ccload?charset=utf8mb4"
@@ -438,7 +438,7 @@ docker run -d --name ccload \
   -p 8080:8080 \
   -e CCLOAD_PASS=your_admin_password \
   -e CCLOAD_MYSQL="user:pass@tcp(mysql_host:3306)/ccload?charset=utf8mb4" \
-  ghcr.io/caidaoli/ccload:latest
+  ghcr.io/gaq152/ccload:latest
 ```
 
 服务启动后访问：
@@ -694,7 +694,7 @@ Claude-API-2,sk-ant-yyy,https://api.anthropic.com,5,"[\"claude-3-opus-20240229\"
 项目支持多架构 Docker 镜像：
 
 - **支持架构**：`linux/amd64`, `linux/arm64`
-- **镜像仓库**：`ghcr.io/caidaoli/ccload`
+- **镜像仓库**：`ghcr.io/gaq152/ccload`
 - **可用标签**：
   - `latest` - 最新稳定版本
   - `v0.1.0` - 具体版本号
@@ -705,14 +705,14 @@ Claude-API-2,sk-ant-yyy,https://api.anthropic.com,5,"[\"claude-3-opus-20240229\"
 
 ```bash
 # 拉取最新版本
-docker pull ghcr.io/caidaoli/ccload:latest
+docker pull ghcr.io/gaq152/ccload:latest
 
 # 拉取指定版本
-docker pull ghcr.io/caidaoli/ccload:v0.1.0
+docker pull ghcr.io/gaq152/ccload:v0.1.0
 
 # 指定架构（Docker 通常自动选择）
-docker pull --platform linux/amd64 ghcr.io/caidaoli/ccload:latest
-docker pull --platform linux/arm64 ghcr.io/caidaoli/ccload:latest
+docker pull --platform linux/amd64 ghcr.io/gaq152/ccload:latest
+docker pull --platform linux/arm64 ghcr.io/gaq152/ccload:latest
 ```
 
 ### 数据库结构

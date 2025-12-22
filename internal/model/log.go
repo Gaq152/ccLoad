@@ -48,6 +48,7 @@ type LogEntry struct {
 	APIKeyUsed    string   `json:"api_key_used"`     // 使用的API Key（查询时自动脱敏为 abcd...klmn 格式）
 	APIBaseURL    string   `json:"api_base_url"`     // 使用的API端点URL（新增2025-12）
 	AuthTokenID   int64    `json:"auth_token_id"`    // 客户端使用的API令牌ID（新增2025-12，0表示未使用token）
+	AuthTokenName string   `json:"auth_token_name,omitempty"` // 客户端使用的API令牌名称（查询时填充）
 	ClientIP      string   `json:"client_ip"`        // 客户端IP地址（新增2025-12）
 
 	// Token统计（2025-11新增，支持Claude API usage字段）
