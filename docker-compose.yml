@@ -2,10 +2,12 @@ version: '3.8'
 
 services:
   ccload:
-    image: ghcr.io/caidaoli/ccload:latest
+    image: ghcr.io/gaq152/ccload:latest
     container_name: ccload
     user: root
     restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "8080:8080"
     environment:

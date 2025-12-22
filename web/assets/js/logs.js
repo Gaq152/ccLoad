@@ -635,9 +635,10 @@
         const diffHours = Math.floor(diffMs / 3600000);
 
         // 相对时间显示
+        // 注：服务器与客户端时间可能有微小差异，允许5秒内的"未来时间"也显示为"刚刚"
         let relativeTime = '';
-        if (diffMs < 0) {
-          relativeTime = ''; // 未来时间不显示相对时间
+        if (diffMs < -5000) {
+          relativeTime = ''; // 超过5秒的未来时间不显示相对时间
         } else if (diffMinutes < 1) {
           relativeTime = '刚刚';
         } else if (diffMinutes < 60) {

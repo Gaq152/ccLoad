@@ -42,6 +42,39 @@ func (s *SQLStore) fetchChannelNamesBatch(ctx context.Context, channelIDs map[in
 	return channelNames, nil
 }
 
+// fetchTokenNamesBatch 批量查询令牌名称（description字段）
+// 性能提升：N+1查询 → 1次全表查询 + 内存过滤
+// 输入：令牌ID集合 map[int64]bool
+// 输出：ID→名称映射 map[int64]string
+func (s *SQLStore) fetchTokenNamesBatch(ctx context.Context, tokenIDs map[int64]bool) (map[int64]string, error) {
+	if len(tokenIDs) == 0 {
+		return make(map[int64]string), nil
+	}
+
+	// 查询所有令牌（全表扫描，令牌数通常<1000）
+	rows, err := s.db.QueryContext(ctx, "SELECT id, description FROM auth_tokens")
+	if err != nil {
+		return nil, fmt.Errorf("query all token names: %w", err)
+	}
+	defer rows.Close()
+
+	// 解析并过滤需要的令牌
+	tokenNames := make(map[int64]string, len(tokenIDs))
+	for rows.Next() {
+		var id int64
+		var name string
+		if err := rows.Scan(&id, &name); err != nil {
+			continue // 跳过扫描错误的行
+		}
+		// 只保留需要的令牌
+		if tokenIDs[id] {
+			tokenNames[id] = name
+		}
+	}
+
+	return tokenNames, nil
+}
+
 // fetchChannelIDsByNameFilter 根据精确/模糊名称获取渠道ID集合
 func (s *SQLStore) fetchChannelIDsByNameFilter(ctx context.Context, exact string, like string) ([]int64, error) {
 	// 构建查询

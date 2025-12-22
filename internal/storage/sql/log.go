@@ -228,6 +228,28 @@ func (s *SQLStore) ListLogs(ctx context.Context, since time.Time, limit, offset 
 		}
 	}
 
+	// 批量查询令牌名称
+	tokenIDsToFetch := make(map[int64]bool)
+	for _, e := range out {
+		if e.AuthTokenID != 0 {
+			tokenIDsToFetch[e.AuthTokenID] = true
+		}
+	}
+	if len(tokenIDsToFetch) > 0 {
+		tokenNames, err := s.fetchTokenNamesBatch(ctx, tokenIDsToFetch)
+		if err != nil {
+			log.Printf("[WARN]  批量查询令牌名称失败: %v", err)
+			tokenNames = make(map[int64]string)
+		}
+		for _, e := range out {
+			if e.AuthTokenID != 0 {
+				if name, ok := tokenNames[e.AuthTokenID]; ok {
+					e.AuthTokenName = name
+				}
+			}
+		}
+	}
+
 	return out, nil
 }
 
@@ -368,6 +390,28 @@ func (s *SQLStore) ListLogsRange(ctx context.Context, since, until time.Time, li
 			if e.ChannelID != 0 {
 				if name, ok := channelNames[e.ChannelID]; ok {
 					e.ChannelName = name
+				}
+			}
+		}
+	}
+
+	// 批量查询令牌名称
+	tokenIDsToFetch := make(map[int64]bool)
+	for _, e := range out {
+		if e.AuthTokenID != 0 {
+			tokenIDsToFetch[e.AuthTokenID] = true
+		}
+	}
+	if len(tokenIDsToFetch) > 0 {
+		tokenNames, err := s.fetchTokenNamesBatch(ctx, tokenIDsToFetch)
+		if err != nil {
+			log.Printf("[WARN]  批量查询令牌名称失败: %v", err)
+			tokenNames = make(map[int64]string)
+		}
+		for _, e := range out {
+			if e.AuthTokenID != 0 {
+				if name, ok := tokenNames[e.AuthTokenID]; ok {
+					e.AuthTokenName = name
 				}
 			}
 		}
