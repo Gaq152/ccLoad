@@ -536,7 +536,7 @@ func (s *Server) forwardAttempt(
 	// 处理网络错误或异常响应（如空响应）
 	// [INFO] 修复：handleResponse可能返回err即使StatusCode=200（例如Content-Length=0）
 	if err != nil {
-		return s.handleNetworkError(ctx, cfg, keyIndex, actualModel, selectedKey, reqCtx.tokenID, reqCtx.clientIP, duration, err)
+		return s.handleNetworkError(ctx, cfg, keyIndex, actualModel, selectedKey, reqCtx.tokenID, reqCtx.tokenName, reqCtx.clientIP, duration, err)
 	}
 
 	// 处理成功响应（仅当err==nil且状态码2xx时）
@@ -553,7 +553,7 @@ func (s *Server) forwardAttempt(
 			s.invalidateChannelRelatedCache(cfg.ID)
 			// 记录失败日志
 			s.AddLogAsync(buildLogEntry(actualModel, cfg.ID, cfg.Name, 200,
-				duration, reqCtx.isStreaming, selectedKey, cfg.URL, reqCtx.tokenID, reqCtx.clientIP, res, "SSE error event"))
+				duration, reqCtx.isStreaming, selectedKey, cfg.URL, reqCtx.tokenID, reqCtx.tokenName, reqCtx.clientIP, res, "SSE error event"))
 			// 返回成功（因为已经写出了200状态码和部分数据）
 			return &proxyResult{
 				status:    200,
@@ -576,7 +576,7 @@ func (s *Server) forwardAttempt(
 			s.invalidateChannelRelatedCache(cfg.ID)
 			// 记录失败日志
 			s.AddLogAsync(buildLogEntry(actualModel, cfg.ID, cfg.Name, util.StatusStreamIncomplete,
-				duration, reqCtx.isStreaming, selectedKey, cfg.URL, reqCtx.tokenID, reqCtx.clientIP, res, res.StreamDiagMsg))
+				duration, reqCtx.isStreaming, selectedKey, cfg.URL, reqCtx.tokenID, reqCtx.tokenName, reqCtx.clientIP, res, res.StreamDiagMsg))
 			// 返回成功（因为已经写出了200状态码和部分数据）
 			return &proxyResult{
 				status:    200,

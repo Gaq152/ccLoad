@@ -52,6 +52,7 @@ type AuthService struct {
 	// [FIX] 2025-12: 存储TokenInfo包含过期时间和启用状态，支持禁用检查和懒惰过期
 	authTokens        map[string]*TokenInfo         // Token哈希 → 令牌信息（过期时间+启用状态）
 	authTokenIDs      map[string]int64              // Token哈希 → Token ID 映射（用于日志记录，2025-12新增）
+	authTokenNames    map[string]string             // Token哈希 → 令牌名称（用于SSE日志显示，2025-12新增）
 	authTokenChannels map[int64]*TokenChannelConfig // Token ID → 渠道访问配置（2025-12新增）
 	authTokensMux     sync.RWMutex                  // 并发保护（支持热更新）
 
@@ -85,6 +86,7 @@ func NewAuthService(
 		validTokens:       make(map[string]time.Time),
 		authTokens:        make(map[string]*TokenInfo),
 		authTokenIDs:      make(map[string]int64),
+		authTokenNames:    make(map[string]string),
 		authTokenChannels: make(map[int64]*TokenChannelConfig),
 		loginRateLimiter:  loginRateLimiter,
 		store:             store,
@@ -326,6 +328,7 @@ func (s *AuthService) RequireAPIAuth() gin.HandlerFunc {
 		s.authTokensMux.RLock()
 		tokenInfo, exists := s.authTokens[tokenHash]
 		tokenID, hasTokenID := s.authTokenIDs[tokenHash]
+		tokenName := s.authTokenNames[tokenHash]
 		s.authTokensMux.RUnlock()
 
 		if !exists || tokenInfo == nil {
@@ -348,6 +351,7 @@ func (s *AuthService) RequireAPIAuth() gin.HandlerFunc {
 			s.authTokensMux.Lock()
 			delete(s.authTokens, tokenHash)
 			delete(s.authTokenIDs, tokenHash)
+			delete(s.authTokenNames, tokenHash)
 			s.authTokensMux.Unlock()
 
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "token expired"})
@@ -355,10 +359,14 @@ func (s *AuthService) RequireAPIAuth() gin.HandlerFunc {
 			return
 		}
 
-		// 将tokenHash和tokenID存储到context，供后续统计使用（2025-11新增tokenHash, 2025-12新增tokenID）
+		// 将tokenHash、tokenID、tokenName存储到context，供后续统计使用
+		// 2025-11新增tokenHash, 2025-12新增tokenID和tokenName（用于SSE日志实时显示）
 		c.Set("token_hash", tokenHash)
 		if hasTokenID {
 			c.Set("token_id", tokenID)
+		}
+		if tokenName != "" {
+			c.Set("token_name", tokenName)
 		}
 
 		// 异步更新last_used_at（发送到受控worker，不阻塞请求）
@@ -506,6 +514,7 @@ func (s *AuthService) ReloadAuthTokens() error {
 	// 构建新的令牌映射（存储TokenInfo包含过期时间和启用状态）
 	newTokens := make(map[string]*TokenInfo, len(tokens))
 	newTokenIDs := make(map[string]int64, len(tokens))
+	newTokenNames := make(map[string]string, len(tokens))
 	newTokenChannels := make(map[int64]*TokenChannelConfig, len(tokens))
 
 	// 统计启用/禁用令牌数量
@@ -526,6 +535,7 @@ func (s *AuthService) ReloadAuthTokens() error {
 			IsActive:  t.IsActive,
 		}
 		newTokenIDs[t.Token] = t.ID
+		newTokenNames[t.Token] = t.Description // 令牌名称（用于SSE日志显示）
 
 		if t.IsActive {
 			activeCount++
@@ -562,6 +572,7 @@ func (s *AuthService) ReloadAuthTokens() error {
 	s.authTokensMux.Lock()
 	s.authTokens = newTokens
 	s.authTokenIDs = newTokenIDs
+	s.authTokenNames = newTokenNames
 	s.authTokenChannels = newTokenChannels
 	s.authTokensMux.Unlock()
 

@@ -68,6 +68,7 @@ type proxyRequestContext struct {
 	isStreaming   bool
 	tokenHash     string // Token哈希值（用于统计，2025-11新增）
 	tokenID       int64  // Token ID（用于日志记录，2025-12新增，0表示未使用token）
+	tokenName     string // Token名称（用于SSE日志实时显示，2025-12新增）
 	clientIP      string // 客户端IP地址（用于日志记录，2025-12新增）
 
 	// Codex 专用字段（2025-12新增）
@@ -352,24 +353,25 @@ func maskAPIKey(key string) string {
 
 // buildLogEntry 构建日志条目（消除重复代码，遵循DRY原则）
 func buildLogEntry(originalModel string, channelID int64, channelName string, statusCode int,
-	duration float64, isStreaming bool, apiKeyUsed string, apiBaseURL string, authTokenID int64, clientIP string,
+	duration float64, isStreaming bool, apiKeyUsed string, apiBaseURL string, authTokenID int64, authTokenName string, clientIP string,
 	res *fwResult, errMsg string) *model.LogEntry {
 
 	// API Key 脱敏（SSE 推送和数据库写入都需要脱敏）
 	maskedKey := maskAPIKey(apiKeyUsed)
 
 	entry := &model.LogEntry{
-		Time:        model.JSONTime{Time: time.Now()},
-		Model:       originalModel,
-		ChannelID:   channelID,
-		ChannelName: channelName,
-		StatusCode:  statusCode,
-		Duration:    duration,
-		IsStreaming: isStreaming,
-		APIKeyUsed:  maskedKey,
-		APIBaseURL:  apiBaseURL,
-		AuthTokenID: authTokenID,
-		ClientIP:    clientIP,
+		Time:          model.JSONTime{Time: time.Now()},
+		Model:         originalModel,
+		ChannelID:     channelID,
+		ChannelName:   channelName,
+		StatusCode:    statusCode,
+		Duration:      duration,
+		IsStreaming:   isStreaming,
+		APIKeyUsed:    maskedKey,
+		APIBaseURL:    apiBaseURL,
+		AuthTokenID:   authTokenID,
+		AuthTokenName: authTokenName,
+		ClientIP:      clientIP,
 	}
 
 	if errMsg != "" {

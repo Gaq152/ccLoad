@@ -189,6 +189,8 @@ func (s *Server) HandleProxyRequest(c *gin.Context) {
 	tokenHashStr, _ := tokenHash.(string)
 	tokenID, _ := c.Get("token_id")
 	tokenIDInt64, _ := tokenID.(int64)
+	tokenName, _ := c.Get("token_name")
+	tokenNameStr, _ := tokenName.(string)
 
 	// 根据令牌的渠道访问配置过滤候选渠道（2025-12新增）
 	cands = s.filterByTokenChannels(cands, tokenIDInt64)
@@ -216,6 +218,7 @@ func (s *Server) HandleProxyRequest(c *gin.Context) {
 		isStreaming:   isStreaming,
 		tokenHash:     tokenHashStr,
 		tokenID:       tokenIDInt64,
+		tokenName:     tokenNameStr,
 		clientIP:      c.ClientIP(),
 	}
 
