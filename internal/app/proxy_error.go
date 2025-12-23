@@ -81,15 +81,16 @@ func (s *Server) handleNetworkError(
 	keyIndex int,
 	actualModel string, // [INFO] 重定向后的实际模型名称
 	selectedKey string,
-	authTokenID int64, // [INFO] API令牌ID（用于日志记录，2025-12新增）
-	clientIP string,   // [INFO] 客户端IP（用于日志记录，2025-12新增）
+	authTokenID int64,   // [INFO] API令牌ID（用于日志记录，2025-12新增）
+	authTokenName string, // [INFO] API令牌名称（用于SSE日志显示，2025-12新增）
+	clientIP string,     // [INFO] 客户端IP（用于日志记录，2025-12新增）
 	duration float64,
 	err error,
 ) (*proxyResult, bool, bool) {
 	statusCode, _, _ := util.ClassifyError(err)
 	// [INFO] 修复：使用 actualModel 而非 reqCtx.originalModel
 	s.AddLogAsync(buildLogEntry(actualModel, cfg.ID, cfg.Name, statusCode,
-		duration, false, selectedKey, cfg.URL, authTokenID, clientIP, nil, err.Error()))
+		duration, false, selectedKey, cfg.URL, authTokenID, authTokenName, clientIP, nil, err.Error()))
 
 	action, _ := s.handleProxyError(ctx, cfg, keyIndex, nil, err)
 	if action == cooldown.ActionReturnClient {
@@ -291,7 +292,7 @@ func (s *Server) handleProxySuccess(
 
 	// 记录成功日志
 	s.AddLogAsync(buildLogEntry(actualModel, cfg.ID, cfg.Name, res.Status,
-		duration, reqCtx.isStreaming, selectedKey, cfg.URL, reqCtx.tokenID, reqCtx.clientIP, res, ""))
+		duration, reqCtx.isStreaming, selectedKey, cfg.URL, reqCtx.tokenID, reqCtx.tokenName, reqCtx.clientIP, res, ""))
 
 	// 异步更新Token统计
 	s.updateTokenStatsAsync(reqCtx.tokenHash, true, duration, reqCtx.isStreaming, res, actualModel)
@@ -344,7 +345,7 @@ func (s *Server) handleProxyErrorResponse(
 	}
 
 	s.AddLogAsync(buildLogEntry(actualModel, cfg.ID, cfg.Name, res.Status,
-		duration, reqCtx.isStreaming, selectedKey, cfg.URL, reqCtx.tokenID, reqCtx.clientIP, res, errMsg))
+		duration, reqCtx.isStreaming, selectedKey, cfg.URL, reqCtx.tokenID, reqCtx.tokenName, reqCtx.clientIP, res, errMsg))
 
 	// 异步更新Token统计（失败请求不计费）
 	s.updateTokenStatsAsync(reqCtx.tokenHash, false, duration, reqCtx.isStreaming, res, actualModel)
