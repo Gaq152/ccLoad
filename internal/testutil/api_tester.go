@@ -388,12 +388,27 @@ func (t *GeminiTester) Build(cfg *model.Config, apiKey string, req *TestChannelR
 	// 根据预设类型和端点选择不同的 API 格式
 	if cfg.Preset == "official" && isCLIEndpoint {
 		// Gemini CLI 官方预设（cloudcode-pa 端点）：使用 v1internal 端点和 CLI 格式
-		// 转换请求体为 CLI 格式
+		// CLI 格式的 request 内部不需要 model 字段（model 在外层）
+		cliRequest := map[string]any{
+			"contents": []map[string]any{
+				{
+					"role": "user",
+					"parts": []map[string]any{
+						{"text": testContent},
+					},
+				},
+			},
+			"generationConfig": map[string]any{
+				"temperature": 1,
+				"topP":        0.95,
+				"topK":        64,
+			},
+		}
 		cliBody := map[string]any{
 			"model":          req.Model,
 			"project":        geminiCLIProjectID,
 			"user_prompt_id": generateUUID() + "########0",
-			"request":        msg, // 嵌套原始请求
+			"request":        cliRequest,
 		}
 		body, err = sonic.Marshal(cliBody)
 		if err != nil {
