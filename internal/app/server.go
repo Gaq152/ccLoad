@@ -202,6 +202,10 @@ func NewServer(store storage.Store) *Server {
 	s.wg.Add(1)
 	go s.tokenCleanupLoop() // 定期清理过期Token
 
+	// 启动 OAuth Token 定时刷新服务（Codex/Gemini 官方预设）
+	s.wg.Add(1)
+	go s.oauthRefreshLoop()
+
 	// 启动后台端点测速服务（0=禁用）
 	autoTestInterval := configService.GetInt("auto_test_endpoints_interval", 30)
 	s.endpointTester = NewEndpointTester(s, autoTestInterval)

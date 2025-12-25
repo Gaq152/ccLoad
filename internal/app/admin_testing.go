@@ -61,23 +61,60 @@ func (s *Server) HandleChannelTest(c *gin.Context) {
 		keyIndex = 0 // 默认使用第一个 Key
 	}
 
-	// [FIX] Codex/Gemini 官方预设使用 AccessToken 字段，而非 APIKey 字段
+	// [FIX] Codex/Gemini 官方预设使用 AccessToken 字段，并检查是否需要刷新
 	var selectedKey string
 	channelType := cfg.GetChannelType()
 	isOAuthPreset := cfg.Preset == "official" && (channelType == util.ChannelTypeCodex || channelType == util.ChannelTypeGemini)
 
 	if isOAuthPreset {
-		selectedKey = apiKeys[keyIndex].AccessToken
-		if selectedKey == "" {
-			channelLabel := "Codex"
-			if channelType == util.ChannelTypeGemini {
-				channelLabel = "Gemini"
+		apiKeyData := apiKeys[keyIndex]
+
+		// 根据渠道类型调用对应的刷新逻辑
+		if channelType == util.ChannelTypeCodex {
+			// 从 api_key 字段解析 OAuth Token
+			_, oauthToken, isOAuth := ParseAPIKeyOrOAuth(apiKeyData.APIKey)
+			if !isOAuth || oauthToken == nil {
+				RespondJSON(c, http.StatusOK, gin.H{
+					"success": false,
+					"error":   "Codex 官方预设未配置有效的 OAuth Token，请先完成授权",
+				})
+				return
 			}
-			RespondJSON(c, http.StatusOK, gin.H{
-				"success": false,
-				"error":   channelLabel + " 官方预设未配置 OAuth Token，请先完成授权",
-			})
-			return
+
+			// 检查并刷新 Token（提前 5 分钟刷新）
+			refreshedKey, _, err := s.RefreshCodexTokenIfNeeded(c.Request.Context(), id, keyIndex, oauthToken)
+			if err != nil {
+				log.Printf("[ERROR] Codex Token 刷新失败 (channel=%d, key=%d): %v", id, keyIndex, err)
+				RespondJSON(c, http.StatusOK, gin.H{
+					"success": false,
+					"error":   "Codex Token 刷新失败: " + err.Error(),
+				})
+				return
+			}
+			selectedKey = refreshedKey
+
+		} else { // Gemini
+			// 从 api_key 字段解析 OAuth Token
+			_, oauthToken, isOAuth := ParseGeminiAPIKeyOrOAuth(apiKeyData.APIKey)
+			if !isOAuth || oauthToken == nil {
+				RespondJSON(c, http.StatusOK, gin.H{
+					"success": false,
+					"error":   "Gemini 官方预设未配置有效的 OAuth Token，请先完成授权",
+				})
+				return
+			}
+
+			// 检查并刷新 Token（提前 5 分钟刷新）
+			refreshedKey, _, err := s.RefreshGeminiTokenIfNeeded(c.Request.Context(), id, keyIndex, oauthToken)
+			if err != nil {
+				log.Printf("[ERROR] Gemini Token 刷新失败 (channel=%d, key=%d): %v", id, keyIndex, err)
+				RespondJSON(c, http.StatusOK, gin.H{
+					"success": false,
+					"error":   "Gemini Token 刷新失败: " + err.Error(),
+				})
+				return
+			}
+			selectedKey = refreshedKey
 		}
 	} else {
 		selectedKey = apiKeys[keyIndex].APIKey
@@ -337,8 +374,18 @@ func (s *Server) testChannelAPI(cfg *model.Config, apiKey string, testReq *testu
 				}
 			}
 
-			// Gemini: candidates[0].content.parts[0].text
-			if candidates, ok := obj["candidates"].([]any); ok && len(candidates) > 0 {
+			// Gemini: 支持两种格式
+			// 1. 标准 API: candidates[0].content.parts[0].text
+			// 2. CLI 格式: response.candidates[0].content.parts[0].text
+			var candidates []any
+			if resp, ok := obj["response"].(map[string]any); ok {
+				// CLI 格式：从 response 内部获取 candidates
+				candidates, _ = resp["candidates"].([]any)
+			} else {
+				// 标准格式：直接获取 candidates
+				candidates, _ = obj["candidates"].([]any)
+			}
+			if len(candidates) > 0 {
 				if candidate, ok := candidates[0].(map[string]any); ok {
 					if content, ok := candidate["content"].(map[string]any); ok {
 						if parts, ok := content["parts"].([]any); ok && len(parts) > 0 {
