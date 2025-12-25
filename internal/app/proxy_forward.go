@@ -51,6 +51,9 @@ func (s *Server) buildProxyRequest(
 		if rawQuery != "" {
 			upstreamURL += "?" + rawQuery
 		}
+	} else if cfg.ChannelType == "gemini" && cfg.OpenAICompat {
+		// Gemini OpenAI 兼容模式：使用原始请求路径（/v1/chat/completions）
+		upstreamURL = buildUpstreamURL(cfg, requestPath, rawQuery)
 	} else if cfg.ChannelType == "gemini" && cfg.Preset == "official" {
 		// Gemini 官方预设：根据端点类型决定是否转换
 		if IsGeminiCLIEndpoint(cfg.URL) {
@@ -84,6 +87,9 @@ func (s *Server) buildProxyRequest(
 	} else if isGeminiCLI {
 		// Gemini CLI 官方预设（cloudcode-pa 端点）使用专用头注入
 		InjectGeminiCLIHeaders(req, apiKey)
+	} else if cfg.ChannelType == "gemini" && cfg.OpenAICompat {
+		// Gemini OpenAI 兼容模式：使用 Bearer 认证
+		req.Header.Set("Authorization", "Bearer "+apiKey)
 	} else if cfg.ChannelType == "gemini" && cfg.Preset == "official" {
 		// Gemini 标准 API 端点（generativelanguage 等）使用 OAuth Bearer 认证
 		// 与 CLI 端点不同，标准 API 不需要路径/请求体转换，只需替换认证方式

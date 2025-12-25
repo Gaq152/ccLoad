@@ -158,6 +158,18 @@
               </div>
             </div>
           </div>
+
+          <!-- OpenAI 兼容模式开关（仅 Gemini 自定义预设显示） -->
+          <div id="openaiCompatContainer" style="display: none; margin-top: 8px; padding-left: 80px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <label style="margin: 0; font-size: 13px; white-space: nowrap; color: var(--neutral-700);">兼容模式</label>
+              <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 13px;">
+                <input type="checkbox" id="openaiCompatCheckbox" onchange="handleOpenAICompatChange(this.checked)">
+                <span>OpenAI 格式</span>
+                <span style="color: var(--neutral-500); font-size: 12px;">（使用 /v1/chat/completions 路径）</span>
+              </label>
+            </div>
+          </div>
         </div>
 
         <div class="form-group">

@@ -150,6 +150,12 @@ async function editChannel(id) {
     // 应用渠道类型切换（会显示预设选项并应用当前预设）
     handleChannelTypeChange(channelType);
 
+    // 设置 OpenAI 兼容模式开关状态（仅 Gemini 自定义预设）
+    const openaiCompatCheckbox = document.getElementById('openaiCompatCheckbox');
+    if (openaiCompatCheckbox) {
+      openaiCompatCheckbox.checked = channel.openai_compat || false;
+    }
+
     // 加载 OAuth Token UI
     if (preset === 'official' && apiKeys.length > 0) {
       const firstKey = apiKeys[0];
@@ -310,6 +316,10 @@ async function saveChannel(event) {
   // channelType 已在函数开头定义
   const keyStrategy = document.querySelector('input[name="keyStrategy"]:checked')?.value || 'sequential';
 
+  // OpenAI 兼容模式（仅 Gemini 自定义预设使用）
+  const openaiCompat = channelType === 'gemini' && preset !== 'official' &&
+    document.getElementById('openaiCompatCheckbox')?.checked || false;
+
   const formData = {
     name: document.getElementById('channelName').value.trim(),
     url: primaryUrl, // 使用第一个端点作为主URL
@@ -326,7 +336,9 @@ async function saveChannel(event) {
     access_token: accessToken,
     id_token: idToken,
     refresh_token: refreshToken,
-    token_expires_at: tokenExpiresAt
+    token_expires_at: tokenExpiresAt,
+    // OpenAI 兼容模式
+    openai_compat: openaiCompat
   };
 
   // 验证必填字段（OAuth 渠道官方预设使用 OAuth，不需要 api_key）
@@ -1481,9 +1493,15 @@ function handlePresetChange(preset) {
   const geminiOAuthSection = document.getElementById('geminiOAuthSection');
   const codexQuotaTemplateBtn = document.getElementById('codexQuotaTemplateBtn');
   const quotaTemplateHint = document.getElementById('quotaTemplateHint');
+  const openaiCompatContainer = document.getElementById('openaiCompatContainer');
 
   // 预设模式下隐藏手动切换开关（预设决定了认证方式）
   if (codexAuthSwitch) codexAuthSwitch.style.display = 'none';
+
+  // OpenAI 兼容模式开关：仅在 Gemini 自定义预设时显示
+  if (openaiCompatContainer) {
+    openaiCompatContainer.style.display = (channelType === 'gemini' && !isOfficial) ? 'block' : 'none';
+  }
 
   if (isOfficial) {
     // 官方预设：自动填写官方 URL
@@ -2256,4 +2274,13 @@ function extractEmailFromGoogleIdToken(idToken) {
   } catch (e) {
     return null;
   }
+}
+
+/**
+ * 处理 OpenAI 兼容模式开关变化
+ * @param {boolean} checked - 开关状态
+ */
+function handleOpenAICompatChange(checked) {
+  // 当前仅记录状态变化，保存时读取 checkbox 状态
+  console.log('[OpenAI Compat] 模式切换:', checked ? '启用' : '禁用');
 }
