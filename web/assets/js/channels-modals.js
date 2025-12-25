@@ -245,51 +245,52 @@ async function saveChannel(event) {
   let validKeys;
   const isOAuthChannel = channelType === 'codex' || channelType === 'gemini';
 
-  if (isOAuthChannel) {
+  // 收集预设类型（OAuth 渠道和 Anthropic 的 Antigravity 预设）
+  if (isOAuthChannel || channelType === 'anthropic') {
     preset = document.querySelector('input[name="channelPreset"]:checked')?.value || 'custom';
+  }
 
-    if (preset === 'official') {
-      // 官方预设：使用 OAuth Token
-      // Codex 使用 channelApiKey，Gemini 使用 geminiApiKey
-      const tokenInputId = channelType === 'codex' ? 'channelApiKey' : 'geminiApiKey';
-      const tokenJson = document.getElementById(tokenInputId)?.value;
-      const channelLabel = channelType === 'codex' ? 'Codex' : 'Gemini';
+  if (isOAuthChannel && preset === 'official') {
+    // 官方预设：使用 OAuth Token
+    // Codex 使用 channelApiKey，Gemini 使用 geminiApiKey
+    const tokenInputId = channelType === 'codex' ? 'channelApiKey' : 'geminiApiKey';
+    const tokenJson = document.getElementById(tokenInputId)?.value;
+    const channelLabel = channelType === 'codex' ? 'Codex' : 'Gemini';
 
-      if (!tokenJson || !tokenJson.startsWith('{')) {
-        if (window.showError) {
-          showError(`请先完成 ${channelLabel} OAuth 授权`);
-        } else {
-          alert(`请先完成 ${channelLabel} OAuth 授权`);
-        }
-        return;
+    if (!tokenJson || !tokenJson.startsWith('{')) {
+      if (window.showError) {
+        showError(`请先完成 ${channelLabel} OAuth 授权`);
+      } else {
+        alert(`请先完成 ${channelLabel} OAuth 授权`);
       }
+      return;
+    }
 
-      // 解析 OAuth Token JSON
-      try {
-        const token = JSON.parse(tokenJson);
-        accessToken = token.access_token || '';
-        idToken = token.id_token || '';
-        refreshToken = token.refresh_token || '';
-        tokenExpiresAt = token.expires_at || 0;
-      } catch (e) {
-        if (window.showError) {
-          showError('OAuth Token 格式错误');
-        }
-        return;
+    // 解析 OAuth Token JSON
+    try {
+      const token = JSON.parse(tokenJson);
+      accessToken = token.access_token || '';
+      idToken = token.id_token || '';
+      refreshToken = token.refresh_token || '';
+      tokenExpiresAt = token.expires_at || 0;
+    } catch (e) {
+      if (window.showError) {
+        showError('OAuth Token 格式错误');
       }
+      return;
+    }
 
-      validKeys = []; // 官方预设不使用 api_key 字段
-    } else {
-      // 自定义预设：使用 API Key
-      validKeys = inlineKeyTableData.filter(k => k && k.trim());
-      if (validKeys.length === 0) {
-        if (window.showError) {
-          showError('请至少添加一个 API Key');
-        } else {
-          alert('请至少添加一个 API Key');
-        }
-        return;
+    validKeys = []; // 官方预设不使用 api_key 字段
+  } else if (isOAuthChannel) {
+    // OAuth 渠道自定义预设：使用 API Key
+    validKeys = inlineKeyTableData.filter(k => k && k.trim());
+    if (validKeys.length === 0) {
+      if (window.showError) {
+        showError('请至少添加一个 API Key');
+      } else {
+        alert('请至少添加一个 API Key');
       }
+      return;
     }
   } else {
     // 其他渠道：使用标准 API Key 列表
