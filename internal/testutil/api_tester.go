@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	_ "embed"
 	"fmt"
-	"log"
 	"net/http"
 	"strings"
 
@@ -415,9 +414,6 @@ func (t *GeminiTester) Build(cfg *model.Config, apiKey string, req *TestChannelR
 			return "", nil, nil, err
 		}
 
-		// [DEBUG] 打印请求体用于调试
-		log.Printf("[DEBUG] GeminiTester CLI Body: %s", string(body))
-
 		// 使用 Gemini CLI 端点
 		fullURL = geminiCLIEndpoint + "/v1internal:streamGenerateContent?alt=sse"
 
@@ -457,7 +453,6 @@ func (t *GeminiTester) Build(cfg *model.Config, apiKey string, req *TestChannelR
 		h.Set("Accept", "text/event-stream")
 	}
 
-	log.Printf("[DEBUG] GeminiTester URL=%s Model=%s OpenAICompat=%v", fullURL, req.Model, cfg.OpenAICompat)
 	return fullURL, h, body, nil
 }
 
