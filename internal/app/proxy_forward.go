@@ -656,12 +656,16 @@ func (s *Server) tryChannelWithKeys(ctx context.Context, cfg *model.Config, reqC
 		if model == "" {
 			model = actualModel // 回退使用请求体中的模型名
 		}
+		// [DEBUG] 打印 CLI 收到的原始请求体
+		log.Printf("[DEBUG] [Gemini CLI] 收到原始请求体: %s", string(bodyToSend))
 		// 转换请求体到 Gemini CLI 格式
 		geminiBody, err := TransformGeminiCLIRequestBody(bodyToSend, model)
 		if err != nil {
 			log.Printf("[ERROR] [Gemini CLI] 请求体转换失败: %v", err)
 			return nil, fmt.Errorf("gemini cli request transform failed: %w", err)
 		}
+		// [DEBUG] 打印转换后的请求体
+		log.Printf("[DEBUG] [Gemini CLI] 转换后请求体: %s", string(geminiBody))
 		bodyToSend = geminiBody
 	}
 
