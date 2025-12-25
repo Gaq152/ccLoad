@@ -198,13 +198,9 @@ func (s *Server) HandleImportChannelsCSV(c *gin.Context) {
 		}
 		url = normalizedURL
 
-		// 渠道类型规范化与校验(openai → codex,空值 → anthropic)
-		channelType = util.NormalizeChannelType(channelType)
-		if !util.IsValidChannelType(channelType) {
-			summary.Errors = append(summary.Errors, fmt.Sprintf("第%d行渠道类型无效: %s(仅支持anthropic/codex/gemini)", lineNo, channelType))
-			summary.Skipped++
-			continue
-		}
+		// 渠道类型规范化（无效值静默回退为默认值 anthropic）
+		// 兼容旧数据：已删除的渠道类型（如 openai）会自动回退
+		channelType = util.NormalizeChannelTypeWithFallback(channelType)
 
 		// 验证Key使用策略(可选字段,默认sequential)
 		if keyStrategy == "" {

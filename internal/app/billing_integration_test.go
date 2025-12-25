@@ -18,7 +18,7 @@ func TestBillingPipeline_OpenAI_ChatCompletions(t *testing.T) {
 	mockSSE := `data: {"usage":{"prompt_tokens":1000,"prompt_tokens_details":{"cached_tokens":800},"completion_tokens":50}}` + "\n\n"
 
 	// 1. 解析Token (模拟SSE解析器)
-	parser := newSSEUsageParser("openai")
+	parser := newSSEUsageParser("codex")
 	if err := parser.Feed([]byte(mockSSE)); err != nil {
 		t.Fatalf("SSE解析失败: %v", err)
 	}
@@ -183,7 +183,7 @@ func TestBillingPipeline_OpenAI_CacheExceedsInput(t *testing.T) {
 	// [INFO] 重构后：边界检查在解析层(GetUsage)执行，而非计费层
 	mockSSE := `data: {"usage":{"prompt_tokens":500,"prompt_tokens_details":{"cached_tokens":800},"completion_tokens":100}}` + "\n\n"
 
-	parser := newSSEUsageParser("openai")
+	parser := newSSEUsageParser("codex")
 	if err := parser.Feed([]byte(mockSSE)); err != nil {
 		t.Fatalf("SSE解析失败: %v", err)
 	}

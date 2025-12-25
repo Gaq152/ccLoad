@@ -46,21 +46,34 @@ func IsValidChannelType(value string) bool {
 	return false
 }
 
-// NormalizeChannelType 规范化渠道类型（兼容性处理）
+// NormalizeChannelType 规范化渠道类型（仅做格式化，不做有效性回退）
 // - 去除首尾空格
 // - 转小写
 // - 空值 → "anthropic" (默认值)
+// 注意：无效值保持原样返回，由调用方决定是否拒绝
 func NormalizeChannelType(value string) string {
-	// 去除首尾空格
-	value = strings.TrimSpace(value)
+	// 去除首尾空格并转小写
+	value = strings.TrimSpace(strings.ToLower(value))
 
 	// 空值返回默认值
 	if value == "" {
-		return "anthropic"
+		return ChannelTypeAnthropic
 	}
 
-	// 转小写
-	return strings.ToLower(value)
+	return value
+}
+
+// NormalizeChannelTypeWithFallback 规范化渠道类型（无效值回退为默认值）
+// 适用于 CSV 导入等需要兼容旧数据的场景
+// - 去除首尾空格
+// - 转小写
+// - 空值或无效值 → "anthropic" (默认值)
+func NormalizeChannelTypeWithFallback(value string) string {
+	normalized := NormalizeChannelType(value)
+	if !IsValidChannelType(normalized) {
+		return ChannelTypeAnthropic
+	}
+	return normalized
 }
 
 // 渠道类型常量（导出供其他包使用，遵循DRY原则）

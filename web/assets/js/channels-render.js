@@ -314,8 +314,7 @@ function renderChannels(channelsToRender = channels) {
   const typeConfig = {
     'anthropic': { name: 'Anthropic (Claude)', order: 1 },
     'codex': { name: 'Codex', order: 2 },
-    'gemini': { name: 'Gemini', order: 3 },
-    'openai': { name: 'OpenAI', order: 4 }
+    'gemini': { name: 'Gemini', order: 3 }
   };
 
   // 按优先级排序类型

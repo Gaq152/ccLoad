@@ -8,7 +8,7 @@ import (
 type Config struct {
 	ID             int64             `json:"id"`
 	Name           string            `json:"name"`
-	ChannelType    string            `json:"channel_type"` // 渠道类型: "anthropic" | "codex" | "openai" | "gemini"，默认anthropic
+	ChannelType    string            `json:"channel_type"` // 渠道类型: "anthropic" | "codex" | "gemini"，默认anthropic
 	URL            string            `json:"url"`
 	Priority       int               `json:"priority"`
 	Models         []string          `json:"models"`
@@ -30,7 +30,7 @@ type Config struct {
 	Preset string `json:"preset,omitempty"` // "official"=官方预设, "custom"=自定义, ""=非Codex渠道
 
 	// OpenAI兼容模式（2025-12新增）
-	OpenAICompat bool `json:"openai_compat"` // Gemini渠道启用后使用/v1/chat/completions格式
+	OpenAICompat bool `json:"openai_compat"` // 使用/v1/chat/completions格式（Anthropic/Gemini/Codex自定义渠道支持）
 
 	CreatedAt JSONTime `json:"created_at"` // 使用JSONTime确保序列化格式一致（RFC3339）
 	UpdatedAt JSONTime `json:"updated_at"` // 使用JSONTime确保序列化格式一致（RFC3339）

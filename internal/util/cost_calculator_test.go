@@ -328,3 +328,97 @@ func TestCalculateCost_Gpt4oLegacyFuzzy(t *testing.T) {
 		t.Errorf("gpt-4o-legacy和gpt-4o价格应不同！legacy=$%.6f, gpt-4o=$%.6f", cost, gpt4oCost)
 	}
 }
+
+// ============================================================================
+// SelectCheapestModel 测试
+// ============================================================================
+
+func TestSelectCheapestModel(t *testing.T) {
+	tests := []struct {
+		name         string
+		models       []string
+		wantModel    string
+		wantPricing  bool
+		description  string
+	}{
+		{
+			name:        "选择最便宜的模型",
+			models:      []string{"claude-3-opus", "claude-3-haiku", "claude-3-sonnet"},
+			wantModel:   "claude-3-haiku", // $0.25 input (最便宜)
+			wantPricing: true,
+			description: "haiku($0.25) < sonnet($3.00) < opus($15.00)",
+		},
+		{
+			name:        "混合不同厂商",
+			models:      []string{"gpt-4o", "claude-3-haiku", "gemini-2.0-flash"},
+			wantModel:   "gemini-2.0-flash", // $0.10 input (最便宜)
+			wantPricing: true,
+			description: "gemini-2.0-flash($0.10) < haiku($0.25) < gpt-4o($2.50)",
+		},
+		{
+			name:        "包含未知模型",
+			models:      []string{"unknown-model-xyz", "claude-3-haiku", "another-unknown"},
+			wantModel:   "claude-3-haiku", // 跳过未知模型
+			wantPricing: true,
+			description: "跳过未知模型，选择已知最便宜的",
+		},
+		{
+			name:        "全部未知模型",
+			models:      []string{"unknown-1", "unknown-2", "unknown-3"},
+			wantModel:   "unknown-1", // 返回第一个
+			wantPricing: false,
+			description: "全部无计费信息时返回第一个",
+		},
+		{
+			name:        "空列表",
+			models:      []string{},
+			wantModel:   "",
+			wantPricing: false,
+			description: "空列表返回空字符串",
+		},
+		{
+			name:        "单个模型",
+			models:      []string{"claude-3-opus"},
+			wantModel:   "claude-3-opus",
+			wantPricing: true,
+			description: "单个模型直接返回",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			model, hasPricing := SelectCheapestModel(tt.models)
+			if model != tt.wantModel {
+				t.Errorf("SelectCheapestModel() model = %q, want %q (%s)", model, tt.wantModel, tt.description)
+			}
+			if hasPricing != tt.wantPricing {
+				t.Errorf("SelectCheapestModel() hasPricing = %v, want %v", hasPricing, tt.wantPricing)
+			}
+		})
+	}
+}
+
+func TestGetModelInputPrice(t *testing.T) {
+	tests := []struct {
+		model     string
+		wantPrice float64
+		wantFound bool
+	}{
+		{"claude-3-haiku", 0.25, true},
+		{"claude-sonnet-4-5", 3.00, true},
+		{"gemini-2.0-flash", 0.10, true},
+		{"unknown-model", 0, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.model, func(t *testing.T) {
+			price, found := GetModelInputPrice(tt.model)
+			if found != tt.wantFound {
+				t.Errorf("GetModelInputPrice(%q) found = %v, want %v", tt.model, found, tt.wantFound)
+			}
+			if found && !floatEquals(price, tt.wantPrice, 0.001) {
+				t.Errorf("GetModelInputPrice(%q) price = %.2f, want %.2f", tt.model, price, tt.wantPrice)
+			}
+		})
+	}
+}

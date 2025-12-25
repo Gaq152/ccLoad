@@ -194,3 +194,50 @@ func determineSource(channelType, channelURL string) string {
 		return "predefined" // 预定义列表（Anthropic/Codex等官方无开放接口）
 	}
 }
+
+// ============================================================
+// Admin API: 选择最低计费模型（用于测试功能默认选择）
+// ============================================================
+
+// SelectCheapestModelRequest 选择最低计费模型请求
+type SelectCheapestModelRequest struct {
+	Models []string `json:"models" binding:"required"`
+}
+
+// SelectCheapestModelResponse 选择最低计费模型响应
+type SelectCheapestModelResponse struct {
+	Model      string  `json:"model"`       // 推荐的模型名称
+	HasPricing bool    `json:"has_pricing"` // 是否有计费信息
+	Price      float64 `json:"price"`       // 输入价格（$/1M tokens），无计费时为 0
+}
+
+// HandleSelectCheapestModel 从模型列表中选择计费最低的模型
+// 路由: POST /admin/models/cheapest
+// 功能:
+//   - 输入: 模型名称列表
+//   - 输出: 计费最低的模型（用于测试时的默认选择）
+//   - 规则: 有计费信息的模型优先；全无计费则返回第一个
+func (s *Server) HandleSelectCheapestModel(c *gin.Context) {
+	var req SelectCheapestModelRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		RespondErrorMsg(c, http.StatusBadRequest, "参数无效: "+err.Error())
+		return
+	}
+
+	if len(req.Models) == 0 {
+		RespondErrorMsg(c, http.StatusBadRequest, "模型列表不能为空")
+		return
+	}
+
+	model, hasPricing := util.SelectCheapestModel(req.Models)
+	var price float64
+	if hasPricing {
+		price, _ = util.GetModelInputPrice(model)
+	}
+
+	RespondJSON(c, http.StatusOK, SelectCheapestModelResponse{
+		Model:      model,
+		HasPricing: hasPricing,
+		Price:      price,
+	})
+}

@@ -32,7 +32,7 @@ type sseUsageParser struct {
 	eventType   string       // 当前正在解析的事件类型（跨Feed保存）
 	dataLines   []string     // 当前事件的data行（跨Feed保存）
 	oversized   bool         // 标记是否超出大小限制（停止解析但不中断流传输）
-	channelType string       // 渠道类型(anthropic/openai/codex/gemini),用于精确平台判断
+	channelType string       // 渠道类型(anthropic/codex/gemini),用于精确平台判断
 
 	// [INFO] 新增：存储SSE流中检测到的error事件（用于1308等错误的延迟处理）
 	lastError []byte // 最后一个error事件的完整JSON（data字段内容）
@@ -47,7 +47,7 @@ type jsonUsageParser struct {
 	usageAccumulator
 	buffer      bytes.Buffer
 	truncated   bool
-	channelType string // 渠道类型(anthropic/openai/codex/gemini),用于精确平台判断
+	channelType string // 渠道类型(anthropic/codex/gemini),用于精确平台判断
 	requestURL  string // 请求URL，用于调试日志
 }
 
@@ -67,7 +67,7 @@ const (
 )
 
 // newSSEUsageParser 创建SSE usage解析器
-// channelType: 渠道类型(anthropic/openai/codex/gemini),用于精确识别平台usage格式
+// channelType: 渠道类型(anthropic/codex/gemini),用于精确识别平台usage格式
 func newSSEUsageParser(channelType string) *sseUsageParser {
 	return &sseUsageParser{
 		channelType: channelType,
@@ -75,7 +75,7 @@ func newSSEUsageParser(channelType string) *sseUsageParser {
 }
 
 // newJSONUsageParser 创建JSON响应的usage解析器
-// channelType: 渠道类型(anthropic/openai/codex/gemini),用于精确识别平台usage格式
+// channelType: 渠道类型(anthropic/codex/gemini),用于精确识别平台usage格式
 // requestURL: 请求URL，用于调试日志
 func newJSONUsageParser(channelType, requestURL string) *jsonUsageParser {
 	return &jsonUsageParser{channelType: channelType, requestURL: requestURL}
@@ -211,9 +211,9 @@ func (p *sseUsageParser) parseEvent(eventType, data string) error {
 func (p *sseUsageParser) GetUsage() (inputTokens, outputTokens, cacheRead, cacheCreation int) {
 	billableInput := p.InputTokens
 
-	// OpenAI语义归一化: prompt_tokens包含cached_tokens，需扣除
+	// Codex/OpenAI格式归一化: prompt_tokens包含cached_tokens，需扣除
 	// 设计原则: 平台差异在解析层处理，计费层无需关心
-	if (p.channelType == "openai" || p.channelType == "codex") && p.CacheReadInputTokens > 0 {
+	if p.channelType == "codex" && p.CacheReadInputTokens > 0 {
 		billableInput = p.InputTokens - p.CacheReadInputTokens
 		if billableInput < 0 {
 			log.Printf("WARN: %s model has cacheReadTokens(%d) > inputTokens(%d), clamped to 0",
@@ -286,9 +286,9 @@ func (p *jsonUsageParser) GetUsage() (inputTokens, outputTokens, cacheRead, cach
 
 	p.applyUsage(extractUsage(payload), p.channelType)
 
-	// OpenAI语义归一化: 与sseUsageParser保持一致
+	// Codex/OpenAI格式归一化: 与sseUsageParser保持一致
 	billableInput := p.InputTokens
-	if (p.channelType == "openai" || p.channelType == "codex") && p.CacheReadInputTokens > 0 {
+	if p.channelType == "codex" && p.CacheReadInputTokens > 0 {
 		billableInput = p.InputTokens - p.CacheReadInputTokens
 		if billableInput < 0 {
 			log.Printf("WARN: %s model has cacheReadTokens(%d) > inputTokens(%d), clamped to 0",
@@ -355,8 +355,8 @@ func (u *usageAccumulator) applyUsage(usage map[string]any, channelType string) 
 		// Gemini平台:usageMetadata包装或直接字段
 		u.applyGeminiUsage(usage)
 
-	case "openai", "codex":
-		// OpenAI平台:需区分Chat Completions vs Responses API
+	case "codex":
+		// Codex/OpenAI格式:需区分Chat Completions vs Responses API
 		// Chat Completions: prompt_tokens + completion_tokens
 		// Responses API: input_tokens + output_tokens
 		if hasOpenAIChatUsageFields(usage) {

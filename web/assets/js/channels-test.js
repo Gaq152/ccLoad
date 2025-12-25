@@ -33,6 +33,26 @@ async function testChannel(id, name) {
     modelSelect.appendChild(option);
   });
 
+  // 选择计费最低的模型作为默认值
+  if (channel.models.length > 0) {
+    try {
+      const res = await fetchWithAuth('/admin/models/cheapest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ models: channel.models })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const result = data.data || data;
+        if (result.model) {
+          modelSelect.value = result.model;
+        }
+      }
+    } catch (e) {
+      console.warn('获取推荐模型失败，使用第一个模型', e);
+    }
+  }
+
   let apiKeys = [];
   try {
     const res = await fetchWithAuth(`/admin/channels/${id}/keys`);

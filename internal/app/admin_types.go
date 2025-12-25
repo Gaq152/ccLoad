@@ -28,7 +28,7 @@ type ChannelRequest struct {
 
 	// Codex/Gemini 预设相关字段（2025-12新增）
 	Preset       string `json:"preset,omitempty"`        // "official"=官方预设, "custom"=自定义, ""=非OAuth渠道
-	OpenAICompat bool   `json:"openai_compat,omitempty"` // OpenAI兼容模式（Gemini自定义预设使用）
+	OpenAICompat bool   `json:"openai_compat,omitempty"` // OpenAI兼容模式（Anthropic/Gemini/Codex自定义渠道支持）
 
 	// OAuth Token 专用字段（仅官方预设使用）
 	AccessToken    string `json:"access_token,omitempty"`
