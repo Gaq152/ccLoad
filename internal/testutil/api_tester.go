@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	_ "embed"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 
