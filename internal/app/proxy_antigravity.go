@@ -77,7 +77,7 @@ func FilterAntigravityRequestBody(body []byte) ([]byte, error) {
 		return body, nil
 	}
 
-	// 过滤 tools 中的 input_schema（Anthropic 格式）
+	// 过滤 tools 中的 schema 字段
 	if tools, ok := data["tools"].([]any); ok {
 		for _, tool := range tools {
 			if toolMap, ok := tool.(map[string]any); ok {
@@ -89,6 +89,16 @@ func FilterAntigravityRequestBody(body []byte) ([]byte, error) {
 				if function, ok := toolMap["function"].(map[string]any); ok {
 					if parameters, ok := function["parameters"].(map[string]any); ok {
 						filterSchemaRecursive(parameters)
+					}
+				}
+				// Gemini 原生格式：tools[].function_declarations[].parameters
+				if funcDecls, ok := toolMap["function_declarations"].([]any); ok {
+					for _, funcDecl := range funcDecls {
+						if funcDeclMap, ok := funcDecl.(map[string]any); ok {
+							if parameters, ok := funcDeclMap["parameters"].(map[string]any); ok {
+								filterSchemaRecursive(parameters)
+							}
+						}
 					}
 				}
 			}

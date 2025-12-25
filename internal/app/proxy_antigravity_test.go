@@ -88,6 +88,33 @@ func TestFilterAntigravityRequestBody(t *testing.T) {
 			wantKeys: []string{"minimum", "default"},
 			keepKeys: []string{"type"},
 		},
+		{
+			name: "过滤 Gemini 原生格式 function_declarations",
+			input: `{
+				"tools": [{
+					"function_declarations": [{
+						"name": "read_file",
+						"parameters": {
+							"type": "object",
+							"properties": {
+								"line": {
+									"type": "integer",
+									"exclusiveMinimum": 0,
+									"description": "line number"
+								},
+								"limit": {
+									"type": "integer",
+									"minimum": 1,
+									"maximum": 1000
+								}
+							}
+						}
+					}]
+				}]
+			}`,
+			wantKeys: []string{"exclusiveMinimum", "minimum", "maximum"},
+			keepKeys: []string{"type", "description", "name", "function_declarations"},
+		},
 	}
 
 	for _, tt := range tests {
