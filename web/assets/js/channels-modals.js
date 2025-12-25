@@ -317,8 +317,9 @@ async function saveChannel(event) {
   const keyStrategy = document.querySelector('input[name="keyStrategy"]:checked')?.value || 'sequential';
 
   // OpenAI 兼容模式（仅 Gemini 自定义预设使用）
-  const openaiCompat = channelType === 'gemini' && preset !== 'official' &&
-    document.getElementById('openaiCompatCheckbox')?.checked || false;
+  const openaiCompatCheckbox = document.getElementById('openaiCompatCheckbox');
+  const openaiCompat = channelType === 'gemini' && preset !== 'official' && openaiCompatCheckbox?.checked === true;
+  console.log('[DEBUG] saveChannel openaiCompat:', openaiCompat, 'channelType:', channelType, 'preset:', preset, 'checked:', openaiCompatCheckbox?.checked);
 
   const formData = {
     name: document.getElementById('channelName').value.trim(),

@@ -367,10 +367,12 @@ func (t *GeminiTester) Build(cfg *model.Config, apiKey string, req *TestChannelR
 		return fullURL, h, body, nil
 	}
 
-	// 标准 Gemini API 请求体格式
+	// 标准 Gemini API 请求体格式（包含 model 和 role 字段）
 	msg := map[string]any{
+		"model": req.Model,
 		"contents": []map[string]any{
 			{
+				"role": "user",
 				"parts": []map[string]any{
 					{
 						"text": testContent,
