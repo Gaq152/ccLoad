@@ -666,6 +666,18 @@ func (s *Server) tryChannelWithKeys(ctx context.Context, cfg *model.Config, reqC
 		bodyToSend = geminiBody
 	}
 
+	// [INFO] Antigravity 预设预处理：过滤 Gemini 不支持的 JSON Schema 字段
+	// Antigravity 是一种特殊的反代服务，将 Anthropic 格式请求转发到 Google 后端
+	// 需要移除 tools[].input_schema 中的 exclusiveMinimum 等不支持的字段
+	if cfg.Preset == "antigravity" {
+		filteredBody, err := FilterAntigravityRequestBody(bodyToSend)
+		if err != nil {
+			log.Printf("[WARN] [Antigravity] 请求体过滤失败，使用原始请求: %v", err)
+		} else {
+			bodyToSend = filteredBody
+		}
+	}
+
 	// Key重试循环
 	for range maxKeyRetries {
 		// 选择可用的API Key（直接传入apiKeys，避免重复查询）

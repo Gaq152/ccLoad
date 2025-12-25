@@ -1433,6 +1433,7 @@ function handleChannelTypeChange(type) {
   const codexAuthSwitch = document.getElementById('codexAuthSwitch');
   const channelPresetContainer = document.getElementById('channelPresetContainer');
   const officialPresetLabel = document.getElementById('officialPresetLabel');
+  const antigravityPresetLabel = document.getElementById('antigravityPresetLabel');
 
   // 所有渠道类型都显示预设选项
   if (channelPresetContainer) channelPresetContainer.style.display = 'block';
@@ -1440,6 +1441,17 @@ function handleChannelTypeChange(type) {
   // 更新官方预设的标签名称
   if (officialPresetLabel) {
     officialPresetLabel.textContent = getOfficialPresetLabel(type);
+  }
+
+  // Antigravity 预设仅对 Anthropic 渠道类型显示
+  if (antigravityPresetLabel) {
+    antigravityPresetLabel.style.display = (type === 'anthropic') ? 'flex' : 'none';
+    // 如果当前选中 antigravity 但渠道类型不是 anthropic，切换到 custom
+    const currentPreset = document.querySelector('input[name="channelPreset"]:checked')?.value;
+    if (currentPreset === 'antigravity' && type !== 'anthropic') {
+      const customRadio = document.querySelector('input[name="channelPreset"][value="custom"]');
+      if (customRadio) customRadio.checked = true;
+    }
   }
 
   // 检查是否已选择预设，如果没有则默认选择自定义预设
@@ -1485,9 +1497,11 @@ function isOfficialUrl(url, type) {
  * 处理预设切换（通用）
  * official: 自动填写官方 URL，Codex/Gemini 显示 OAuth，其他渠道显示 API Key
  * custom: 用户自填 URL，显示 API Key
+ * antigravity: Anthropic 专用，用户自填 URL，显示 API Key（请求体过滤 Gemini 不支持的字段）
  */
 function handlePresetChange(preset) {
   const isOfficial = preset === 'official';
+  const isAntigravity = preset === 'antigravity';
   const channelType = document.querySelector('input[name="channelType"]:checked')?.value || 'anthropic';
   const codexAuthSwitch = document.getElementById('codexAuthSwitch');
   const standardKeyContainer = document.getElementById('standardKeyContainer');
@@ -1500,9 +1514,12 @@ function handlePresetChange(preset) {
   // 预设模式下隐藏手动切换开关（预设决定了认证方式）
   if (codexAuthSwitch) codexAuthSwitch.style.display = 'none';
 
-  // OpenAI 兼容模式开关：Anthropic 直接显示，Gemini/Codex 仅自定义预设显示
+  // OpenAI 兼容模式开关：
+  // - Anthropic（非 antigravity）直接显示
+  // - Gemini/Codex 仅自定义预设显示
+  // - Antigravity 不显示（Antigravity 使用原生 Anthropic 格式）
   if (openaiCompatContainer) {
-    const showCompat = (channelType === 'anthropic') ||
+    const showCompat = (channelType === 'anthropic' && !isAntigravity) ||
                        ((channelType === 'gemini' || channelType === 'codex') && !isOfficial);
     openaiCompatContainer.style.display = showCompat ? 'block' : 'none';
   }
