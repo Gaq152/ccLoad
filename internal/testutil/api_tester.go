@@ -334,6 +334,38 @@ func (t *GeminiTester) Build(cfg *model.Config, apiKey string, req *TestChannelR
 		testContent = "test"
 	}
 
+	var body []byte
+	var err error
+	var fullURL string
+	h := make(http.Header)
+	h.Set("Content-Type", "application/json")
+
+	// OpenAI 兼容模式：使用 /v1/chat/completions 格式
+	if cfg.OpenAICompat {
+		openaiMsg := map[string]any{
+			"model": req.Model,
+			"messages": []map[string]any{
+				{
+					"role":    "user",
+					"content": testContent,
+				},
+			},
+			"stream": true,
+		}
+		body, err = sonic.Marshal(openaiMsg)
+		if err != nil {
+			return "", nil, nil, err
+		}
+
+		baseURL := strings.TrimRight(cfg.URL, "/")
+		fullURL = baseURL + "/v1/chat/completions"
+
+		// OpenAI 格式使用 Bearer 认证
+		h.Set("Authorization", "Bearer "+apiKey)
+		h.Set("Accept", "text/event-stream")
+		return fullURL, h, body, nil
+	}
+
 	// 标准 Gemini API 请求体格式
 	msg := map[string]any{
 		"contents": []map[string]any{
@@ -346,12 +378,6 @@ func (t *GeminiTester) Build(cfg *model.Config, apiKey string, req *TestChannelR
 			},
 		},
 	}
-
-	var body []byte
-	var err error
-	var fullURL string
-	h := make(http.Header)
-	h.Set("Content-Type", "application/json")
 
 	// 检测端点类型
 	isCLIEndpoint := strings.Contains(cfg.URL, "cloudcode-pa.googleapis.com")
@@ -410,6 +436,7 @@ func (t *GeminiTester) Build(cfg *model.Config, apiKey string, req *TestChannelR
 		h.Set("Accept", "text/event-stream")
 	}
 
+	log.Printf("[DEBUG] GeminiTester URL=%s Model=%s OpenAICompat=%v", fullURL, req.Model, cfg.OpenAICompat)
 	return fullURL, h, body, nil
 }
 
@@ -448,14 +475,23 @@ func (t *GeminiTester) Parse(statusCode int, respBody []byte) map[string]any {
 	out := map[string]any{}
 	var apiResp map[string]any
 	if err := sonic.Unmarshal(respBody, &apiResp); err == nil {
-		// 提取文本响应（使用辅助函数）
-		if text, ok := extractGeminiResponseText(apiResp); ok {
-			out["response_text"] = text
-		}
-
-		// 提取usage信息（使用泛型工具）
-		if usageMetadata, ok := getTypedValue[map[string]any](apiResp, "usageMetadata"); ok {
-			out["usage"] = usageMetadata
+		// 自动检测响应格式：OpenAI 有 "choices"，Gemini 有 "candidates"
+		if _, hasChoices := apiResp["choices"]; hasChoices {
+			// OpenAI 格式响应
+			if text, ok := extractOpenAIResponseText(apiResp); ok {
+				out["response_text"] = text
+			}
+			if usage, ok := getTypedValue[map[string]any](apiResp, "usage"); ok {
+				out["usage"] = usage
+			}
+		} else {
+			// Gemini 格式响应
+			if text, ok := extractGeminiResponseText(apiResp); ok {
+				out["response_text"] = text
+			}
+			if usageMetadata, ok := getTypedValue[map[string]any](apiResp, "usageMetadata"); ok {
+				out["usage"] = usageMetadata
+			}
 		}
 
 		out["api_response"] = apiResp
@@ -463,6 +499,24 @@ func (t *GeminiTester) Parse(statusCode int, respBody []byte) map[string]any {
 	}
 	out["raw_response"] = string(respBody)
 	return out
+}
+
+// extractOpenAIResponseText 从OpenAI响应中提取文本
+func extractOpenAIResponseText(apiResp map[string]any) (string, bool) {
+	choices, ok := getTypedValue[[]any](apiResp, "choices")
+	if !ok || len(choices) == 0 {
+		return "", false
+	}
+	choice, ok := getSliceItem[map[string]any](choices, 0)
+	if !ok {
+		return "", false
+	}
+	message, ok := getTypedValue[map[string]any](choice, "message")
+	if !ok {
+		return "", false
+	}
+	content, ok := getTypedValue[string](message, "content")
+	return content, ok
 }
 
 // AnthropicTester 实现 Anthropic 测试协议

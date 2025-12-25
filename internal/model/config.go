@@ -29,6 +29,9 @@ type Config struct {
 	// Codex预设类型（2025-12新增）
 	Preset string `json:"preset,omitempty"` // "official"=官方预设, "custom"=自定义, ""=非Codex渠道
 
+	// OpenAI兼容模式（2025-12新增）
+	OpenAICompat bool `json:"openai_compat"` // Gemini渠道启用后使用/v1/chat/completions格式
+
 	CreatedAt JSONTime `json:"created_at"` // 使用JSONTime确保序列化格式一致（RFC3339）
 	UpdatedAt JSONTime `json:"updated_at"` // 使用JSONTime确保序列化格式一致（RFC3339）
 

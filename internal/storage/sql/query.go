@@ -116,7 +116,7 @@ func (cs *ConfigScanner) ScanConfig(scanner interface {
 }) (*model.Config, error) {
 	var c model.Config
 	var modelsStr, modelRedirectsStr string
-	var enabledInt, autoSelectEndpointInt int
+	var enabledInt, autoSelectEndpointInt, openaiCompatInt int
 	var quotaConfigStr *string                // 可空字段，使用指针
 	var presetStr *string                     // Codex预设类型（可空）
 	var createdAtRaw, updatedAtRaw any        // 使用any接受任意类型（兼容字符串、整数或RFC3339）
@@ -127,16 +127,17 @@ func (cs *ConfigScanner) ScanConfig(scanner interface {
 	// 扫描顺序必须与SELECT语句一致：
 	// id, name, url, priority, models, model_redirects, channel_type, enabled,
 	// cooldown_until, cooldown_duration_ms, key_count,
-	// rr_key_index, auto_select_endpoint, quota_config, preset, created_at, updated_at
+	// rr_key_index, auto_select_endpoint, quota_config, preset, openai_compat, created_at, updated_at
 	if err := scanner.Scan(&c.ID, &c.Name, &c.URL, &c.Priority,
 		&modelsStr, &modelRedirectsStr, &c.ChannelType, &enabledInt,
 		&c.CooldownUntil, &c.CooldownDurationMs, &c.KeyCount,
-		&rrKeyIndex, &autoSelectEndpointInt, &quotaConfigStr, &presetStr, &createdAtRaw, &updatedAtRaw); err != nil {
+		&rrKeyIndex, &autoSelectEndpointInt, &quotaConfigStr, &presetStr, &openaiCompatInt, &createdAtRaw, &updatedAtRaw); err != nil {
 		return nil, err
 	}
 
 	c.Enabled = enabledInt != 0
 	c.AutoSelectEndpoint = autoSelectEndpointInt != 0
+	c.OpenAICompat = openaiCompatInt != 0
 
 	// 解析 preset（可选字段）
 	if presetStr != nil {
