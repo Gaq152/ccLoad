@@ -138,7 +138,7 @@ func TestHandleSuccessResponse_StreamDiagMsg_NonAnthropicNoUsage(t *testing.T) {
 	testChannelID := int64(1)
 	testAPIKey := "sk-test-xxx"
 
-	res, _, err := s.handleSuccessResponse(reqCtx, resp, 0, resp.Header.Clone(), rec, "openai", &testChannelID, testAPIKey, "/v1/chat/completions", "https://test.example.com/v1/chat/completions", false)
+	res, _, err := s.handleSuccessResponse(reqCtx, resp, 0, resp.Header.Clone(), rec, "codex", &testChannelID, testAPIKey, "/v1/chat/completions", "https://test.example.com/v1/chat/completions", false)
 	if err != nil {
 		t.Fatalf("handleSuccessResponse returned error: %v", err)
 	}
@@ -203,7 +203,7 @@ func TestBuildStreamDiagnostics_StreamComplete(t *testing.T) {
 			name:           "no_error_with_stream_complete",
 			streamErr:      nil,
 			streamComplete: true,
-			channelType:    "openai",
+			channelType:    "codex",
 			wantDiag:       false,
 			reason:         "无错误且有流结束标志，无诊断",
 		},

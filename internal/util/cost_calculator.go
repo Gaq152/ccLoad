@@ -338,6 +338,55 @@ func getOpenAICacheMultiplier(model string) float64 {
 	return 0.5
 }
 
+// GetModelInputPrice 获取模型的输入价格（用于成本比较）
+// 返回: (价格, 是否找到)
+// 如果找不到定价返回 (0, false)
+func GetModelInputPrice(model string) (float64, bool) {
+	pricing, ok := getPricing(model)
+	if !ok {
+		pricing, ok = fuzzyMatchModel(model)
+		if !ok {
+			return 0, false
+		}
+	}
+	return pricing.InputPrice, true
+}
+
+// SelectCheapestModel 从模型列表中选择计费最低的模型
+// 规则：
+// 1. 优先选择有计费信息且 InputPrice 最低的模型
+// 2. 没有计费信息的模型跳过
+// 3. 如果全部模型都没有计费信息，返回列表第一个模型
+// 返回: (推荐模型, 是否有计费信息)
+func SelectCheapestModel(models []string) (string, bool) {
+	if len(models) == 0 {
+		return "", false
+	}
+
+	var cheapestModel string
+	var cheapestPrice float64 = -1
+	hasPricing := false
+
+	for _, model := range models {
+		price, ok := GetModelInputPrice(model)
+		if !ok {
+			continue // 跳过无计费信息的模型
+		}
+		hasPricing = true
+		if cheapestPrice < 0 || price < cheapestPrice {
+			cheapestPrice = price
+			cheapestModel = model
+		}
+	}
+
+	if !hasPricing {
+		// 全部无计费信息，返回第一个
+		return models[0], false
+	}
+
+	return cheapestModel, true
+}
+
 // fuzzyMatchModel 模糊匹配模型名称
 // 例如：claude-3-opus-20240229-extended → claude-3-opus
 //

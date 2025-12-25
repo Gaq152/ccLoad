@@ -104,6 +104,7 @@ func TestCSVExport_NoTimeFields(t *testing.T) {
 // ==================== util.NormalizeChannelType 边界条件测试 ====================
 
 func TestNormalizeChannelType(t *testing.T) {
+	// NormalizeChannelType：仅做格式化（trim + lowercase），不做有效性回退
 	tests := []struct {
 		input    string
 		expected string
@@ -113,7 +114,7 @@ func TestNormalizeChannelType(t *testing.T) {
 		{"anthropic", "anthropic"}, // 有效值保持
 		{"gemini", "gemini"},       // 有效值保持
 		{"codex", "codex"},         // 有效值保持
-		{"openai", "openai"},       // 有效值保持（openai是有效的渠道类型）
+		{"openai", "openai"},       // 无效值保持原样（由调用方决定是否拒绝）
 		{"ANTHROPIC", "anthropic"}, // 大写转小写
 		{"  gemini  ", "gemini"},   // 去除空格并转小写
 	}
@@ -123,6 +124,34 @@ func TestNormalizeChannelType(t *testing.T) {
 			result := util.NormalizeChannelType(tt.input)
 			if result != tt.expected {
 				t.Errorf("util.NormalizeChannelType(%q) = %q, 期望 %q", tt.input, result, tt.expected)
+			}
+		})
+	}
+}
+
+// TestNormalizeChannelTypeWithFallback 测试带回退的渠道类型规范化
+// 适用于 CSV 导入等需要兼容旧数据的场景
+func TestNormalizeChannelTypeWithFallback(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"", "anthropic"},          // 空值 → 默认值
+		{"  ", "anthropic"},        // 空白 → 默认值
+		{"anthropic", "anthropic"}, // 有效值保持
+		{"gemini", "gemini"},       // 有效值保持
+		{"codex", "codex"},         // 有效值保持
+		{"openai", "anthropic"},    // openai已移除，回退为默认值
+		{"invalid", "anthropic"},   // 无效值回退为默认值
+		{"ANTHROPIC", "anthropic"}, // 大写转小写
+		{"  gemini  ", "gemini"},   // 去除空格并转小写
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			result := util.NormalizeChannelTypeWithFallback(tt.input)
+			if result != tt.expected {
+				t.Errorf("util.NormalizeChannelTypeWithFallback(%q) = %q, 期望 %q", tt.input, result, tt.expected)
 			}
 		})
 	}

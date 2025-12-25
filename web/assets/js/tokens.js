@@ -616,8 +616,7 @@
       const typeNames = {
         'anthropic': 'Anthropic',
         'codex': 'Codex',
-        'gemini': 'Gemini',
-        'openai': 'OpenAI'
+        'gemini': 'Gemini'
       };
 
       let html = '';

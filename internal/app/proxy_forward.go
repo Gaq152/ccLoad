@@ -43,7 +43,11 @@ func (s *Server) buildProxyRequest(
 ) (*http.Request, error) {
 	// 1. 构建完整 URL
 	var upstreamURL string
-	if cfg.ChannelType == "codex" {
+	if cfg.OpenAICompat {
+		// OpenAI 兼容模式（Anthropic/Gemini/Codex 自定义）：使用原始请求路径（/v1/chat/completions）
+		// 假设上游端点支持 OpenAI 格式，直接转发
+		upstreamURL = buildUpstreamURL(cfg, requestPath, rawQuery)
+	} else if cfg.ChannelType == "codex" {
 		// Codex 渠道（官方和非官方）：统一去掉 /v1 前缀
 		// Codex CLI 发送 /v1/responses，但上游 API 期望 /responses
 		codexPath := strings.TrimPrefix(requestPath, "/v1")
@@ -51,9 +55,6 @@ func (s *Server) buildProxyRequest(
 		if rawQuery != "" {
 			upstreamURL += "?" + rawQuery
 		}
-	} else if cfg.ChannelType == "gemini" && cfg.OpenAICompat {
-		// Gemini OpenAI 兼容模式：使用原始请求路径（/v1/chat/completions）
-		upstreamURL = buildUpstreamURL(cfg, requestPath, rawQuery)
 	} else if cfg.ChannelType == "gemini" && cfg.Preset == "official" {
 		// Gemini 官方预设：根据端点类型决定是否转换
 		if IsGeminiCLIEndpoint(cfg.URL) {
@@ -82,13 +83,13 @@ func (s *Server) buildProxyRequest(
 
 	// 4. 注入认证头
 	if codexHeaders != nil {
-		// Codex 渠道使用专用头注入
+		// Codex 官方预设使用专用头注入
 		injectCodexHeaders(req, apiKey, codexHeaders)
 	} else if isGeminiCLI {
 		// Gemini CLI 官方预设（cloudcode-pa 端点）使用专用头注入
 		InjectGeminiCLIHeaders(req, apiKey)
-	} else if cfg.ChannelType == "gemini" && cfg.OpenAICompat {
-		// Gemini OpenAI 兼容模式：使用 Bearer 认证
+	} else if cfg.OpenAICompat {
+		// OpenAI 兼容模式（Anthropic/Gemini/Codex 自定义）：使用 Bearer 认证
 		req.Header.Set("Authorization", "Bearer "+apiKey)
 	} else if cfg.ChannelType == "gemini" && cfg.Preset == "official" {
 		// Gemini 标准 API 端点（generativelanguage 等）使用 OAuth Bearer 认证

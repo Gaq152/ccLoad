@@ -251,7 +251,7 @@ func (t *CodexTester) Parse(statusCode int, respBody []byte) map[string]any {
 	return out
 }
 
-// OpenAITester 标准OpenAI API格式（渠道类型: openai）
+// OpenAITester 标准OpenAI API格式（用于OpenAI兼容模式测试）
 type OpenAITester struct{}
 
 func (t *OpenAITester) Build(cfg *model.Config, apiKey string, req *TestChannelRequest) (string, http.Header, []byte, error) {

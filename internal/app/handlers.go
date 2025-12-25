@@ -247,7 +247,7 @@ func BuildLogFilter(c *gin.Context) model.LogFilter {
 		lf.StatusCodeLike = scLike
 	}
 
-	// 渠道类型过滤（anthropic/openai/gemini/codex）
+	// 渠道类型过滤（anthropic/gemini/codex）
 	if ct := strings.TrimSpace(c.Query("channel_type")); ct != "" {
 		lf.ChannelType = ct
 	}

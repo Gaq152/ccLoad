@@ -408,6 +408,7 @@ func (s *Server) SetupRoutes(r *gin.Engine) {
 		admin.DELETE("/channels/:id", s.HandleChannelByID)
 		admin.GET("/channels/:id/keys", s.HandleChannelKeys)
 		admin.POST("/channels/models/fetch", s.HandleFetchModelsPreview) // 临时渠道配置获取模型列表
+		admin.POST("/models/cheapest", s.HandleSelectCheapestModel)      // 选择最低计费模型（用于测试默认选择）
 		admin.GET("/channels/:id/models/fetch", s.HandleFetchModels)     // 获取渠道可用模型列表(新增)
 		admin.POST("/channels/:id/models", s.HandleAddModels)            // 添加渠道模型
 		admin.DELETE("/channels/:id/models", s.HandleDeleteModels)       // 删除渠道模型

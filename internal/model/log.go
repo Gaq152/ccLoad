@@ -69,6 +69,6 @@ type LogFilter struct {
 	ModelLike       string
 	StatusCode      *int
 	StatusCodeLike  string // 状态码前缀匹配（输入 "4" 匹配 400, 401 等 4xx 错误）
-	ChannelType     string // 渠道类型过滤（anthropic/openai/gemini/codex）
+	ChannelType     string // 渠道类型过滤（anthropic/gemini/codex）
 	AuthTokenID     *int64 // API令牌ID过滤
 }

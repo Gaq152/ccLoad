@@ -316,10 +316,11 @@ async function saveChannel(event) {
   // channelType 已在函数开头定义
   const keyStrategy = document.querySelector('input[name="keyStrategy"]:checked')?.value || 'sequential';
 
-  // OpenAI 兼容模式（仅 Gemini 自定义预设使用）
+  // OpenAI 兼容模式（Anthropic / Gemini自定义 / Codex自定义 支持）
   const openaiCompatCheckbox = document.getElementById('openaiCompatCheckbox');
-  const openaiCompat = channelType === 'gemini' && preset !== 'official' && openaiCompatCheckbox?.checked === true;
-  console.log('[DEBUG] saveChannel openaiCompat:', openaiCompat, 'channelType:', channelType, 'preset:', preset, 'checked:', openaiCompatCheckbox?.checked);
+  const isCompatSupported = (channelType === 'anthropic') ||
+                            ((channelType === 'gemini' || channelType === 'codex') && preset !== 'official');
+  const openaiCompat = isCompatSupported && openaiCompatCheckbox?.checked === true;
 
   const formData = {
     name: document.getElementById('channelName').value.trim(),
@@ -1499,9 +1500,11 @@ function handlePresetChange(preset) {
   // 预设模式下隐藏手动切换开关（预设决定了认证方式）
   if (codexAuthSwitch) codexAuthSwitch.style.display = 'none';
 
-  // OpenAI 兼容模式开关：仅在 Gemini 自定义预设时显示
+  // OpenAI 兼容模式开关：Anthropic 直接显示，Gemini/Codex 仅自定义预设显示
   if (openaiCompatContainer) {
-    openaiCompatContainer.style.display = (channelType === 'gemini' && !isOfficial) ? 'block' : 'none';
+    const showCompat = (channelType === 'anthropic') ||
+                       ((channelType === 'gemini' || channelType === 'codex') && !isOfficial);
+    openaiCompatContainer.style.display = showCompat ? 'block' : 'none';
   }
 
   if (isOfficial) {

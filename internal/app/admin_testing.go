@@ -257,8 +257,6 @@ func (s *Server) testChannelAPI(cfg *model.Config, apiKey string, testReq *testu
 	switch channelType {
 	case "codex":
 		tester = &testutil.CodexTester{}
-	case "openai":
-		tester = &testutil.OpenAITester{}
 	case "gemini":
 		tester = &testutil.GeminiTester{}
 	case "anthropic":
