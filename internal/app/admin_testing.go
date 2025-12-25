@@ -61,14 +61,21 @@ func (s *Server) HandleChannelTest(c *gin.Context) {
 		keyIndex = 0 // 默认使用第一个 Key
 	}
 
-	// [FIX] Codex 官方预设使用 AccessToken 字段，而非 APIKey 字段
+	// [FIX] Codex/Gemini 官方预设使用 AccessToken 字段，而非 APIKey 字段
 	var selectedKey string
-	if cfg.GetChannelType() == util.ChannelTypeCodex && cfg.Preset == "official" {
+	channelType := cfg.GetChannelType()
+	isOAuthPreset := cfg.Preset == "official" && (channelType == util.ChannelTypeCodex || channelType == util.ChannelTypeGemini)
+
+	if isOAuthPreset {
 		selectedKey = apiKeys[keyIndex].AccessToken
 		if selectedKey == "" {
+			channelLabel := "Codex"
+			if channelType == util.ChannelTypeGemini {
+				channelLabel = "Gemini"
+			}
 			RespondJSON(c, http.StatusOK, gin.H{
 				"success": false,
-				"error":   "Codex 官方预设未配置 OAuth Token，请先完成授权",
+				"error":   channelLabel + " 官方预设未配置 OAuth Token，请先完成授权",
 			})
 			return
 		}
