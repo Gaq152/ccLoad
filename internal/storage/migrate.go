@@ -82,6 +82,9 @@ func migrate(ctx context.Context, db *sql.DB, dialect Dialect) error {
 				if err := ensureChannelsPreset(ctx, db); err != nil {
 					return fmt.Errorf("migrate channels.preset: %w", err)
 				}
+				if err := ensureChannelsOpenAICompat(ctx, db); err != nil {
+					return fmt.Errorf("migrate channels.openai_compat: %w", err)
+				}
 			} else {
 				if err := ensureChannelsAutoSelectEndpointSQLite(ctx, db); err != nil {
 					return fmt.Errorf("migrate channels.auto_select_endpoint: %w", err)
@@ -91,6 +94,9 @@ func migrate(ctx context.Context, db *sql.DB, dialect Dialect) error {
 				}
 				if err := ensureChannelsPresetSQLite(ctx, db); err != nil {
 					return fmt.Errorf("migrate channels.preset: %w", err)
+				}
+				if err := ensureChannelsOpenAICompatSQLite(ctx, db); err != nil {
+					return fmt.Errorf("migrate channels.openai_compat: %w", err)
 				}
 			}
 		}
@@ -1005,6 +1011,67 @@ func ensureAPIKeysOAuthFieldsSQLite(ctx context.Context, db *sql.DB) error {
 		if err != nil {
 			return fmt.Errorf("add token_expires_at column: %w", err)
 		}
+	}
+
+	return nil
+}
+
+// ensureChannelsOpenAICompat 确保channels表有openai_compat字段(MySQL增量迁移)
+func ensureChannelsOpenAICompat(ctx context.Context, db *sql.DB) error {
+	var count int
+	err := db.QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='channels' AND COLUMN_NAME='openai_compat'",
+	).Scan(&count)
+	if err != nil {
+		return fmt.Errorf("check openai_compat existence: %w", err)
+	}
+
+	if count > 0 {
+		return nil
+	}
+
+	_, err = db.ExecContext(ctx,
+		"ALTER TABLE channels ADD COLUMN openai_compat TINYINT NOT NULL DEFAULT 0 COMMENT 'OpenAI兼容模式(Gemini渠道使用/v1/chat/completions格式)'",
+	)
+	if err != nil {
+		return fmt.Errorf("add openai_compat column: %w", err)
+	}
+
+	return nil
+}
+
+// ensureChannelsOpenAICompatSQLite 确保channels表有openai_compat字段(SQLite增量迁移)
+func ensureChannelsOpenAICompatSQLite(ctx context.Context, db *sql.DB) error {
+	rows, err := db.QueryContext(ctx, "PRAGMA table_info(channels)")
+	if err != nil {
+		return fmt.Errorf("check table info: %w", err)
+	}
+	defer rows.Close()
+
+	hasColumn := false
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notnull, pk int
+		var dfltValue any
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dfltValue, &pk); err != nil {
+			return fmt.Errorf("scan column info: %w", err)
+		}
+		if name == "openai_compat" {
+			hasColumn = true
+			break
+		}
+	}
+
+	if hasColumn {
+		return nil
+	}
+
+	_, err = db.ExecContext(ctx,
+		"ALTER TABLE channels ADD COLUMN openai_compat INTEGER NOT NULL DEFAULT 0",
+	)
+	if err != nil {
+		return fmt.Errorf("add openai_compat column: %w", err)
 	}
 
 	return nil
