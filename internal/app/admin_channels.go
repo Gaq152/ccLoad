@@ -253,7 +253,8 @@ func (s *Server) handleGetChannel(c *gin.Context, id int64) {
 		"models":          cfg.Models,
 		"model_redirects": cfg.ModelRedirects,
 		"enabled":         cfg.Enabled,
-		"preset":          cfg.Preset, // Codex预设类型
+		"preset":          cfg.Preset,       // Codex/Gemini/Anthropic预设类型
+		"openai_compat":   cfg.OpenAICompat, // OpenAI兼容模式
 		"created_at":      cfg.CreatedAt,
 		"updated_at":      cfg.UpdatedAt,
 	}
