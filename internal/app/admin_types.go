@@ -135,8 +135,17 @@ func (cr *ChannelRequest) Validate() error {
 			cr.RefreshToken = ""
 			cr.TokenExpiresAt = 0
 		}
+	} else if cr.ChannelType == "anthropic" {
+		// Anthropic 渠道：支持 antigravity 预设（Google 反代兼容）
+		if strings.TrimSpace(cr.APIKey) == "" {
+			return fmt.Errorf("api_key cannot be empty")
+		}
+		// 只允许 antigravity 或空/custom 预设
+		if cr.Preset != "" && cr.Preset != "custom" && cr.Preset != "antigravity" {
+			return fmt.Errorf("anthropic渠道只支持 custom 或 antigravity 预设")
+		}
 	} else {
-		// 非 OAuth 渠道（如 Anthropic）：必须有 API Key，不使用预设
+		// 其他非 OAuth 渠道：必须有 API Key，不使用预设
 		if strings.TrimSpace(cr.APIKey) == "" {
 			return fmt.Errorf("api_key cannot be empty")
 		}
