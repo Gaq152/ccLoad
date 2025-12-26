@@ -203,8 +203,26 @@ async function editChannel(id) {
       updateCodexTokenUI(null);
       updateGeminiTokenUI(null);
     }
+  } else if (channelType === 'anthropic') {
+    // Anthropic 渠道：支持 antigravity 预设和 OpenAI 兼容模式
+    const preset = channel.preset || 'custom';
+    const presetRadio = document.querySelector(`input[name="channelPreset"][value="${preset}"]`);
+    if (presetRadio) {
+      presetRadio.checked = true;
+    }
+
+    handleChannelTypeChange(channelType);
+
+    // 设置 OpenAI 兼容模式开关状态
+    const openaiCompatCheckbox = document.getElementById('openaiCompatCheckbox');
+    if (openaiCompatCheckbox) {
+      openaiCompatCheckbox.checked = channel.openai_compat || false;
+    }
+
+    updateCodexTokenUI(null);
+    updateGeminiTokenUI(null);
   } else {
-    // 非 OAuth 渠道
+    // 其他非 OAuth 渠道
     handleChannelTypeChange(channelType);
     updateCodexTokenUI(null);
     updateGeminiTokenUI(null);
@@ -536,9 +554,9 @@ async function copyChannel(id, name) {
   // 初始化渠道类型相关 UI（Codex OAuth 区块）
   initChannelTypeEventListener();
 
-  // Codex 渠道：复制时保留原有预设
-  if (channelType === 'codex') {
-    const sourcePreset = channel.preset || 'custom';
+  // 复制时保留原有预设（Codex/Gemini/Anthropic）
+  const sourcePreset = channel.preset || 'custom';
+  if (channelType === 'codex' || channelType === 'gemini' || channelType === 'anthropic') {
     const presetRadio = document.querySelector(`input[name="channelPreset"][value="${sourcePreset}"]`);
     if (presetRadio) {
       presetRadio.checked = true;
@@ -547,21 +565,29 @@ async function copyChannel(id, name) {
 
   handleChannelTypeChange(channelType);
 
-  // Codex 渠道：根据预设类型决定是否需要重新配置
-  if (channelType === 'codex') {
-    const sourcePreset = channel.preset || 'custom';
+  // 设置 OpenAI 兼容模式开关（Anthropic / Gemini自定义 / Codex自定义）
+  const openaiCompatCheckbox = document.getElementById('openaiCompatCheckbox');
+  if (openaiCompatCheckbox) {
+    openaiCompatCheckbox.checked = channel.openai_compat || false;
+  }
+
+  // OAuth 渠道：根据预设类型决定是否需要重新配置
+  if (channelType === 'codex' || channelType === 'gemini') {
     if (sourcePreset === 'official') {
       // 官方预设：清空 OAuth Token，需要重新授权
       updateCodexTokenUI(null);
+      updateGeminiTokenUI(null);
       if (window.showWarning) {
-        showWarning('Codex 官方预设复制后需要重新进行 OAuth 授权');
+        showWarning(`${channelType === 'codex' ? 'Codex' : 'Gemini'} 官方预设复制后需要重新进行 OAuth 授权`);
       }
     } else {
       // 自定义预设：API Key 已复制，无需额外操作
       updateCodexTokenUI(null);
+      updateGeminiTokenUI(null);
     }
   } else {
     updateCodexTokenUI(null);
+    updateGeminiTokenUI(null);
   }
 
   // 添加 OAuth 回调消息监听
