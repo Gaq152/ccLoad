@@ -71,9 +71,23 @@ func (s *Server) HandleChannelTest(c *gin.Context) {
 
 		// 根据渠道类型调用对应的刷新逻辑
 		if channelType == util.ChannelTypeCodex {
-			// 从 api_key 字段解析 OAuth Token
-			_, oauthToken, isOAuth := ParseAPIKeyOrOAuth(apiKeyData.APIKey)
-			if !isOAuth || oauthToken == nil {
+			// 优先使用新架构的独立字段，兼容旧架构从 api_key 解析
+			var oauthToken *CodexOAuthToken
+			if apiKeyData.AccessToken != "" {
+				// 新架构：直接使用独立字段
+				oauthToken = &CodexOAuthToken{
+					AccessToken:  apiKeyData.AccessToken,
+					RefreshToken: apiKeyData.RefreshToken,
+					ExpiresAt:    apiKeyData.TokenExpiresAt,
+				}
+			} else {
+				// 旧架构兼容：从 api_key 字段解析
+				_, oauthToken, _ = ParseAPIKeyOrOAuth(apiKeyData.APIKey)
+			}
+
+			if oauthToken == nil || oauthToken.AccessToken == "" {
+				log.Printf("[DEBUG] Codex OAuth Token 检查失败: AccessToken长度=%d, APIKey长度=%d",
+					len(apiKeyData.AccessToken), len(apiKeyData.APIKey))
 				RespondJSON(c, http.StatusOK, gin.H{
 					"success": false,
 					"error":   "Codex 官方预设未配置有效的 OAuth Token，请先完成授权",
@@ -94,9 +108,24 @@ func (s *Server) HandleChannelTest(c *gin.Context) {
 			selectedKey = refreshedKey
 
 		} else { // Gemini
-			// 从 api_key 字段解析 OAuth Token
-			_, oauthToken, isOAuth := ParseGeminiAPIKeyOrOAuth(apiKeyData.APIKey)
-			if !isOAuth || oauthToken == nil {
+			// 优先使用新架构的独立字段，兼容旧架构从 api_key 解析
+			var oauthToken *GeminiOAuthToken
+			if apiKeyData.AccessToken != "" {
+				// 新架构：直接使用独立字段
+				oauthToken = &GeminiOAuthToken{
+					AccessToken:  apiKeyData.AccessToken,
+					IDToken:      apiKeyData.IDToken,
+					RefreshToken: apiKeyData.RefreshToken,
+					ExpiresAt:    apiKeyData.TokenExpiresAt,
+				}
+			} else {
+				// 旧架构兼容：从 api_key 字段解析
+				_, oauthToken, _ = ParseGeminiAPIKeyOrOAuth(apiKeyData.APIKey)
+			}
+
+			if oauthToken == nil || oauthToken.AccessToken == "" {
+				log.Printf("[DEBUG] Gemini OAuth Token 检查失败: AccessToken长度=%d, APIKey长度=%d",
+					len(apiKeyData.AccessToken), len(apiKeyData.APIKey))
 				RespondJSON(c, http.StatusOK, gin.H{
 					"success": false,
 					"error":   "Gemini 官方预设未配置有效的 OAuth Token，请先完成授权",
