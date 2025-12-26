@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 )
 
@@ -75,6 +76,7 @@ func (s *Server) handleProxyError(ctx context.Context, cfg *model.Config, keyInd
 
 // handleNetworkError 处理网络错误
 // 从proxy.go提取，遵循SRP原则
+// 返回值: (result, action)
 func (s *Server) handleNetworkError(
 	ctx context.Context,
 	cfg *model.Config,
@@ -86,10 +88,10 @@ func (s *Server) handleNetworkError(
 	clientIP string,     // [INFO] 客户端IP（用于日志记录，2025-12新增）
 	duration float64,
 	err error,
-) (*proxyResult, bool, bool) {
+) (*proxyResult, cooldown.Action) {
 	statusCode, _, _ := util.ClassifyError(err)
 	// [INFO] 修复：使用 actualModel 而非 reqCtx.originalModel
-	s.AddLogAsync(buildLogEntry(actualModel, cfg.ID, cfg.Name, statusCode,
+	s.AddLogAsync(buildLogEntry(actualModel, cfg.ID, cfg.Name, cfg.GetChannelType(), statusCode,
 		duration, false, selectedKey, cfg.URL, authTokenID, authTokenName, clientIP, nil, err.Error()))
 
 	action, _ := s.handleProxyError(ctx, cfg, keyIndex, nil, err)
@@ -102,21 +104,10 @@ func (s *Server) handleNetworkError(
 			duration:         duration,
 			succeeded:        false,
 			isClientCanceled: errors.Is(err, context.Canceled),
-		}, false, false
+		}, action
 	}
 
-	// 根据 action 决定重试策略
-	switch action {
-	case cooldown.ActionRetrySameChannel:
-		// 网络抖动：直接重试同渠道（不冷却，继续尝试同渠道的其他 Key）
-		return nil, true, false
-	case cooldown.ActionRetryChannel:
-		// 渠道级错误：切换到下一个渠道
-		return nil, false, true
-	default:
-		// Key级错误：继续重试同渠道的下一个 Key
-		return nil, true, false
-	}
+	return nil, action
 }
 
 type tokenStatsUpdate struct {
@@ -272,6 +263,7 @@ func (s *Server) updateTokenStatsAsync(tokenHash string, isSuccess bool, duratio
 // handleProxySuccess 处理代理成功响应（业务逻辑层）
 // 使用 cooldownManager 统一管理冷却状态清除
 // 注意：与 handleSuccessResponse（HTTP层）不同
+// 返回值: (result, action)
 func (s *Server) handleProxySuccess(
 	ctx context.Context,
 	cfg *model.Config,
@@ -281,7 +273,7 @@ func (s *Server) handleProxySuccess(
 	res *fwResult,
 	duration float64,
 	reqCtx *proxyRequestContext,
-) (*proxyResult, bool, bool) {
+) (*proxyResult, cooldown.Action) {
 	// 使用 cooldownManager 清除冷却状态
 	// 设计原则: 清除失败不应影响用户请求成功
 	_ = s.cooldownManager.ClearChannelCooldown(ctx, cfg.ID)
@@ -291,7 +283,7 @@ func (s *Server) handleProxySuccess(
 	s.invalidateChannelRelatedCache(cfg.ID)
 
 	// 记录成功日志
-	s.AddLogAsync(buildLogEntry(actualModel, cfg.ID, cfg.Name, res.Status,
+	s.AddLogAsync(buildLogEntry(actualModel, cfg.ID, cfg.Name, cfg.GetChannelType(), res.Status,
 		duration, reqCtx.isStreaming, selectedKey, cfg.URL, reqCtx.tokenID, reqCtx.tokenName, reqCtx.clientIP, res, ""))
 
 	// 异步更新Token统计
@@ -304,12 +296,15 @@ func (s *Server) handleProxySuccess(
 		message:   "ok",
 		duration:  duration,
 		succeeded: true,
-	}, false, false
+	}, cooldown.ActionReturnClient
 }
 
 // handleProxyErrorResponse 处理代理错误响应（业务逻辑层）
 // 从proxy.go提取，遵循SRP原则
 // 注意：与 handleErrorResponse（HTTP层）不同
+// 返回值: (result, action)
+//   - result != nil: 直接返回给客户端
+//   - result == nil: 根据 action 决定重试策略
 func (s *Server) handleProxyErrorResponse(
 	ctx context.Context,
 	cfg *model.Config,
@@ -319,7 +314,7 @@ func (s *Server) handleProxyErrorResponse(
 	res *fwResult,
 	duration float64,
 	reqCtx *proxyRequestContext,
-) (*proxyResult, bool, bool) {
+) (*proxyResult, cooldown.Action) {
 	// 日志改进: 明确标识上游返回的499错误
 	errMsg := ""
 	if res.Status == 499 {
@@ -342,9 +337,18 @@ func (s *Server) handleProxyErrorResponse(
 			reqPreview = reqPreview[:2000] + fmt.Sprintf("...(truncated, total=%d bytes)", reqBodyLen)
 		}
 		log.Printf("[DEBUG-400] 请求体(%d bytes): %s", reqBodyLen, reqPreview)
+
+		// [INFO] 检测 thinking 模式不兼容错误
+		// 错误特征: "Expected `thinking` or `redacted_thinking`, but found `text`"
+		// 触发条件: 渠道不支持 thinking 但请求中包含 thinking 块
+		if isThinkingModeError(res.Body) && !reqCtx.thinkingBlockRemoved {
+			log.Printf("[INFO] [Thinking兼容] 检测到thinking模式不兼容错误，将清理thinking块后重试")
+			// 不记录日志（重试成功后再记录），不触发冷却
+			return nil, cooldown.ActionRetryWithoutThinking
+		}
 	}
 
-	s.AddLogAsync(buildLogEntry(actualModel, cfg.ID, cfg.Name, res.Status,
+	s.AddLogAsync(buildLogEntry(actualModel, cfg.ID, cfg.Name, cfg.GetChannelType(), res.Status,
 		duration, reqCtx.isStreaming, selectedKey, cfg.URL, reqCtx.tokenID, reqCtx.tokenName, reqCtx.clientIP, res, errMsg))
 
 	// 异步更新Token统计（失败请求不计费）
@@ -359,19 +363,22 @@ func (s *Server) handleProxyErrorResponse(
 			channelID: &cfg.ID,
 			duration:  duration,
 			succeeded: false,
-		}, false, false
+		}, action
 	}
 
-	// 根据 action 决定重试策略
-	switch action {
-	case cooldown.ActionRetrySameChannel:
-		// 网络抖动：直接重试同渠道
-		return nil, true, false
-	case cooldown.ActionRetryChannel:
-		// 渠道级错误：切换到下一个渠道
-		return nil, false, true
-	default:
-		// Key级错误：继续重试同渠道的下一个 Key
-		return nil, true, false
+	return nil, action
+}
+
+// isThinkingModeError 检测是否为 thinking 模式不兼容错误
+// 错误特征: 请求中包含 thinking 块，但渠道不支持或配置不一致
+func isThinkingModeError(body []byte) bool {
+	if len(body) == 0 {
+		return false
 	}
+	bodyStr := string(body)
+	// 检测 Anthropic API 的 thinking 模式错误
+	// "Expected `thinking` or `redacted_thinking`, but found `text`"
+	return strings.Contains(bodyStr, "thinking") &&
+		(strings.Contains(bodyStr, "Expected") && strings.Contains(bodyStr, "found") ||
+			strings.Contains(bodyStr, "must start with a thinking block"))
 }

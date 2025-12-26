@@ -42,6 +42,45 @@ func (s *SQLStore) fetchChannelNamesBatch(ctx context.Context, channelIDs map[in
 	return channelNames, nil
 }
 
+// channelInfo 渠道基本信息（用于日志查询时填充）
+type channelInfo struct {
+	Name        string
+	ChannelType string
+}
+
+// fetchChannelInfoBatch 批量查询渠道信息（名称+类型）
+// 用于日志查询时同时填充 ChannelName 和 ChannelType
+// 输入：渠道ID集合 map[int64]bool
+// 输出：ID→渠道信息映射 map[int64]channelInfo
+func (s *SQLStore) fetchChannelInfoBatch(ctx context.Context, channelIDs map[int64]bool) (map[int64]channelInfo, error) {
+	if len(channelIDs) == 0 {
+		return make(map[int64]channelInfo), nil
+	}
+
+	// 查询所有渠道（全表扫描，渠道数<1000时比IN子查询更快）
+	rows, err := s.db.QueryContext(ctx, "SELECT id, name, channel_type FROM channels")
+	if err != nil {
+		return nil, fmt.Errorf("query all channel info: %w", err)
+	}
+	defer rows.Close()
+
+	// 解析并过滤需要的渠道
+	channelInfos := make(map[int64]channelInfo, len(channelIDs))
+	for rows.Next() {
+		var id int64
+		var name, channelType string
+		if err := rows.Scan(&id, &name, &channelType); err != nil {
+			continue // 跳过扫描错误的行
+		}
+		// 只保留需要的渠道
+		if channelIDs[id] {
+			channelInfos[id] = channelInfo{Name: name, ChannelType: channelType}
+		}
+	}
+
+	return channelInfos, nil
+}
+
 // fetchTokenNamesBatch 批量查询令牌名称（description字段）
 // 性能提升：N+1查询 → 1次全表查询 + 内存过滤
 // 输入：令牌ID集合 map[int64]bool

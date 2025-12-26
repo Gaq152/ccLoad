@@ -40,6 +40,7 @@ type LogEntry struct {
 	Model         string   `json:"model"`
 	ChannelID     int64    `json:"channel_id"`
 	ChannelName   string   `json:"channel_name,omitempty"`
+	ChannelType   string   `json:"channel_type,omitempty"` // 渠道类型（anthropic/gemini/codex），用于前端筛选
 	StatusCode    int      `json:"status_code"`
 	Message       string   `json:"message"`
 	Duration      float64  `json:"duration"`         // 总耗时（秒）
