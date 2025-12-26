@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	neturl "net/url"
 	"strconv"
@@ -78,6 +79,9 @@ type proxyRequestContext struct {
 
 	// Gemini CLI 专用字段（2025-12新增）
 	isGeminiCLI bool // 是否为 Gemini CLI 官方预设
+
+	// Thinking 兼容处理（2025-12新增）
+	thinkingBlockRemoved bool // thinking 块是否已被清理（避免重复清理）
 }
 
 // proxyResult 代理请求结果
@@ -336,6 +340,104 @@ func prepareRequestBody(cfg *model.Config, reqCtx *proxyRequestContext) (actualM
 	return actualModel, bodyToSend
 }
 
+// removeThinkingBlocks 从请求体中移除 thinking 和 redacted_thinking 块
+// 用于处理渠道不支持 thinking 模式时的兼容性问题
+// 返回：(处理后的请求体, 是否有修改)
+func removeThinkingBlocks(body []byte) ([]byte, bool) {
+	if len(body) == 0 {
+		return body, false
+	}
+
+	var reqData map[string]any
+	if err := sonic.Unmarshal(body, &reqData); err != nil {
+		return body, false
+	}
+
+	modified := false
+
+	// 1. 移除顶层的 thinking 配置（如果存在）
+	if thinkingCfg, exists := reqData["thinking"]; exists {
+		log.Printf("[DEBUG] [Thinking兼容] 发现顶层thinking配置: %v", thinkingCfg)
+		delete(reqData, "thinking")
+		modified = true
+	}
+
+	// 2. 处理 messages 数组中的 thinking 块
+	messages, ok := reqData["messages"].([]any)
+	if !ok {
+		if modified {
+			result, _ := sonic.Marshal(reqData)
+			return result, true
+		}
+		return body, false
+	}
+
+	newMessages := make([]any, 0, len(messages))
+	for _, msg := range messages {
+		msgMap, ok := msg.(map[string]any)
+		if !ok {
+			newMessages = append(newMessages, msg)
+			continue
+		}
+
+		// 检查 content 字段
+		content, hasContent := msgMap["content"]
+		if !hasContent {
+			newMessages = append(newMessages, msg)
+			continue
+		}
+
+		// content 可能是字符串或数组
+		contentArray, isArray := content.([]any)
+		if !isArray {
+			// content 是字符串，保持不变
+			newMessages = append(newMessages, msg)
+			continue
+		}
+
+		// 过滤掉 thinking 和 redacted_thinking 类型的块
+		newContent := make([]any, 0, len(contentArray))
+		hasThinkingBlock := false
+		for _, block := range contentArray {
+			blockMap, ok := block.(map[string]any)
+			if !ok {
+				newContent = append(newContent, block)
+				continue
+			}
+
+			blockType, _ := blockMap["type"].(string)
+			if blockType == "thinking" || blockType == "redacted_thinking" {
+				hasThinkingBlock = true
+				modified = true
+				continue // 跳过 thinking 块
+			}
+			newContent = append(newContent, block)
+		}
+
+		if hasThinkingBlock {
+			// 更新 content
+			if len(newContent) == 0 {
+				// 如果移除 thinking 后 content 为空，跳过整个消息
+				// 但这种情况不太可能发生，因为通常 thinking 后面会有 text
+				continue
+			}
+			msgMap["content"] = newContent
+		}
+		newMessages = append(newMessages, msgMap)
+	}
+
+	if modified {
+		reqData["messages"] = newMessages
+		result, err := sonic.Marshal(reqData)
+		if err != nil {
+			return body, false
+		}
+		return result, true
+	}
+
+	return body, false
+}
+
 // ============================================================================
 // 日志和字符串处理工具函数
 // ============================================================================
@@ -352,7 +454,7 @@ func maskAPIKey(key string) string {
 }
 
 // buildLogEntry 构建日志条目（消除重复代码，遵循DRY原则）
-func buildLogEntry(originalModel string, channelID int64, channelName string, statusCode int,
+func buildLogEntry(originalModel string, channelID int64, channelName string, channelType string, statusCode int,
 	duration float64, isStreaming bool, apiKeyUsed string, apiBaseURL string, authTokenID int64, authTokenName string, clientIP string,
 	res *fwResult, errMsg string) *model.LogEntry {
 
@@ -364,6 +466,7 @@ func buildLogEntry(originalModel string, channelID int64, channelName string, st
 		Model:         originalModel,
 		ChannelID:     channelID,
 		ChannelName:   channelName,
+		ChannelType:   channelType,
 		StatusCode:    statusCode,
 		Duration:      duration,
 		IsStreaming:   isStreaming,

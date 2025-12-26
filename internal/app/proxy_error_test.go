@@ -112,51 +112,42 @@ func Test_HandleNetworkError_Basic(t *testing.T) {
 	}
 
 	t.Run("context canceled returns client error", func(t *testing.T) {
-		result, retryKey, retryChannel := srv.handleNetworkError(
+		result, action := srv.handleNetworkError(
 			ctx, cfg, 0, "test-model", "test-key", 0, "", "", 0.1, context.Canceled,
 		)
 
 		if result == nil {
 			t.Error("期望返回错误结果")
 		}
-		if retryKey {
-			t.Error("期望 retryKey=false")
-		}
-		if retryChannel {
-			t.Error("期望 retryChannel=false")
+		if action != cooldown.ActionReturnClient {
+			t.Errorf("期望 action=ActionReturnClient, 实际=%v", action)
 		}
 	})
 
 	t.Run("network error switches channel", func(t *testing.T) {
-		result, retryKey, retryChannel := srv.handleNetworkError(
+		result, action := srv.handleNetworkError(
 			ctx, cfg, 0, "test-model", "test-key", 0, "", "", 0.1, errors.New("connection refused"),
 		)
 
 		if result != nil {
 			t.Error("期望 result=nil (切换渠道)")
 		}
-		if retryKey {
-			t.Error("期望 retryKey=false")
-		}
-		if !retryChannel {
-			t.Error("期望 retryChannel=true")
+		if action != cooldown.ActionRetryChannel {
+			t.Errorf("期望 action=ActionRetryChannel, 实际=%v", action)
 		}
 	})
 
 	t.Run("first byte timeout switches channel", func(t *testing.T) {
 		err := fmt.Errorf("wrap: %w", util.ErrUpstreamFirstByteTimeout)
-		result, retryKey, retryChannel := srv.handleNetworkError(
+		result, action := srv.handleNetworkError(
 			ctx, cfg, 0, "test-model", "test-key", 0, "", "", 0.1, err,
 		)
 
 		if result != nil {
 			t.Error("期望 result=nil (切换渠道)")
 		}
-		if retryKey {
-			t.Error("期望 retryKey=false")
-		}
-		if !retryChannel {
-			t.Error("期望 retryChannel=true")
+		if action != cooldown.ActionRetryChannel {
+			t.Errorf("期望 action=ActionRetryChannel, 实际=%v", action)
 		}
 	})
 }
@@ -189,7 +180,7 @@ func Test_HandleProxySuccess_Basic(t *testing.T) {
 		tokenHash: "", // 测试环境无需Token统计
 	}
 
-	result, retryKey, retryChannel := srv.handleProxySuccess(
+	result, action := srv.handleProxySuccess(
 		ctx, cfg, 0, "test-model", "test-key", res, 0.1, reqCtx,
 	)
 
@@ -202,11 +193,8 @@ func Test_HandleProxySuccess_Basic(t *testing.T) {
 	if !result.succeeded {
 		t.Error("期望 succeeded=true")
 	}
-	if retryKey {
-		t.Error("期望 retryKey=false")
-	}
-	if retryChannel {
-		t.Error("期望 retryChannel=false")
+	if action != cooldown.ActionReturnClient {
+		t.Errorf("期望 action=ActionReturnClient, 实际=%v", action)
 	}
 }
 

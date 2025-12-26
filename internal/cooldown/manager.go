@@ -15,10 +15,11 @@ import (
 type Action int
 
 const (
-	ActionRetryKey         Action = iota // 重试当前渠道的其他Key
-	ActionRetryChannel                   // 切换到下一个渠道
-	ActionReturnClient                   // 直接返回给客户端
-	ActionRetrySameChannel               // 重试同渠道（网络抖动，不冷却）
+	ActionRetryKey            Action = iota // 重试当前渠道的其他Key
+	ActionRetryChannel                      // 切换到下一个渠道
+	ActionReturnClient                      // 直接返回给客户端
+	ActionRetrySameChannel                  // 重试同渠道（网络抖动，不冷却）
+	ActionRetryWithoutThinking              // 清理thinking块后重试同渠道同Key（thinking模式不兼容，预留）
 )
 
 // NoKeyIndex 表示错误与特定Key无关（网络错误、DNS解析失败等）

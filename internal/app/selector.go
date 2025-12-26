@@ -18,7 +18,7 @@ func (s *Server) selectCandidatesByChannelType(ctx context.Context, channelType 
 	if err != nil {
 		return nil, err
 	}
-	return s.filterCooldownChannels(ctx, shuffleSamePriorityChannels(channels))
+	return s.filterCooldownChannels(ctx, s.maybeShuffleChannels(channels))
 }
 
 // selectCandidates 选择支持指定模型的候选渠道
@@ -37,7 +37,7 @@ func (s *Server) selectCandidatesByModelAndType(ctx context.Context, model strin
 	}
 
 	if channelType == "" {
-		return s.filterCooldownChannels(ctx, shuffleSamePriorityChannels(configs))
+		return s.filterCooldownChannels(ctx, s.maybeShuffleChannels(configs))
 	}
 
 	normalizedType := util.NormalizeChannelType(channelType)
@@ -48,7 +48,18 @@ func (s *Server) selectCandidatesByModelAndType(ctx context.Context, model strin
 		}
 	}
 
-	return s.filterCooldownChannels(ctx, shuffleSamePriorityChannels(filtered))
+	return s.filterCooldownChannels(ctx, s.maybeShuffleChannels(filtered))
+}
+
+// maybeShuffleChannels 根据设置决定是否打乱渠道顺序
+// 开启负载均衡：同优先级的渠道随机打乱
+// 关闭负载均衡：保持原始顺序（按优先级排序）
+func (s *Server) maybeShuffleChannels(channels []*modelpkg.Config) []*modelpkg.Config {
+	// 防御性检查：configService 为 nil 时默认开启负载均衡
+	if s.configService == nil || s.configService.GetBool("channel_load_balance", true) {
+		return shuffleSamePriorityChannels(channels)
+	}
+	return channels
 }
 
 // filterCooldownChannels 过滤掉冷却中的渠道
@@ -130,7 +141,7 @@ func shuffleSamePriorityChannels(channels []*modelpkg.Config) []*modelpkg.Config
 	// 单次遍历：识别优先级边界并就地打乱
 	groupStart := 0
 	for i := 1; i <= n; i++ {
-		// 检测优先级边界（包括末尾）
+		// 检测分组边界（优先级变化）
 		if i == n || result[i].Priority != result[groupStart].Priority {
 			// 打乱 [groupStart, i) 区间
 			if i-groupStart > 1 {

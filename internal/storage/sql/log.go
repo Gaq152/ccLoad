@@ -209,20 +209,21 @@ func (s *SQLStore) ListLogs(ctx context.Context, since time.Time, limit, offset 
 		out = append(out, &e)
 	}
 
-	// 批量查询渠道名称
+	// 批量查询渠道信息（名称+类型）
 	if len(channelIDsToFetch) > 0 {
-		channelNames, err := s.fetchChannelNamesBatch(ctx, channelIDsToFetch)
+		channelInfos, err := s.fetchChannelInfoBatch(ctx, channelIDsToFetch)
 		if err != nil {
 			// 降级处理：查询失败不影响日志返回，仅记录错误
-			log.Printf("[WARN]  批量查询渠道名称失败: %v", err)
-			channelNames = make(map[int64]string)
+			log.Printf("[WARN]  批量查询渠道信息失败: %v", err)
+			channelInfos = make(map[int64]channelInfo)
 		}
 
-		// 填充渠道名称
+		// 填充渠道名称和类型
 		for _, e := range out {
 			if e.ChannelID != 0 {
-				if name, ok := channelNames[e.ChannelID]; ok {
-					e.ChannelName = name
+				if info, ok := channelInfos[e.ChannelID]; ok {
+					e.ChannelName = info.Name
+					e.ChannelType = info.ChannelType
 				}
 			}
 		}
@@ -379,17 +380,18 @@ func (s *SQLStore) ListLogsRange(ctx context.Context, since, until time.Time, li
 		out = append(out, &e)
 	}
 
-	// 批量查询渠道名称
+	// 批量查询渠道信息（名称+类型）
 	if len(channelIDsToFetch) > 0 {
-		channelNames, err := s.fetchChannelNamesBatch(ctx, channelIDsToFetch)
+		channelInfos, err := s.fetchChannelInfoBatch(ctx, channelIDsToFetch)
 		if err != nil {
-			log.Printf("[WARN]  批量查询渠道名称失败: %v", err)
-			channelNames = make(map[int64]string)
+			log.Printf("[WARN]  批量查询渠道信息失败: %v", err)
+			channelInfos = make(map[int64]channelInfo)
 		}
 		for _, e := range out {
 			if e.ChannelID != 0 {
-				if name, ok := channelNames[e.ChannelID]; ok {
-					e.ChannelName = name
+				if info, ok := channelInfos[e.ChannelID]; ok {
+					e.ChannelName = info.Name
+					e.ChannelType = info.ChannelType
 				}
 			}
 		}

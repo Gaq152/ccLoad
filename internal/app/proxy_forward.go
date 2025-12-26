@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"ccLoad/internal/config"
+	"ccLoad/internal/cooldown"
 	"ccLoad/internal/model"
 	"ccLoad/internal/util"
 	"context"
@@ -513,7 +514,9 @@ func (s *Server) forwardOnceAsync(ctx context.Context, cfg *model.Config, apiKey
 
 // forwardAttempt 单次转发尝试（包含错误处理和日志记录）
 // 从proxy.go提取，遵循SRP原则
-// 返回：(proxyResult, shouldContinueRetry, shouldBreakToNextChannel)
+// 返回：(proxyResult, action)
+//   - result != nil: 直接返回给客户端
+//   - result == nil: 根据 action 决定重试策略
 func (s *Server) forwardAttempt(
 	ctx context.Context,
 	cfg *model.Config,
@@ -523,7 +526,7 @@ func (s *Server) forwardAttempt(
 	actualModel string, // [INFO] 重定向后的实际模型名称
 	bodyToSend []byte,
 	w http.ResponseWriter,
-) (*proxyResult, bool, bool) {
+) (*proxyResult, cooldown.Action) {
 	// [VALIDATE] Key级验证器检查(88code套餐验证等)
 	// 每个Key单独验证，避免误杀免费key或误放付费key
 	if s.validatorManager != nil {
@@ -531,7 +534,7 @@ func (s *Server) forwardAttempt(
 		if !available {
 			// Key验证失败: 跳过此key，尝试下一个
 			log.Printf("[VALIDATE] 渠道 %s (ID=%d) Key#%d 验证失败: %s, 跳过", cfg.Name, cfg.ID, keyIndex, reason)
-			return nil, true, false // shouldContinue=true, shouldBreak=false
+			return nil, cooldown.ActionRetryKey
 		}
 	}
 
@@ -559,7 +562,7 @@ func (s *Server) forwardAttempt(
 			_, _ = s.cooldownManager.HandleError(ctx, cfg.ID, keyIndex, 200, res.SSEErrorEvent, false, nil)
 			s.invalidateChannelRelatedCache(cfg.ID)
 			// 记录失败日志
-			s.AddLogAsync(buildLogEntry(actualModel, cfg.ID, cfg.Name, 200,
+			s.AddLogAsync(buildLogEntry(actualModel, cfg.ID, cfg.Name, cfg.GetChannelType(), 200,
 				duration, reqCtx.isStreaming, selectedKey, cfg.URL, reqCtx.tokenID, reqCtx.tokenName, reqCtx.clientIP, res, "SSE error event"))
 			// 返回成功（因为已经写出了200状态码和部分数据）
 			return &proxyResult{
@@ -568,7 +571,7 @@ func (s *Server) forwardAttempt(
 				message:   "partial success with SSE error",
 				duration:  duration,
 				succeeded: true, // 标记为成功，避免上层重试
-			}, false, false
+			}, cooldown.ActionReturnClient
 		}
 
 		// [INFO] 检查流响应是否不完整（2025-12新增）
@@ -582,7 +585,7 @@ func (s *Server) forwardAttempt(
 			_, _ = s.cooldownManager.HandleError(ctx, cfg.ID, keyIndex, util.StatusStreamIncomplete, []byte(res.StreamDiagMsg), false, nil)
 			s.invalidateChannelRelatedCache(cfg.ID)
 			// 记录失败日志
-			s.AddLogAsync(buildLogEntry(actualModel, cfg.ID, cfg.Name, util.StatusStreamIncomplete,
+			s.AddLogAsync(buildLogEntry(actualModel, cfg.ID, cfg.Name, cfg.GetChannelType(), util.StatusStreamIncomplete,
 				duration, reqCtx.isStreaming, selectedKey, cfg.URL, reqCtx.tokenID, reqCtx.tokenName, reqCtx.clientIP, res, res.StreamDiagMsg))
 			// 返回成功（因为已经写出了200状态码和部分数据）
 			return &proxyResult{
@@ -591,7 +594,7 @@ func (s *Server) forwardAttempt(
 				message:   "partial success with incomplete stream",
 				duration:  duration,
 				succeeded: true, // 标记为成功，避免上层重试
-			}, false, false
+			}, cooldown.ActionReturnClient
 		}
 
 		return s.handleProxySuccess(ctx, cfg, keyIndex, actualModel, selectedKey, res, duration, reqCtx)
@@ -679,6 +682,7 @@ func (s *Server) tryChannelWithKeys(ctx context.Context, cfg *model.Config, reqC
 	}
 
 	// Key重试循环
+keyLoop:
 	for range maxKeyRetries {
 		// 选择可用的API Key（直接传入apiKeys，避免重复查询）
 		keyIndex, selectedKey, err := s.keySelector.SelectAvailableKey(cfg.ID, apiKeys, triedKeys)
@@ -771,7 +775,7 @@ func (s *Server) tryChannelWithKeys(ctx context.Context, cfg *model.Config, reqC
 
 		// 单次转发尝试（传递实际的API Key字符串）
 		// [INFO] 修复：传递 actualModel 用于日志记录
-		result, shouldContinue, shouldBreak := s.forwardAttempt(
+		result, action := s.forwardAttempt(
 			ctx, cfg, keyIndex, actualKey, reqCtx, actualModel, bodyToSend, w)
 
 		// 如果返回了结果，直接返回
@@ -779,14 +783,60 @@ func (s *Server) tryChannelWithKeys(ctx context.Context, cfg *model.Config, reqC
 			return result, nil
 		}
 
-		// 需要切换到下一个渠道
-		if shouldBreak {
-			break
-		}
+		// 根据 action 决定重试策略
+		switch action {
+		case cooldown.ActionRetryWithoutThinking:
+			// [INFO] Thinking 兼容处理：清理 thinking 块后立即重试同 Key
+			// 设计：同步重试而非 continue，避免单 Key 渠道循环次数耗尽问题
+			if !reqCtx.thinkingBlockRemoved {
+				cleanedBody, modified := removeThinkingBlocks(bodyToSend)
+				if modified {
+					log.Printf("[INFO] [Thinking兼容] 已清理thinking块，立即重试同Key (channel=%d, key=%d)", cfg.ID, keyIndex)
+					// 更新 reqCtx.body，确保切换渠道时也使用清理后的版本
+					reqCtx.body = cleanedBody
+					bodyToSend = cleanedBody
+					reqCtx.thinkingBlockRemoved = true
 
-		// 继续重试下一个Key
-		if !shouldContinue {
-			break
+					// 立即用清理后的 body 重试同 Key（同步重试，不消耗循环次数）
+					result, action = s.forwardAttempt(
+						ctx, cfg, keyIndex, actualKey, reqCtx, actualModel, cleanedBody, w)
+					if result != nil {
+						return result, nil
+					}
+					// 重试后根据新的 action 继续处理（fallthrough 到下面的 switch）
+				} else {
+					// [FIX] 无法清理 thinking 块（请求体中没有 thinking 配置）
+					// 这是客户端错误，不应该触发重试/冷却，直接返回原始 400 错误
+					log.Printf("[WARN] [Thinking兼容] 请求体中未找到thinking块，无法清理，返回原始错误")
+					// 返回 nil 让外层循环继续，但标记为已处理避免重复清理
+					reqCtx.thinkingBlockRemoved = true
+					// 切换到下一个渠道尝试（可能其他渠道支持 thinking）
+					action = cooldown.ActionRetryChannel
+				}
+			}
+			// 如果清理后仍然返回 ActionRetryWithoutThinking，说明重试后又遇到同样错误
+			// 这种情况不应该发生（因为已经清理过了），当作渠道级错误处理
+			if action == cooldown.ActionRetryWithoutThinking {
+				log.Printf("[WARN] [Thinking兼容] 清理后仍返回thinking错误，切换渠道")
+				action = cooldown.ActionRetryChannel
+			}
+			// 根据新的 action 继续处理
+			if action == cooldown.ActionRetryChannel {
+				break keyLoop
+			}
+			continue
+
+		case cooldown.ActionRetryKey, cooldown.ActionRetrySameChannel:
+			// Key级错误或网络抖动：继续重试同渠道的下一个 Key
+			continue
+
+		case cooldown.ActionRetryChannel:
+			// 渠道级错误：切换到下一个渠道
+			break keyLoop
+
+		default:
+			// ActionReturnClient 或未知：不应该到这里（result != nil 时已返回）
+			break keyLoop
 		}
 	}
 
