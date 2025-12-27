@@ -50,7 +50,10 @@ function filterChannels() {
     if (typeA !== typeB) {
       return typeA.localeCompare(typeB);
     }
-    return a.name.localeCompare(b.name);
+    // 同优先级同类型：按 sort_order 升序，sort_order 相同则按 id 升序（与后端一致）
+    const sortOrderDiff = (a.sort_order || 0) - (b.sort_order || 0);
+    if (sortOrderDiff !== 0) return sortOrderDiff;
+    return a.id - b.id;
   });
 
   renderChannels(filtered);
