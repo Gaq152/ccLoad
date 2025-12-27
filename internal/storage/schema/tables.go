@@ -18,6 +18,7 @@ func DefineChannelsTable() *TableBuilder {
 		Column("quota_config TEXT DEFAULT NULL").                  // 用量监控配置（JSON格式）
 		Column("preset VARCHAR(32) DEFAULT NULL").                 // Codex预设类型：official=官方, custom=自定义
 		Column("openai_compat TINYINT NOT NULL DEFAULT 0").        // OpenAI兼容模式（Gemini渠道使用/v1/chat/completions格式）
+		Column("sort_order INT NOT NULL DEFAULT 0").               // 同优先级内的排序顺序（拖拽排序用）
 		Column("created_at BIGINT NOT NULL").
 		Column("updated_at BIGINT NOT NULL").
 		Index("idx_channels_enabled", "enabled").

@@ -24,6 +24,7 @@ type ChannelStore interface {
 	ReplaceConfig(ctx context.Context, c *model.Config) (*model.Config, error)
 	GetEnabledChannelsByModel(ctx context.Context, modelName string) ([]*model.Config, error)
 	GetEnabledChannelsByType(ctx context.Context, channelType string) ([]*model.Config, error)
+	BatchUpdateChannelSort(ctx context.Context, changes []model.ChannelSortUpdate) (int, error)
 }
 
 // APIKeyStore API Key管理接口

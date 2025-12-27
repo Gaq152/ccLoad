@@ -125,10 +125,10 @@ func (cs *ConfigScanner) ScanConfig(scanner interface {
 	var rrKeyIndex int // 临时变量，读取后丢弃
 	// 扫描key_count字段（从JOIN查询获取）
 	// 扫描顺序必须与SELECT语句一致：
-	// id, name, url, priority, models, model_redirects, channel_type, enabled,
+	// id, name, url, priority, sort_order, models, model_redirects, channel_type, enabled,
 	// cooldown_until, cooldown_duration_ms, key_count,
 	// rr_key_index, auto_select_endpoint, quota_config, preset, openai_compat, created_at, updated_at
-	if err := scanner.Scan(&c.ID, &c.Name, &c.URL, &c.Priority,
+	if err := scanner.Scan(&c.ID, &c.Name, &c.URL, &c.Priority, &c.SortOrder,
 		&modelsStr, &modelRedirectsStr, &c.ChannelType, &enabledInt,
 		&c.CooldownUntil, &c.CooldownDurationMs, &c.KeyCount,
 		&rrKeyIndex, &autoSelectEndpointInt, &quotaConfigStr, &presetStr, &openaiCompatInt, &createdAtRaw, &updatedAtRaw); err != nil {

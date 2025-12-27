@@ -642,3 +642,82 @@ func (s *Server) HandleDeleteModels(c *gin.Context) {
 	s.InvalidateChannelListCache()
 	RespondJSON(c, http.StatusOK, gin.H{"success": true, "remaining": len(remaining)})
 }
+
+// ChannelSortUpdate 渠道排序更新项
+type ChannelSortUpdate struct {
+	ID        int64 `json:"id"`
+	Priority  int   `json:"priority"`
+	SortOrder int   `json:"sort_order"`
+}
+
+// HandleReorderChannels 批量更新渠道排序
+// POST /admin/channels/reorder
+// 请求体: { "changes": [{ "id": 1, "priority": 100, "sort_order": 0 }, ...] }
+func (s *Server) HandleReorderChannels(c *gin.Context) {
+	var req struct {
+		Changes []ChannelSortUpdate `json:"changes" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		RespondErrorMsg(c, http.StatusBadRequest, "invalid request: "+err.Error())
+		return
+	}
+
+	if len(req.Changes) == 0 {
+		RespondJSON(c, http.StatusOK, gin.H{"success": true, "updated": 0})
+		return
+	}
+
+	// 参数校验
+	seenIDs := make(map[int64]bool, len(req.Changes))
+	for _, change := range req.Changes {
+		// ID 必须大于 0
+		if change.ID <= 0 {
+			RespondErrorMsg(c, http.StatusBadRequest, "invalid channel id")
+			return
+		}
+		// sort_order 不能为负数
+		if change.SortOrder < 0 {
+			RespondErrorMsg(c, http.StatusBadRequest, "sort_order cannot be negative")
+			return
+		}
+		// 检查重复 ID
+		if seenIDs[change.ID] {
+			RespondErrorMsg(c, http.StatusBadRequest, "duplicate channel id in request")
+			return
+		}
+		seenIDs[change.ID] = true
+	}
+
+	ctx := c.Request.Context()
+
+	// 转换为 store 层类型
+	storeChanges := make([]model.ChannelSortUpdate, len(req.Changes))
+	for i, change := range req.Changes {
+		storeChanges[i] = model.ChannelSortUpdate{
+			ID:        change.ID,
+			Priority:  change.Priority,
+			SortOrder: change.SortOrder,
+		}
+	}
+
+	// 批量更新优先级和排序
+	updated, err := s.store.BatchUpdateChannelSort(ctx, storeChanges)
+	if err != nil {
+		RespondError(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	// 检查是否有渠道未找到（部分更新）
+	if updated < len(storeChanges) {
+		RespondErrorMsg(c, http.StatusNotFound, fmt.Sprintf("some channels not found: updated %d of %d", updated, len(storeChanges)))
+		return
+	}
+
+	// 刷新缓存
+	s.InvalidateChannelListCache()
+
+	RespondJSON(c, http.StatusOK, gin.H{
+		"success": true,
+		"updated": updated,
+	})
+}

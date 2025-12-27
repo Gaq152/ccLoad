@@ -19,14 +19,14 @@ func (s *SQLStore) ListConfigs(ctx context.Context) ([]*model.Config, error) {
 	// 添加 key_count 字段，避免 N+1 查询
 	// 使用 LEFT JOIN 支持查询有或无API Key的渠道
 	query := `
-		SELECT c.id, c.name, c.url, c.priority, c.models, c.model_redirects, c.channel_type, c.enabled,
+		SELECT c.id, c.name, c.url, c.priority, c.sort_order, c.models, c.model_redirects, c.channel_type, c.enabled,
 		       c.cooldown_until, c.cooldown_duration_ms,
 		       COUNT(k.id) as key_count,
 		       c.rr_key_index, c.auto_select_endpoint, c.quota_config, c.preset, c.openai_compat, c.created_at, c.updated_at
 		FROM channels c
 		LEFT JOIN api_keys k ON c.id = k.channel_id
 		GROUP BY c.id
-		ORDER BY c.priority DESC, c.id ASC
+		ORDER BY c.priority DESC, c.sort_order ASC, c.id ASC
 	`
 	rows, err := s.db.QueryContext(ctx, query)
 	if err != nil {
@@ -43,7 +43,7 @@ func (s *SQLStore) GetConfig(ctx context.Context, id int64) (*model.Config, erro
 	// 新架构：包含内联的轮询索引字段
 	// 使用 LEFT JOIN 以支持创建渠道时（尚无API Key）仍能获取配置
 	query := `
-		SELECT c.id, c.name, c.url, c.priority, c.models, c.model_redirects, c.channel_type, c.enabled,
+		SELECT c.id, c.name, c.url, c.priority, c.sort_order, c.models, c.model_redirects, c.channel_type, c.enabled,
 		       c.cooldown_until, c.cooldown_duration_ms,
 		       COUNT(k.id) as key_count,
 		       c.rr_key_index, c.auto_select_endpoint, c.quota_config, c.preset, c.openai_compat, c.created_at, c.updated_at
@@ -76,7 +76,7 @@ func (s *SQLStore) GetEnabledChannelsByModel(ctx context.Context, model string) 
 		// 通配符：返回所有启用的渠道（新架构：从 channels 表读取内联冷却字段）
 		// 使用 LEFT JOIN 支持查询有或无API Key的渠道
 		query = `
-            SELECT c.id, c.name, c.url, c.priority,
+            SELECT c.id, c.name, c.url, c.priority, c.sort_order,
                    c.models, c.model_redirects, c.channel_type, c.enabled,
                    c.cooldown_until, c.cooldown_duration_ms,
                    COUNT(k.id) as key_count,
@@ -86,14 +86,14 @@ func (s *SQLStore) GetEnabledChannelsByModel(ctx context.Context, model string) 
             WHERE c.enabled = 1
               AND (c.cooldown_until = 0 OR c.cooldown_until <= ?)
             GROUP BY c.id
-            ORDER BY c.priority DESC, c.id ASC
+            ORDER BY c.priority DESC, c.sort_order ASC, c.id ASC
         `
 		args = []any{nowUnix}
 	} else {
 		// 精确匹配：使用去规范化的 channel_models 索引表（性能优化：消除JSON查询）
 		// 使用 LEFT JOIN 支持查询有或无API Key的渠道
 		query = `
-            SELECT c.id, c.name, c.url, c.priority,
+            SELECT c.id, c.name, c.url, c.priority, c.sort_order,
                    c.models, c.model_redirects, c.channel_type, c.enabled,
                    c.cooldown_until, c.cooldown_duration_ms,
                    COUNT(k.id) as key_count,
@@ -105,7 +105,7 @@ func (s *SQLStore) GetEnabledChannelsByModel(ctx context.Context, model string) 
               AND cm.model = ?
               AND (c.cooldown_until = 0 OR c.cooldown_until <= ?)
             GROUP BY c.id
-            ORDER BY c.priority DESC, c.id ASC
+            ORDER BY c.priority DESC, c.sort_order ASC, c.id ASC
         `
 		args = []any{model, nowUnix}
 	}
@@ -126,7 +126,7 @@ func (s *SQLStore) GetEnabledChannelsByModel(ctx context.Context, model string) 
 func (s *SQLStore) GetEnabledChannelsByType(ctx context.Context, channelType string) ([]*model.Config, error) {
 	nowUnix := timeToUnix(time.Now())
 	query := `
-		SELECT c.id, c.name, c.url, c.priority,
+		SELECT c.id, c.name, c.url, c.priority, c.sort_order,
 		       c.models, c.model_redirects, c.channel_type, c.enabled,
 		       c.cooldown_until, c.cooldown_duration_ms,
 		       COUNT(k.id) as key_count,
@@ -137,7 +137,7 @@ func (s *SQLStore) GetEnabledChannelsByType(ctx context.Context, channelType str
 		  AND c.channel_type = ?
 		  AND (c.cooldown_until = 0 OR c.cooldown_until <= ?)
 		GROUP BY c.id
-		ORDER BY c.priority DESC, c.id ASC
+		ORDER BY c.priority DESC, c.sort_order ASC, c.id ASC
 	`
 
 	rows, err := s.db.QueryContext(ctx, query, channelType, nowUnix)
@@ -439,4 +439,47 @@ func (s *SQLStore) DeleteConfig(ctx context.Context, id int64) error {
 	s.triggerAsyncSync(syncChannels)
 
 	return nil
+}
+
+// BatchUpdateChannelSort 批量更新渠道的优先级和排序顺序
+// 用于拖拽排序功能
+func (s *SQLStore) BatchUpdateChannelSort(ctx context.Context, changes []model.ChannelSortUpdate) (int, error) {
+	if len(changes) == 0 {
+		return 0, nil
+	}
+
+	nowUnix := timeToUnix(time.Now())
+	updated := 0
+
+	// 使用事务确保原子性
+	err := s.WithTransaction(ctx, func(tx *sql.Tx) error {
+		stmt, err := tx.PrepareContext(ctx, `
+			UPDATE channels
+			SET priority = ?, sort_order = ?, updated_at = ?
+			WHERE id = ?
+		`)
+		if err != nil {
+			return err
+		}
+		defer stmt.Close()
+
+		for _, change := range changes {
+			result, err := stmt.ExecContext(ctx, change.Priority, change.SortOrder, nowUnix, change.ID)
+			if err != nil {
+				return err
+			}
+			affected, _ := result.RowsAffected()
+			updated += int(affected)
+		}
+		return nil
+	})
+
+	if err != nil {
+		return 0, err
+	}
+
+	// 异步同步渠道配置到Redis
+	s.triggerAsyncSync(syncChannels)
+
+	return updated, nil
 }
