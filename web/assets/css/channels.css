@@ -913,3 +913,203 @@ html.dark .btn-icon::after {
 html.dark .btn-icon::before {
   border-top-color: var(--neutral-600);
 }
+
+/* ============================================================================
+ * 优先级泳道（Priority Swimlanes）- 拖拽排序支持（2025-12新增）
+ * ============================================================================ */
+
+/* 优先级分组容器 */
+.priority-group {
+  background: var(--neutral-50);
+  border: 1px dashed var(--neutral-200);
+  border-radius: 8px;
+  padding: 10px;
+  margin-bottom: 12px;
+  transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
+  min-height: 60px;
+}
+
+.priority-group:last-child {
+  margin-bottom: 0;
+}
+
+/* 拖拽进入时的高亮效果 */
+.priority-group.drag-over {
+  background: var(--primary-50);
+  border-color: var(--primary-400);
+  border-style: solid;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
+
+/* 优先级标题 */
+.priority-header {
+  font-size: 12px;
+  color: var(--neutral-500);
+  margin-bottom: 8px;
+  padding: 0 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 500;
+}
+
+.priority-header .priority-icon {
+  font-size: 10px;
+  transition: transform 0.2s ease;
+}
+
+/* 优先级泳道折叠样式 */
+.priority-group.is-collapsed .priority-header .priority-icon {
+  transform: rotate(-90deg);
+}
+
+.priority-group.is-collapsed .channel-card,
+.priority-group.is-collapsed .glass-card {
+  display: none;
+}
+
+.priority-group.is-collapsed {
+  min-height: auto;
+  padding-bottom: 10px;
+}
+
+.priority-header .priority-count {
+  font-size: 11px;
+  color: var(--neutral-400);
+  font-weight: normal;
+}
+
+.priority-header:hover {
+  color: var(--primary-500);
+}
+
+html.dark .priority-header:hover {
+  color: var(--primary-400);
+}
+
+/* 拖拽中的卡片样式 */
+.channel-card.dragging {
+  opacity: 0.5;
+  transform: scale(0.98);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+  cursor: grabbing !important;
+  z-index: 10;
+  pointer-events: none; /* 防止拖拽时干扰位置计算，避免闪烁 */
+}
+
+/* 渠道卡片拖拽光标 */
+.priority-group .glass-card {
+  cursor: grab;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+}
+
+.priority-group .glass-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.priority-group .glass-card:active {
+  cursor: grabbing;
+}
+
+/* 拖拽插入指示器 */
+.drag-placeholder {
+  height: 4px;
+  background: var(--primary-400);
+  border-radius: 2px;
+  margin: 4px 0;
+  animation: pulse-indicator 1s infinite;
+}
+
+@keyframes pulse-indicator {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* 暗色主题适配 */
+html.dark .priority-group {
+  background: rgba(255, 255, 255, 0.02);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+html.dark .priority-group.drag-over {
+  background: rgba(59, 130, 246, 0.1);
+  border-color: var(--primary-500);
+}
+
+html.dark .priority-header {
+  color: var(--neutral-400);
+}
+
+html.dark .priority-group .glass-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* ==================== 排序模式样式 ==================== */
+
+/* 排序模式工具栏 */
+.sort-mode-toolbar {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  background: linear-gradient(135deg, var(--primary-50) 0%, var(--primary-100) 100%);
+  border: 1px solid var(--primary-200);
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.1);
+}
+
+body.sort-mode-active .sort-mode-toolbar {
+  display: flex;
+}
+
+body.sort-mode-active #sortModeBtn {
+  display: none;
+}
+
+.sort-mode-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--primary-700);
+}
+
+.sort-mode-icon {
+  font-size: 18px;
+}
+
+.sort-mode-changes {
+  font-weight: 600;
+  color: var(--primary-600);
+  margin-left: 8px;
+}
+
+.sort-mode-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* 排序模式下禁用部分筛选功能 */
+body.sort-mode-active .filter-controls select,
+body.sort-mode-active .filter-controls input {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* 暗色主题适配 */
+html.dark .sort-mode-toolbar {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(59, 130, 246, 0.1) 100%);
+  border-color: rgba(59, 130, 246, 0.3);
+}
+
+html.dark .sort-mode-info {
+  color: var(--primary-300);
+}
+
+html.dark .sort-mode-changes {
+  color: var(--primary-400);
+}

@@ -85,6 +85,9 @@ func migrate(ctx context.Context, db *sql.DB, dialect Dialect) error {
 				if err := ensureChannelsOpenAICompat(ctx, db); err != nil {
 					return fmt.Errorf("migrate channels.openai_compat: %w", err)
 				}
+				if err := ensureChannelsSortOrder(ctx, db); err != nil {
+					return fmt.Errorf("migrate channels.sort_order: %w", err)
+				}
 			} else {
 				if err := ensureChannelsAutoSelectEndpointSQLite(ctx, db); err != nil {
 					return fmt.Errorf("migrate channels.auto_select_endpoint: %w", err)
@@ -97,6 +100,9 @@ func migrate(ctx context.Context, db *sql.DB, dialect Dialect) error {
 				}
 				if err := ensureChannelsOpenAICompatSQLite(ctx, db); err != nil {
 					return fmt.Errorf("migrate channels.openai_compat: %w", err)
+				}
+				if err := ensureChannelsSortOrderSQLite(ctx, db); err != nil {
+					return fmt.Errorf("migrate channels.sort_order: %w", err)
 				}
 			}
 		}
@@ -1073,6 +1079,67 @@ func ensureChannelsOpenAICompatSQLite(ctx context.Context, db *sql.DB) error {
 	)
 	if err != nil {
 		return fmt.Errorf("add openai_compat column: %w", err)
+	}
+
+	return nil
+}
+
+// ensureChannelsSortOrder 确保channels表有sort_order字段(MySQL增量迁移,拖拽排序用)
+func ensureChannelsSortOrder(ctx context.Context, db *sql.DB) error {
+	var count int
+	err := db.QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='channels' AND COLUMN_NAME='sort_order'",
+	).Scan(&count)
+	if err != nil {
+		return fmt.Errorf("check sort_order existence: %w", err)
+	}
+
+	if count > 0 {
+		return nil
+	}
+
+	_, err = db.ExecContext(ctx,
+		"ALTER TABLE channels ADD COLUMN sort_order INT NOT NULL DEFAULT 0 COMMENT '同优先级内的排序顺序(拖拽排序用)'",
+	)
+	if err != nil {
+		return fmt.Errorf("add sort_order column: %w", err)
+	}
+
+	return nil
+}
+
+// ensureChannelsSortOrderSQLite 确保channels表有sort_order字段(SQLite增量迁移,拖拽排序用)
+func ensureChannelsSortOrderSQLite(ctx context.Context, db *sql.DB) error {
+	rows, err := db.QueryContext(ctx, "PRAGMA table_info(channels)")
+	if err != nil {
+		return fmt.Errorf("check table info: %w", err)
+	}
+	defer rows.Close()
+
+	hasColumn := false
+	for rows.Next() {
+		var cid int
+		var name, typ string
+		var notNull, pk int
+		var dfltValue any
+		if err := rows.Scan(&cid, &name, &typ, &notNull, &dfltValue, &pk); err != nil {
+			return fmt.Errorf("scan column info: %w", err)
+		}
+		if name == "sort_order" {
+			hasColumn = true
+			break
+		}
+	}
+
+	if hasColumn {
+		return nil
+	}
+
+	_, err = db.ExecContext(ctx,
+		"ALTER TABLE channels ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0",
+	)
+	if err != nil {
+		return fmt.Errorf("add sort_order column: %w", err)
 	}
 
 	return nil

@@ -11,6 +11,7 @@ type Config struct {
 	ChannelType    string            `json:"channel_type"` // 渠道类型: "anthropic" | "codex" | "gemini"，默认anthropic
 	URL            string            `json:"url"`
 	Priority       int               `json:"priority"`
+	SortOrder      int               `json:"sort_order"`   // 同优先级内的排序顺序（拖拽排序用）
 	Models         []string          `json:"models"`
 	ModelRedirects map[string]string `json:"model_redirects,omitempty"` // 模型重定向映射：请求模型 -> 实际转发模型
 	Enabled        bool              `json:"enabled"`
@@ -145,4 +146,11 @@ func (q *QuotaConfig) GetRequestMethod() string {
 		return "GET"
 	}
 	return q.RequestMethod
+}
+
+// ChannelSortUpdate 渠道排序更新项（用于拖拽排序）
+type ChannelSortUpdate struct {
+	ID        int64
+	Priority  int
+	SortOrder int
 }
