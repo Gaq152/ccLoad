@@ -235,6 +235,17 @@ function initChannelEventDelegation() {
 
   // 事件委托：处理所有渠道操作按钮
   container.addEventListener('click', (e) => {
+    // 排序模式下阻止所有操作按钮
+    if (sortModeEnabled) {
+      const isActionBtn = e.target.closest('.channel-action-btn') || e.target.closest('.endpoint-manage-btn');
+      if (isActionBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        showToast('排序模式下请先保存或取消排序', 'warning');
+        return;
+      }
+    }
+
     // 端点管理按钮
     const endpointBtn = e.target.closest('.endpoint-manage-btn');
     if (endpointBtn) {

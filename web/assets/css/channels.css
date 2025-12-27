@@ -1100,6 +1100,19 @@ body.sort-mode-active .filter-controls input {
   pointer-events: none;
 }
 
+/* 排序模式下禁用渠道操作按钮 */
+body.sort-mode-active .channel-action-btn,
+body.sort-mode-active .endpoint-manage-btn {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+body.sort-mode-active .channel-action-btn:hover,
+body.sort-mode-active .endpoint-manage-btn:hover {
+  background: transparent;
+  color: inherit;
+}
+
 /* 暗色主题适配 */
 html.dark .sort-mode-toolbar {
   background: linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(59, 130, 246, 0.1) 100%);
