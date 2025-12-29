@@ -16,7 +16,7 @@ import (
 // 从admin.go拆分统计监控,遵循SRP原则
 
 // handleErrors 获取错误日志列表
-// GET /admin/errors?range=today&limit=100&offset=0
+// GET /admin/logs?range=today&limit=100&offset=0
 func (s *Server) HandleErrors(c *gin.Context) {
 	params := ParsePaginationParams(c)
 	lf := BuildLogFilter(c)

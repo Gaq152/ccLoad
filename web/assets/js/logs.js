@@ -73,7 +73,7 @@
               params.set('channel_type', currentChannelType);
             }
 
-            const res = await fetchWithAuth('/admin/errors?' + params.toString());
+            const res = await fetchWithAuth('/admin/logs?' + params.toString());
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
             const response = await res.json();
@@ -116,7 +116,7 @@
             params.set('channel_type', currentChannelType);
           }
 
-          const res = await fetchWithAuth('/admin/errors?' + params.toString());
+          const res = await fetchWithAuth('/admin/logs?' + params.toString());
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
           const response = await res.json();

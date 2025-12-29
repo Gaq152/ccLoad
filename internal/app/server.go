@@ -442,7 +442,7 @@ func (s *Server) SetupRoutes(r *gin.Engine) {
 		admin.POST("/oauth/token", s.HandleOAuthToken)
 
 		// 统计分析
-		admin.GET("/errors", s.HandleErrors)
+		admin.GET("/logs", s.HandleErrors)
 		admin.GET("/metrics", s.HandleMetrics)
 		admin.GET("/stats", s.HandleStats)
 		admin.GET("/cooldown/stats", s.HandleCooldownStats)
