@@ -11,7 +11,7 @@
 
     async function loadStats() {
       try {
-        showLoading();
+        renderStatsLoading();
 
         const u = new URLSearchParams(location.search);
         const params = new URLSearchParams({
@@ -32,12 +32,8 @@
           params.set('channel_type', currentChannelType);
         }
 
-        const res = await fetchWithAuth('/admin/stats?' + params.toString());
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-        const response = await res.json();
         // 后端返回格式: {"success":true,"data":{"stats":[...]}}
-        statsData = response.data || {stats: []};
+        statsData = (await fetchDataWithAuth('/admin/stats?' + params.toString())) || { stats: [] };
 
         // 🎯 新增: 初始化时应用默认排序(渠道名称→模型名称)
         applyDefaultSorting();
@@ -48,18 +44,18 @@
       } catch (error) {
         console.error('加载统计数据失败:', error);
         if (window.showError) try { window.showError('无法加载统计数据'); } catch(_){}
-        showError();
+        renderStatsError();
       }
     }
 
-    function showLoading() {
+    function renderStatsLoading() {
       const tbody = document.getElementById('stats_tbody');
       tbody.innerHTML = '';
       const row = TemplateEngine.render('tpl-stats-loading', { colspan: STATS_TABLE_COLUMNS });
       if (row) tbody.appendChild(row);
     }
 
-    function showError() {
+    function renderStatsError() {
       const tbody = document.getElementById('stats_tbody');
       tbody.innerHTML = '';
       const row = TemplateEngine.render('tpl-stats-error', { colspan: STATS_TABLE_COLUMNS });
@@ -434,13 +430,8 @@
     // 加载令牌列表
     async function loadAuthTokens() {
       try {
-        const res = await fetchWithAuth('/admin/auth-tokens');
-        if (!res.ok) {
-          console.error('加载令牌列表失败');
-          return;
-        }
-        const response = await res.json();
-        authTokens = response.success ? (response.data || []) : (response || []);
+        const data = await fetchDataWithAuth('/admin/auth-tokens');
+        authTokens = (data && data.tokens) || [];
 
         // 填充令牌选择器
         const tokenSelect = document.getElementById('f_auth_token');
@@ -457,12 +448,6 @@
       } catch (error) {
         console.error('加载令牌列表失败:', error);
       }
-    }
-
-    function formatNumber(num) {
-      if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
-      if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
-      return num.toString();
     }
 
     // 根据耗时返回颜色

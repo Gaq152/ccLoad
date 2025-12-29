@@ -18,11 +18,8 @@ async function getTargetChannelType() {
   if (!channelId) return null;
 
   try {
-    const res = await fetchWithAuth(`/admin/channels/${channelId}`);
-    if (!res.ok) return null;
-    const response = await res.json();
-    const channel = response.success ? response.data : response;
-    return channel.channel_type || 'anthropic';
+    const channel = await fetchDataWithAuth(`/admin/channels/${channelId}`);
+    return channel?.channel_type || 'anthropic';
   } catch (e) {
     console.error('获取渠道类型失败:', e);
     return null;

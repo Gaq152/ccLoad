@@ -10,14 +10,11 @@ async function loadChannels(type = 'all', forceRefresh = false) {
     }
 
     const url = type === 'all' ? '/admin/channels' : `/admin/channels?type=${encodeURIComponent(type)}`;
-    const res = await fetchWithAuth(url);
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const response = await res.json();
-    const data = response.success ? (response.data || []) : (response || []);
+    const data = await fetchDataWithAuth(url);
 
-    channelsCache[type] = data;
-    channels = data;
-    window.channels = data; // 暴露到全局供 QuotaManager 等使用
+    channelsCache[type] = data || [];
+    channels = data || [];
+    window.channels = channels; // 暴露到全局供 QuotaManager 等使用
 
     updateModelOptions();
     filterChannels();
@@ -41,10 +38,9 @@ function invalidateChannelsCache() {
 
 async function loadChannelStatsFields() {
   try {
-    const resp = await fetchWithAuth('/admin/settings/channel_stats_fields');
-    const data = await resp.json();
-    if (data.success && data.data?.value) {
-      channelStatsFields = data.data.value.split(',').map(s => s.trim()).filter(Boolean);
+    const data = await fetchDataWithAuth('/admin/settings/channel_stats_fields');
+    if (data?.value) {
+      channelStatsFields = data.value.split(',').map(s => s.trim()).filter(Boolean);
     }
   } catch (e) {
     console.error('加载统计字段设置失败', e);
@@ -54,10 +50,8 @@ async function loadChannelStatsFields() {
 async function loadChannelStats(range = channelStatsRange) {
   try {
     const params = new URLSearchParams({ range, limit: '500', offset: '0' });
-    const res = await fetchWithAuth(`/admin/stats?${params.toString()}`);
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const response = await res.json();
-    const statsArray = extractStatsEntries(response);
+    const data = await fetchDataWithAuth(`/admin/stats?${params.toString()}`);
+    const statsArray = extractStatsEntries(data);
     channelStatsById = aggregateChannelStats(statsArray);
     filterChannels();
   } catch (err) {
@@ -139,10 +133,9 @@ function toSafeNumber(value) {
 // 加载默认测试内容（从系统设置）
 async function loadDefaultTestContent() {
   try {
-    const resp = await fetchWithAuth('/admin/settings/channel_test_content');
-    const data = await resp.json();
-    if (data.success && data.data?.value) {
-      defaultTestContent = data.data.value;
+    const data = await fetchDataWithAuth('/admin/settings/channel_test_content');
+    if (data?.value) {
+      defaultTestContent = data.value;
     }
   } catch (e) {
     console.warn('加载默认测试内容失败，使用内置默认值', e);

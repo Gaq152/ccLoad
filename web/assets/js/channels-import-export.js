@@ -27,6 +27,7 @@ function setupImportExport() {
 async function exportChannelsCSV(buttonEl) {
   try {
     if (buttonEl) buttonEl.disabled = true;
+    // 导出接口返回 blob，需要使用 fetchWithAuth 而非 fetchDataWithAuth
     const res = await fetchWithAuth('/admin/channels/export');
     if (!res.ok) {
       const errorText = await res.text();
@@ -65,6 +66,7 @@ async function handleImportCSV(event, importBtn) {
   if (importBtn) importBtn.disabled = true;
 
   try {
+    // 导入接口使用 FormData，需要特殊处理
     const res = await fetchWithAuth('/admin/channels/import', {
       method: 'POST',
       body: formData
@@ -85,6 +87,7 @@ async function handleImportCSV(event, importBtn) {
       throw new Error(message);
     }
 
+    // 统一响应格式：payload.data 包含实际数据
     const summary = payload && payload.data ? payload.data : payload;
     if (summary) {
       let msg = `导入完成：新增 ${summary.created || 0}，更新 ${summary.updated || 0}，跳过 ${summary.skipped || 0}`;

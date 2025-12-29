@@ -25,10 +25,9 @@
     // 加载默认测试内容（从系统设置）
     async function loadDefaultTestContent() {
       try {
-        const resp = await fetchWithAuth('/admin/settings/channel_test_content');
-        const data = await resp.json();
-        if (data.success && data.data?.value) {
-          defaultTestContent = data.data.value;
+        const data = await fetchDataWithAuth('/admin/settings/channel_test_content');
+        if (data?.value) {
+          defaultTestContent = data.value;
         }
       } catch (e) {
         console.warn('加载默认测试内容失败，使用内置默认值', e);
@@ -73,11 +72,8 @@
               params.set('channel_type', currentChannelType);
             }
 
-            const res = await fetchWithAuth('/admin/logs?' + params.toString());
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-            const response = await res.json();
-            const result = response.success ? response.data : response;
+            const response = await fetchAPIWithAuth('/admin/logs?' + params.toString());
+            const result = response.data || {};
             const serverData = result.data || result || [];
             serverTotal = response.count || result.total || 0;
 
@@ -116,11 +112,8 @@
             params.set('channel_type', currentChannelType);
           }
 
-          const res = await fetchWithAuth('/admin/logs?' + params.toString());
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-          const response = await res.json();
-          const result = response.success ? response.data : response;
+          const response = await fetchAPIWithAuth('/admin/logs?' + params.toString());
+          const result = response.data || {};
           finalData = result.data || result || [];
           serverTotal = response.count || result.total || 0;
 
@@ -711,13 +704,8 @@
     // 加载令牌列表
     async function loadAuthTokens() {
       try {
-        const res = await fetchWithAuth('/admin/auth-tokens');
-        if (!res.ok) {
-          console.error('加载令牌列表失败');
-          return;
-        }
-        const response = await res.json();
-        authTokens = response.success ? (response.data || []) : (response || []);
+        const data = await fetchDataWithAuth('/admin/auth-tokens');
+        authTokens = data || [];
 
         // 填充令牌选择器
         const tokenSelect = document.getElementById('f_auth_token');
@@ -937,11 +925,7 @@
 
       // 异步加载渠道配置以获取支持的模型列表
       try {
-        const res = await fetchWithAuth(`/admin/channels/${channelId}`);
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-
-        const response = await res.json();
-        const channel = response.success ? response.data : response;
+        const channel = await fetchDataWithAuth(`/admin/channels/${channelId}`);
 
         // ✅ 保存渠道类型,用于后续测试请求
         testingKeyData.channelType = channel.channel_type || 'anthropic';
@@ -1048,18 +1032,13 @@
           testRequest.key_index = testingKeyData.keyIndex;
         }
 
-        const res = await fetchWithAuth(`/admin/channels/${testingKeyData.channelId}/test`, {
+        const resp = await fetchAPIWithAuth(`/admin/channels/${testingKeyData.channelId}/test`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(testRequest)
         });
 
-        if (!res.ok) {
-          throw new Error('HTTP ' + res.status);
-        }
-
-        const result = await res.json();
-        const testResult = result.data || result;
+        const testResult = resp.data || {};
 
         displayKeyTestResult(testResult);
       } catch (e) {
@@ -1160,15 +1139,12 @@
     async function deleteKeyFromLog(channelId, channelName, maskedApiKey) {
       if (!channelId || !maskedApiKey) return;
 
-      const confirmDel = confirm(`确定删除渠道“${channelName || ('#' + channelId)}”中的此Key (${maskedApiKey}) 吗？`);
+      const confirmDel = confirm(`确定删除渠道"${channelName || ('#' + channelId)}"中的此Key (${maskedApiKey}) 吗？`);
       if (!confirmDel) return;
 
       try {
         // 获取渠道详情，匹配掩码对应的 key_index
-        const res = await fetchWithAuth(`/admin/channels/${channelId}`);
-        if (!res.ok) throw new Error('加载渠道失败: HTTP ' + res.status);
-        const respJson = await res.json();
-        const channel = respJson.success ? respJson.data : respJson;
+        const channel = await fetchDataWithAuth(`/admin/channels/${channelId}`);
 
         const apiKeys = parseApiKeysFromChannel(channel);
         const keyIndex = findKeyIndexByMaskedKey(apiKeys, maskedApiKey);
@@ -1178,18 +1154,17 @@
         }
 
         // 删除Key
-        const delRes = await fetchWithAuth(`/admin/channels/${channelId}/keys/${keyIndex}`, { method: 'DELETE' });
-        if (!delRes.ok) throw new Error('删除失败: HTTP ' + delRes.status);
-        const delResult = await delRes.json();
+        const delResult = await fetchAPIWithAuth(`/admin/channels/${channelId}/keys/${keyIndex}`, { method: 'DELETE' });
+        if (!delResult.success) throw new Error(delResult.error || '删除失败');
 
         alert(`已删除 Key #${keyIndex + 1} (${maskedApiKey})`);
 
         // 如果没有剩余Key，询问是否删除渠道
-        if (delResult.remaining_keys === 0) {
+        if (delResult.data?.remaining_keys === 0) {
           const delChannel = confirm('该渠道已无可用Key，是否删除整个渠道？');
           if (delChannel) {
-            const chRes = await fetchWithAuth(`/admin/channels/${channelId}`, { method: 'DELETE' });
-            if (!chRes.ok) throw new Error('删除渠道失败: HTTP ' + chRes.status);
+            const chRes = await fetchAPIWithAuth(`/admin/channels/${channelId}`, { method: 'DELETE' });
+            if (!chRes.success) throw new Error(chRes.error || '删除渠道失败');
             alert('渠道已删除');
           }
         }

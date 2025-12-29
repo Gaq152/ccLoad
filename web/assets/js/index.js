@@ -59,20 +59,10 @@ function getIndexCacheRemaining(cache) {
 let lastStatsData = null;
 let lastChannelsData = null;
 
-// 格式化数字
-function formatNumber(num) {
-  if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
-  if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
-  return num.toString();
-}
-
 // 加载统计数据
 async function loadStats() {
   try {
-    const response = await fetch(`/public/summary?range=${window.currentTimeRange}`);
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const responseData = await response.json();
-    const data = responseData.success ? (responseData.data || responseData) : responseData;
+    const data = (await fetchData(`/public/summary?range=${window.currentTimeRange}`)) || {};
     lastStatsData = data; // 保存用于缓存
     updateStatsDisplay(data);
   } catch (error) {

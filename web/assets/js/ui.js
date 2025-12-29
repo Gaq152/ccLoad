@@ -672,3 +672,98 @@ window.copyToClipboard = App.util.copyToClipboard;
 
 // ChannelTypeManager 保持原有对象结构，指向 App.channel
 window.ChannelTypeManager = App.channel;
+
+// ============================================================
+// API响应解析（统一后端返回格式：{success,data,error,count}）
+// ============================================================
+(function() {
+  async function parseAPIResponse(res) {
+    const text = await res.text();
+    if (!text) {
+      throw new Error(`空响应 (HTTP ${res.status})`);
+    }
+
+    let payload;
+    try {
+      payload = JSON.parse(text);
+    } catch (e) {
+      throw new Error(`响应不是JSON (HTTP ${res.status})`);
+    }
+
+    if (!payload || typeof payload !== 'object' || typeof payload.success !== 'boolean') {
+      throw new Error(`响应格式不符合APIResponse (HTTP ${res.status})`);
+    }
+
+    return payload;
+  }
+
+  async function fetchAPI(url, options = {}) {
+    const res = await fetch(url, options);
+    return parseAPIResponse(res);
+  }
+
+  async function fetchAPIWithAuth(url, options = {}) {
+    const res = await fetchWithAuth(url, options);
+    return parseAPIResponse(res);
+  }
+
+  // 需要同时读取响应头（如 X-Debug-*）的场景：返回 { res, payload }
+  async function fetchAPIWithAuthRaw(url, options = {}) {
+    const res = await fetchWithAuth(url, options);
+    const payload = await parseAPIResponse(res);
+    return { res, payload };
+  }
+
+  async function fetchData(url, options = {}) {
+    const resp = await fetchAPI(url, options);
+    if (!resp.success) throw new Error(resp.error || '请求失败');
+    return resp.data;
+  }
+
+  async function fetchDataWithAuth(url, options = {}) {
+    const resp = await fetchAPIWithAuth(url, options);
+    if (!resp.success) throw new Error(resp.error || '请求失败');
+    return resp.data;
+  }
+
+  window.fetchAPI = fetchAPI;
+  window.fetchAPIWithAuth = fetchAPIWithAuth;
+  window.fetchAPIWithAuthRaw = fetchAPIWithAuthRaw;
+  window.fetchData = fetchData;
+  window.fetchDataWithAuth = fetchDataWithAuth;
+})();
+
+// ============================================================
+// 公共工具函数（DRY：集中定义，各页面复用）
+// ============================================================
+(function() {
+  // 格式化数字显示（通用：K/M缩写）
+  function formatNumber(num) {
+    const n = Number(num);
+    if (!Number.isFinite(n)) return '0';
+    if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+    if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+    return n.toString();
+  }
+
+  // RPM 颜色：低流量绿色，中等橙色，高流量红色
+  function getRpmColor(rpm) {
+    const n = Number(rpm);
+    if (!Number.isFinite(n)) return 'var(--neutral-600)';
+    if (n < 10) return 'var(--success-600)';
+    if (n < 100) return 'var(--warning-600)';
+    return 'var(--error-600)';
+  }
+
+  // 简单显示/隐藏切换（用于日志/测试响应块等）
+  function toggleResponse(elementId) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+    el.style.display = el.style.display === 'none' ? 'block' : 'none';
+  }
+
+  // 导出到全局作用域
+  window.formatNumber = formatNumber;
+  window.getRpmColor = getRpmColor;
+  window.toggleResponse = toggleResponse;
+})();

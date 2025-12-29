@@ -14,13 +14,8 @@
     // 加载可用模型列表
     async function loadModels() {
       try {
-        const res = await fetchWithAuth('/admin/models?range=this_month');
-        if (!res.ok) {
-          console.error('加载模型列表失败');
-          return;
-        }
-        const data = await res.json();
-        window.availableModels = data.data || [];
+        const data = await fetchDataWithAuth('/admin/models?range=this_month');
+        window.availableModels = data || [];
 
         // 填充模型选择器
         const modelSelect = document.getElementById('f_model');
@@ -47,13 +42,8 @@
     // 加载令牌列表
     async function loadAuthTokens() {
       try {
-        const res = await fetchWithAuth('/admin/auth-tokens');
-        if (!res.ok) {
-          console.error('加载令牌列表失败');
-          return;
-        }
-        const response = await res.json();
-        window.authTokens = response.success ? (response.data || []) : (response || []);
+        const data = await fetchDataWithAuth('/admin/auth-tokens');
+        window.authTokens = (data && data.tokens) || [];
 
         // 填充令牌选择器
         const tokenSelect = document.getElementById('f_auth_token');
@@ -117,19 +107,13 @@
         // 添加令牌筛选参数
         const tokenParam = window.currentAuthToken ? `&auth_token_id=${encodeURIComponent(window.currentAuthToken)}` : '';
 
-        const [metricsRes, channelsRes] = await Promise.all([
-          fetchWithAuth(metricsUrl + channelTypeParam + modelParam + tokenParam),
-          fetchWithAuth(channelsUrl + (channelTypeParamForList ? '?' + channelTypeParamForList.slice(1) : ''))
+        const [metricsData, channelsData] = await Promise.all([
+          fetchDataWithAuth(metricsUrl + channelTypeParam + modelParam + tokenParam),
+          fetchDataWithAuth(channelsUrl + (channelTypeParamForList ? '?' + channelTypeParamForList.slice(1) : ''))
         ]);
-        
-        if (!metricsRes.ok) throw new Error(`HTTP ${metricsRes.status}`);
-        if (!channelsRes.ok) throw new Error(`获取渠道列表失败: ${channelsRes.status}`);
-        
-        const metricsResponse = await metricsRes.json();
-        const channelsResponse = await channelsRes.json();
-        
-        window.trendData = metricsResponse.success ? (metricsResponse.data || []) : (metricsResponse || []);
-        window.channels = channelsResponse.success ? (channelsResponse.data || []) : (channelsResponse || []);
+
+        window.trendData = metricsData || [];
+        window.channels = channelsData || [];
         
         // 修复：智能初始化渠道显示状态（处理localStorage过时数据）
         // 默认不显示任何渠道，只显示总数
@@ -158,15 +142,8 @@
         }
         
         // 添加调试信息显示
-        const debugSince = metricsRes.headers.get('X-Debug-Since');
-        const debugPoints = metricsRes.headers.get('X-Debug-Points');
-        const debugTotal = metricsRes.headers.get('X-Debug-Total');
-
         console.log('趋势数据调试信息:', {
-          since: debugSince,
-          points: debugPoints,
-          total: debugTotal,
-          dataLength: trendData.length,
+          dataLength: window.trendData.length,
           channelsCount: window.channels.length
         });
 
@@ -175,7 +152,7 @@
 
         // 更新分桶提示
         const iv = document.getElementById('bucket-interval');
-        if (iv) iv.textContent = `数据更新间隔：${formatInterval(bucketMin)} | 数据点：${trendData.length} | 总请求：${debugTotal || '未知'}`;
+        if (iv) iv.textContent = `数据更新间隔：${formatInterval(bucketMin)} | 数据点：${window.trendData.length}`;
 
       } catch (error) {
         console.error('加载趋势数据失败:', error);
@@ -811,13 +788,7 @@
       window.chartInstance.setOption(option, true); // true 表示不合并，全量更新
     }
 
-    function formatNumber(num) {
-      if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
-      if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
-      return num.toString();
-    }
-
-    function formatInterval(min) { 
+    function formatInterval(min) {
       return min >= 60 ? (min/60) + '小时' : min + '分钟';
     }
 

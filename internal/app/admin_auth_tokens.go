@@ -6,7 +6,7 @@ import (
 	"encoding/hex"
 	"log"
 	"net/http"
-	"strconv"
+	"strings"
 	"time"
 
 	"ccLoad/internal/model"
@@ -36,10 +36,13 @@ func (s *Server) HandleListAuthTokens(c *gin.Context) {
 		t.Token = model.MaskToken(t.Token)
 		t.IsExpiredFlag = t.IsExpired() // 计算是否过期，供前端使用
 	}
+	if tokens == nil {
+		tokens = make([]*model.AuthToken, 0)
+	}
 
 	// 如果请求中包含range参数，则叠加时间范围统计（用于tokens.html页面）
-	timeRange := c.Query("range")
-	if timeRange != "" {
+	timeRange := strings.TrimSpace(c.Query("range"))
+	if timeRange != "" && timeRange != "all" {
 		params := ParsePaginationParams(c)
 		startTime, endTime := params.GetTimeRange()
 
@@ -91,6 +94,7 @@ func (s *Server) HandleCreateAuthToken(c *gin.Context) {
 	var req struct {
 		Description string `json:"description" binding:"required"`
 		ExpiresAt   *int64 `json:"expires_at"` // Unix毫秒时间戳，nil表示永不过期
+		IsActive    *bool  `json:"is_active"`  // nil表示默认启用
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -110,11 +114,16 @@ func (s *Server) HandleCreateAuthToken(c *gin.Context) {
 	// 计算SHA256哈希用于存储
 	tokenHash := model.HashToken(tokenPlain)
 
+	isActive := true
+	if req.IsActive != nil {
+		isActive = *req.IsActive
+	}
+
 	authToken := &model.AuthToken{
 		Token:       tokenHash,
 		Description: req.Description,
 		ExpiresAt:   req.ExpiresAt,
-		IsActive:    true,
+		IsActive:    isActive,
 		AllChannels: true, // 默认允许所有渠道
 	}
 
@@ -148,7 +157,7 @@ func (s *Server) HandleCreateAuthToken(c *gin.Context) {
 // HandleUpdateAuthToken 更新令牌信息
 // PUT /admin/auth-tokens/:id
 func (s *Server) HandleUpdateAuthToken(c *gin.Context) {
-	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	id, err := ParseInt64Param(c, "id")
 	if err != nil {
 		RespondErrorMsg(c, http.StatusBadRequest, "invalid token id")
 		return
@@ -232,7 +241,7 @@ func (s *Server) HandleUpdateAuthToken(c *gin.Context) {
 // HandleDeleteAuthToken 删除令牌
 // DELETE /admin/auth-tokens/:id
 func (s *Server) HandleDeleteAuthToken(c *gin.Context) {
-	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	id, err := ParseInt64Param(c, "id")
 	if err != nil {
 		RespondErrorMsg(c, http.StatusBadRequest, "invalid token id")
 		return
@@ -264,7 +273,7 @@ func (s *Server) HandleDeleteAuthToken(c *gin.Context) {
 // HandleGetTokenChannels 获取令牌的渠道访问配置
 // GET /admin/auth-tokens/:id/channels
 func (s *Server) HandleGetTokenChannels(c *gin.Context) {
-	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	id, err := ParseInt64Param(c, "id")
 	if err != nil {
 		RespondErrorMsg(c, http.StatusBadRequest, "invalid token id")
 		return
@@ -298,7 +307,7 @@ func (s *Server) HandleGetTokenChannels(c *gin.Context) {
 // HandleSetTokenChannels 设置令牌的渠道访问配置
 // PUT /admin/auth-tokens/:id/channels
 func (s *Server) HandleSetTokenChannels(c *gin.Context) {
-	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	id, err := ParseInt64Param(c, "id")
 	if err != nil {
 		RespondErrorMsg(c, http.StatusBadRequest, "invalid token id")
 		return
