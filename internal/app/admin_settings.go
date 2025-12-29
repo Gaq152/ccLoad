@@ -85,7 +85,6 @@ func (s *Server) AdminUpdateSetting(c *gin.Context) {
 	log.Printf("[INFO] Setting updated: %s = %s", key, req.Value)
 
 	RespondJSON(c, http.StatusOK, gin.H{
-		"success": true,
 		"message": "配置已保存",
 		"key":     key,
 		"value":   req.Value,
@@ -118,7 +117,6 @@ func (s *Server) AdminResetSetting(c *gin.Context) {
 	log.Printf("[INFO] Setting reset to default: %s = %s", key, setting.DefaultValue)
 
 	RespondJSON(c, http.StatusOK, gin.H{
-		"success": true,
 		"message": "配置已重置为默认值",
 		"key":     key,
 		"value":   setting.DefaultValue,
@@ -162,8 +160,7 @@ func (s *Server) AdminBatchUpdateSettings(c *gin.Context) {
 
 	log.Printf("[INFO] Batch updated %d settings", len(req))
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
+	RespondJSON(c, http.StatusOK, gin.H{
 		"message": fmt.Sprintf("已保存 %d 项配置", len(req)),
 	})
 }

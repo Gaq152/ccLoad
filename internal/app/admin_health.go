@@ -74,7 +74,7 @@ func (s *Server) handleChannelHealthProxy(c *gin.Context) {
 
 	// 验证period参数
 	if period != "24h" && period != "7d" && period != "30d" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid period, must be 24h, 7d, or 30d"})
+		RespondErrorMsg(c, http.StatusBadRequest, "invalid period, must be 24h, 7d, or 30d")
 		return
 	}
 
@@ -84,7 +84,7 @@ func (s *Server) handleChannelHealthProxy(c *gin.Context) {
 	healthCacheMutex.RUnlock()
 
 	if exists && time.Since(cached.fetchedAt) < healthCacheTTL {
-		c.JSON(http.StatusOK, cached.data)
+		RespondJSON(c, http.StatusOK, cached.data)
 		return
 	}
 
@@ -98,10 +98,10 @@ func (s *Server) handleChannelHealthProxy(c *gin.Context) {
 		// 如果有旧缓存，返回旧数据
 		if exists {
 			c.Header("X-Cache-Stale", "true")
-			c.JSON(http.StatusOK, cached.data)
+			RespondJSON(c, http.StatusOK, cached.data)
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create request"})
+		RespondErrorMsg(c, http.StatusInternalServerError, "failed to create request")
 		return
 	}
 
@@ -117,11 +117,10 @@ func (s *Server) handleChannelHealthProxy(c *gin.Context) {
 		// 返回旧缓存或错误
 		if exists {
 			c.Header("X-Cache-Stale", "true")
-			c.JSON(http.StatusOK, cached.data)
+			RespondJSON(c, http.StatusOK, cached.data)
 			return
 		}
-		c.JSON(http.StatusBadGateway, gin.H{
-			"error":       "upstream fetch failed",
+		RespondErrorWithData(c, http.StatusBadGateway, "upstream fetch failed", gin.H{
 			"retry_after": 30,
 		})
 		return
@@ -132,11 +131,10 @@ func (s *Server) handleChannelHealthProxy(c *gin.Context) {
 		// 返回旧缓存或错误
 		if exists {
 			c.Header("X-Cache-Stale", "true")
-			c.JSON(http.StatusOK, cached.data)
+			RespondJSON(c, http.StatusOK, cached.data)
 			return
 		}
-		c.JSON(http.StatusBadGateway, gin.H{
-			"error":       fmt.Sprintf("upstream returned %d", resp.StatusCode),
+		RespondErrorWithData(c, http.StatusBadGateway, fmt.Sprintf("upstream returned %d", resp.StatusCode), gin.H{
 			"retry_after": 30,
 		})
 		return
@@ -147,10 +145,10 @@ func (s *Server) handleChannelHealthProxy(c *gin.Context) {
 		// 返回旧缓存或错误
 		if exists {
 			c.Header("X-Cache-Stale", "true")
-			c.JSON(http.StatusOK, cached.data)
+			RespondJSON(c, http.StatusOK, cached.data)
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to decode response"})
+		RespondErrorMsg(c, http.StatusInternalServerError, "failed to decode response")
 		return
 	}
 
@@ -158,7 +156,7 @@ func (s *Server) handleChannelHealthProxy(c *gin.Context) {
 	validData := make([]ExternalHealthRecord, 0, len(upstream.Data))
 	for _, record := range upstream.Data {
 		if record.Provider == "" || record.Service == "" ||
-		   record.Channel == "" || record.ProbeURL == "" {
+			record.Channel == "" || record.ProbeURL == "" {
 			continue // 跳过缺少必要字段的记录
 		}
 		validData = append(validData, record)
@@ -173,5 +171,5 @@ func (s *Server) handleChannelHealthProxy(c *gin.Context) {
 	healthCacheMutex.Unlock()
 
 	c.Header("Cache-Control", "public, max-age=60")
-	c.JSON(http.StatusOK, validData)
+	RespondJSON(c, http.StatusOK, validData)
 }

@@ -31,9 +31,11 @@
         throw new Error('获取端点列表失败');
       }
       const data = await res.json();
-      endpointsData = data.data || [];
+      // 兼容新旧响应格式：新格式 {success, data: {endpoints, auto_select_endpoint}}
+      const respData = data.success ? data.data : data;
+      endpointsData = respData?.endpoints || respData?.data || [];
       // 默认开启自动选择，除非明确设置为 false
-      autoSelectEnabled = data.auto_select_endpoint !== false;
+      autoSelectEnabled = respData?.auto_select_endpoint !== false;
 
       // 如果端点列表为空，用渠道的初始 URL 创建默认端点
       if (endpointsData.length === 0) {
@@ -338,10 +340,12 @@
       }
 
       const data = await res.json();
+      // 兼容新旧响应格式
+      const respData = data.success ? data.data : data;
 
       // 更新端点数据（后端返回的 endpoints 已包含最新 latency_ms）
-      if (data.endpoints && data.endpoints.length > 0) {
-        endpointsData = data.endpoints;
+      if (respData?.endpoints && respData.endpoints.length > 0) {
+        endpointsData = respData.endpoints;
       }
 
       // 更新自动选择状态（可能已自动切换）
@@ -350,7 +354,7 @@
       renderEndpointList();
 
       // 显示测速结果摘要
-      const results = data.data || [];
+      const results = respData?.results || respData?.data || [];
       const successCount = results.filter(r => r.latency_ms >= 0).length;
       const failCount = results.filter(r => r.latency_ms < 0).length;
       const fastestResult = results.filter(r => r.latency_ms >= 0).sort((a, b) => a.latency_ms - b.latency_ms)[0];

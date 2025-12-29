@@ -36,8 +36,7 @@ func (s *Server) HandleSetChannelCooldown(c *gin.Context) {
 
 	// 精确计数(手动设置渠道冷却
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
+	RespondJSON(c, http.StatusOK, gin.H{
 		"message": fmt.Sprintf("渠道已冷却 %d 毫秒", req.DurationMs),
 	})
 }
@@ -74,8 +73,7 @@ func (s *Server) HandleSetKeyCooldown(c *gin.Context) {
 	// [INFO] 修复：使API Keys缓存失效，确保前端能立即看到冷却状态
 	s.InvalidateAPIKeysCache(id)
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
+	RespondJSON(c, http.StatusOK, gin.H{
 		"message": fmt.Sprintf("Key #%d 已冷却 %d 毫秒", keyIndex+1, req.DurationMs),
 	})
 }
