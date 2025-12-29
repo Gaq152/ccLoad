@@ -79,7 +79,7 @@
             const response = await res.json();
             const result = response.success ? response.data : response;
             const serverData = result.data || result || [];
-            serverTotal = result.total || 0;
+            serverTotal = response.count || result.total || 0;
 
             // 合并缓冲区和服务端数据
             finalData = [...fromBuffer, ...serverData];
@@ -122,7 +122,7 @@
           const response = await res.json();
           const result = response.success ? response.data : response;
           finalData = result.data || result || [];
-          serverTotal = result.total || 0;
+          serverTotal = response.count || result.total || 0;
 
           // 总日志数 = 缓冲区 + 服务端
           totalLogs = realtimeBuffer.length + serverTotal;

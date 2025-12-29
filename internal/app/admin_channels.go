@@ -546,7 +546,6 @@ func (s *Server) HandleDeleteAPIKey(c *gin.Context) {
 	s.invalidateCooldownCache()
 
 	RespondJSON(c, http.StatusOK, gin.H{
-		"success":         true,
 		"remaining_keys":  remaining,
 		"channel_deleted": false,
 	})
@@ -594,7 +593,7 @@ func (s *Server) HandleAddModels(c *gin.Context) {
 	}
 
 	s.InvalidateChannelListCache()
-	RespondJSON(c, http.StatusOK, gin.H{"success": true, "total": len(cfg.Models)})
+	RespondJSON(c, http.StatusOK, gin.H{"total": len(cfg.Models)})
 }
 
 // HandleDeleteModels 删除渠道中的指定模型
@@ -640,7 +639,7 @@ func (s *Server) HandleDeleteModels(c *gin.Context) {
 	}
 
 	s.InvalidateChannelListCache()
-	RespondJSON(c, http.StatusOK, gin.H{"success": true, "remaining": len(remaining)})
+	RespondJSON(c, http.StatusOK, gin.H{"remaining": len(remaining)})
 }
 
 // ChannelSortUpdate 渠道排序更新项
@@ -663,7 +662,7 @@ func (s *Server) HandleReorderChannels(c *gin.Context) {
 	}
 
 	if len(req.Changes) == 0 {
-		RespondJSON(c, http.StatusOK, gin.H{"success": true, "updated": 0})
+		RespondJSON(c, http.StatusOK, gin.H{"updated": 0})
 		return
 	}
 
@@ -717,7 +716,6 @@ func (s *Server) HandleReorderChannels(c *gin.Context) {
 	s.InvalidateChannelListCache()
 
 	RespondJSON(c, http.StatusOK, gin.H{
-		"success": true,
 		"updated": updated,
 	})
 }

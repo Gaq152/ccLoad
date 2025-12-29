@@ -497,8 +497,9 @@ async function copyChannel(id, name) {
     const res = await fetchWithAuth(`/admin/channels/${id}/endpoints`);
     if (res.ok) {
       const data = await res.json();
-      // API 返回格式: {data: [...], auto_select_endpoint: bool}
-      const endpoints = Array.isArray(data) ? data : (data.data || []);
+      // 兼容新旧响应格式: 新格式 {success, data: {endpoints, auto_select_endpoint}}
+      const respData = data.success ? data.data : data;
+      const endpoints = Array.isArray(respData) ? respData : (respData?.endpoints || respData?.data || []);
       if (endpoints.length > 0) {
         // 确保 active 端点在首位（保持原渠道的 active 优先级）
         const sorted = [...endpoints].sort((a, b) => {

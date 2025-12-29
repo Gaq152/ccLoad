@@ -20,19 +20,19 @@ type OAuthTokenRequest struct {
 func (s *Server) HandleOAuthToken(c *gin.Context) {
 	var req OAuthTokenRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "参数错误: " + err.Error()})
+		RespondErrorMsg(c, http.StatusBadRequest, "参数错误: "+err.Error())
 		return
 	}
 
 	if req.TokenURL == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "error": "token_url 不能为空"})
+		RespondErrorMsg(c, http.StatusBadRequest, "token_url 不能为空")
 		return
 	}
 
 	// 创建请求
 	httpReq, err := http.NewRequest("POST", req.TokenURL, strings.NewReader(req.Body))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "创建请求失败: " + err.Error()})
+		RespondErrorMsg(c, http.StatusInternalServerError, "创建请求失败: "+err.Error())
 		return
 	}
 
@@ -47,7 +47,7 @@ func (s *Server) HandleOAuthToken(c *gin.Context) {
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(httpReq)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "请求失败: " + err.Error()})
+		RespondErrorMsg(c, http.StatusInternalServerError, "请求失败: "+err.Error())
 		return
 	}
 	defer resp.Body.Close()
@@ -55,22 +55,19 @@ func (s *Server) HandleOAuthToken(c *gin.Context) {
 	// 读取响应
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "error": "读取响应失败: " + err.Error()})
+		RespondErrorMsg(c, http.StatusInternalServerError, "读取响应失败: "+err.Error())
 		return
 	}
 
 	// 返回结果
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-		c.JSON(http.StatusOK, gin.H{
-			"success":     true,
+		RespondJSON(c, http.StatusOK, gin.H{
 			"status_code": resp.StatusCode,
 			"data":        string(body),
 		})
 	} else {
-		c.JSON(http.StatusOK, gin.H{
-			"success":     false,
+		RespondErrorWithData(c, http.StatusOK, string(body), gin.H{
 			"status_code": resp.StatusCode,
-			"error":       string(body),
 		})
 	}
 }

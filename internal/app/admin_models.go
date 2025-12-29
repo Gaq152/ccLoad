@@ -80,10 +80,7 @@ func (s *Server) HandleFetchModels(c *gin.Context) {
 	response, err := fetchModelsForConfig(c.Request.Context(), channelType, channel.URL, apiKey)
 	if err != nil {
 		// [INFO] 修复：统一返回200（与HandleFetchModelsPreview保持一致）
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"error":   err.Error(),
-		})
+		RespondErrorWithData[any](c, http.StatusOK, err.Error(), nil)
 		return
 	}
 
@@ -126,10 +123,7 @@ func (s *Server) HandleFetchModelsPreview(c *gin.Context) {
 	response, err := fetchModelsForConfig(c.Request.Context(), req.ChannelType, req.URL, authKey)
 	if err != nil {
 		// [INFO] 修复：统一返回200，通过success字段区分成功/失败（上游错误是预期内的）
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"error":   err.Error(),
-		})
+		RespondErrorWithData[any](c, http.StatusOK, err.Error(), nil)
 		return
 	}
 	RespondJSON(c, http.StatusOK, response)

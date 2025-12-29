@@ -22,15 +22,6 @@ type QuotaFetchRequest struct {
 	QuotaConfig *model.QuotaConfig `json:"quota_config,omitempty"`
 }
 
-// QuotaFetchResponse 用量查询代理响应
-type QuotaFetchResponse struct {
-	Success    bool              `json:"success"`
-	StatusCode int               `json:"status_code,omitempty"`
-	Headers    map[string]string `json:"headers,omitempty"`
-	Body       string            `json:"body,omitempty"`
-	Error      string            `json:"error,omitempty"`
-}
-
 // handleQuotaFetch 代理渠道用量查询请求
 // POST /admin/channels/:id/quota/fetch
 //
@@ -45,10 +36,7 @@ func (s *Server) handleQuotaFetch(c *gin.Context) {
 	idStr := c.Param("id")
 	channelID, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, QuotaFetchResponse{
-			Success: false,
-			Error:   "invalid channel id",
-		})
+		RespondErrorMsg(c, http.StatusBadRequest, "invalid channel id")
 		return
 	}
 
@@ -63,10 +51,7 @@ func (s *Server) handleQuotaFetch(c *gin.Context) {
 		// 无请求体，从数据库读取（正常轮询模式）
 		config, err := s.store.GetConfig(c.Request.Context(), channelID)
 		if err != nil {
-			c.JSON(http.StatusNotFound, QuotaFetchResponse{
-				Success: false,
-				Error:   "channel not found",
-			})
+			RespondErrorMsg(c, http.StatusNotFound, "channel not found")
 			return
 		}
 
@@ -74,47 +59,32 @@ func (s *Server) handleQuotaFetch(c *gin.Context) {
 		// 禁用渠道只影响前端自动轮询，不影响手动刷新
 
 		if config.QuotaConfig == nil || !config.QuotaConfig.Enabled {
-			c.JSON(http.StatusBadRequest, QuotaFetchResponse{
-				Success: false,
-				Error:   "quota monitoring not enabled for this channel",
-			})
+			RespondErrorMsg(c, http.StatusBadRequest, "quota monitoring not enabled for this channel")
 			return
 		}
 		qc = config.QuotaConfig
 	} else {
 		// channelID=0 且无请求体配置
-		c.JSON(http.StatusBadRequest, QuotaFetchResponse{
-			Success: false,
-			Error:   "quota_config is required for test mode",
-		})
+		RespondErrorMsg(c, http.StatusBadRequest, "quota_config is required for test mode")
 		return
 	}
 
 	// 验证请求URL（安全检查：防止SSRF）
 	if qc.RequestURL == "" {
-		c.JSON(http.StatusBadRequest, QuotaFetchResponse{
-			Success: false,
-			Error:   "quota config missing request_url",
-		})
+		RespondErrorMsg(c, http.StatusBadRequest, "quota config missing request_url")
 		return
 	}
 
 	// URL安全验证
 	if err := validateQuotaURL(qc.RequestURL); err != nil {
-		c.JSON(http.StatusBadRequest, QuotaFetchResponse{
-			Success: false,
-			Error:   "invalid request_url: " + err.Error(),
-		})
+		RespondErrorMsg(c, http.StatusBadRequest, "invalid request_url: "+err.Error())
 		return
 	}
 
 	// 验证HTTP方法
 	method := strings.ToUpper(qc.GetRequestMethod())
 	if method != "GET" && method != "POST" {
-		c.JSON(http.StatusBadRequest, QuotaFetchResponse{
-			Success: false,
-			Error:   "invalid request method, only GET/POST allowed",
-		})
+		RespondErrorMsg(c, http.StatusBadRequest, "invalid request method, only GET/POST allowed")
 		return
 	}
 
@@ -126,10 +96,7 @@ func (s *Server) handleQuotaFetch(c *gin.Context) {
 	if method == "POST" && qc.RequestBody != "" {
 		// 限制请求体大小（最大64KB）
 		if len(qc.RequestBody) > 64*1024 {
-			c.JSON(http.StatusBadRequest, QuotaFetchResponse{
-				Success: false,
-				Error:   "request_body too large (max 64KB)",
-			})
+			RespondErrorMsg(c, http.StatusBadRequest, "request_body too large (max 64KB)")
 			return
 		}
 		bodyReader = bytes.NewBufferString(qc.RequestBody)
@@ -137,10 +104,7 @@ func (s *Server) handleQuotaFetch(c *gin.Context) {
 
 	req, err := http.NewRequestWithContext(ctx, method, qc.RequestURL, bodyReader)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, QuotaFetchResponse{
-			Success: false,
-			Error:   "failed to create request: " + err.Error(),
-		})
+		RespondErrorMsg(c, http.StatusInternalServerError, "failed to create request: "+err.Error())
 		return
 	}
 
@@ -204,10 +168,7 @@ func (s *Server) handleQuotaFetch(c *gin.Context) {
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		c.JSON(http.StatusBadGateway, QuotaFetchResponse{
-			Success: false,
-			Error:   "upstream request failed: " + err.Error(),
-		})
+		RespondErrorMsg(c, http.StatusBadGateway, "upstream request failed: "+err.Error())
 		return
 	}
 	defer resp.Body.Close()
@@ -215,10 +176,7 @@ func (s *Server) handleQuotaFetch(c *gin.Context) {
 	// 读取响应体（限制大小，防止OOM）
 	bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20)) // 最大1MB
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, QuotaFetchResponse{
-			Success: false,
-			Error:   "failed to read response body: " + err.Error(),
-		})
+		RespondErrorMsg(c, http.StatusInternalServerError, "failed to read response body: "+err.Error())
 		return
 	}
 
@@ -230,11 +188,10 @@ func (s *Server) handleQuotaFetch(c *gin.Context) {
 		}
 	}
 
-	c.JSON(http.StatusOK, QuotaFetchResponse{
-		Success:    true,
-		StatusCode: resp.StatusCode,
-		Headers:    respHeaders,
-		Body:       string(bodyBytes),
+	RespondJSON(c, http.StatusOK, gin.H{
+		"status_code": resp.StatusCode,
+		"headers":     respHeaders,
+		"body":        string(bodyBytes),
 	})
 }
 

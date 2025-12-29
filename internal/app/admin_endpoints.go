@@ -51,7 +51,7 @@ func (s *Server) HandleChannelEndpoints(c *gin.Context) {
 	case http.MethodPut:
 		s.handleUpdateEndpoints(c)
 	default:
-		c.JSON(http.StatusMethodNotAllowed, gin.H{"error": "method not allowed"})
+		RespondErrorMsg(c, http.StatusMethodNotAllowed, "method not allowed")
 	}
 }
 
@@ -59,21 +59,21 @@ func (s *Server) HandleChannelEndpoints(c *gin.Context) {
 func (s *Server) handleGetEndpoints(c *gin.Context) {
 	channelID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid channel id"})
+		RespondErrorMsg(c, http.StatusBadRequest, "invalid channel id")
 		return
 	}
 
 	endpoints, err := s.store.ListEndpoints(c.Request.Context(), channelID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		RespondError(c, http.StatusInternalServerError, err)
 		return
 	}
 
 	// 获取自动选择设置
 	autoSelect, _ := s.store.GetChannelAutoSelectEndpoint(c.Request.Context(), channelID)
 
-	c.JSON(http.StatusOK, gin.H{
-		"data":                  endpoints,
+	RespondJSON(c, http.StatusOK, gin.H{
+		"endpoints":            endpoints,
 		"auto_select_endpoint": autoSelect,
 	})
 }
@@ -82,13 +82,13 @@ func (s *Server) handleGetEndpoints(c *gin.Context) {
 func (s *Server) handleUpdateEndpoints(c *gin.Context) {
 	channelID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid channel id"})
+		RespondErrorMsg(c, http.StatusBadRequest, "invalid channel id")
 		return
 	}
 
 	var req EndpointsUpdateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		RespondError(c, http.StatusBadRequest, err)
 		return
 	}
 
@@ -116,13 +116,13 @@ func (s *Server) handleUpdateEndpoints(c *gin.Context) {
 
 	// 保存端点
 	if err := s.store.SaveEndpoints(c.Request.Context(), channelID, endpoints); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		RespondError(c, http.StatusInternalServerError, err)
 		return
 	}
 
 	// 更新自动选择设置
 	if err := s.store.SetChannelAutoSelectEndpoint(c.Request.Context(), channelID, req.AutoSelectEndpoint); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		RespondError(c, http.StatusInternalServerError, err)
 		return
 	}
 
@@ -143,25 +143,25 @@ func (s *Server) handleUpdateEndpoints(c *gin.Context) {
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "ok"})
+	RespondJSON(c, http.StatusOK, gin.H{"message": "ok"})
 }
 
 // HandleTestEndpoints 测速所有端点
 func (s *Server) HandleTestEndpoints(c *gin.Context) {
 	channelID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid channel id"})
+		RespondErrorMsg(c, http.StatusBadRequest, "invalid channel id")
 		return
 	}
 
 	endpoints, err := s.store.ListEndpoints(c.Request.Context(), channelID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		RespondError(c, http.StatusInternalServerError, err)
 		return
 	}
 
 	if len(endpoints) == 0 {
-		c.JSON(http.StatusOK, gin.H{"data": []EndpointTestResult{}})
+		RespondJSON(c, http.StatusOK, []EndpointTestResult{})
 		return
 	}
 
@@ -224,8 +224,8 @@ func (s *Server) HandleTestEndpoints(c *gin.Context) {
 	// 重新获取更新后的端点列表
 	updatedEndpoints, _ := s.store.ListEndpoints(c.Request.Context(), channelID)
 
-	c.JSON(http.StatusOK, gin.H{
-		"data":      results,
+	RespondJSON(c, http.StatusOK, gin.H{
+		"results":   results,
 		"endpoints": updatedEndpoints,
 	})
 }
@@ -234,22 +234,22 @@ func (s *Server) HandleTestEndpoints(c *gin.Context) {
 func (s *Server) HandleSetActiveEndpoint(c *gin.Context) {
 	channelID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid channel id"})
+		RespondErrorMsg(c, http.StatusBadRequest, "invalid channel id")
 		return
 	}
 
 	var req SetActiveEndpointRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		RespondError(c, http.StatusBadRequest, err)
 		return
 	}
 
 	if err := s.store.SetActiveEndpoint(c.Request.Context(), channelID, req.EndpointID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		RespondError(c, http.StatusInternalServerError, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "ok"})
+	RespondJSON(c, http.StatusOK, gin.H{"message": "ok"})
 }
 
 // endpointTestInfo 端点测试详细结果
@@ -320,14 +320,14 @@ func (s *Server) HandleEndpointsStatus(c *gin.Context) {
 	nextRunTime, intervalSeconds, enabled := s.endpointTester.GetStatus()
 
 	if !enabled {
-		c.JSON(http.StatusOK, gin.H{
+		RespondJSON(c, http.StatusOK, gin.H{
 			"enabled": false,
 			"message": "自动端点测速已禁用",
 		})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	RespondJSON(c, http.StatusOK, gin.H{
 		"enabled":          true,
 		"next_run_time":    nextRunTime.Format(time.RFC3339),
 		"interval_seconds": intervalSeconds,

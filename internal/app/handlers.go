@@ -135,16 +135,25 @@ func ParsePaginationParams(c *gin.Context) *PaginationParams {
 // APIResponse 标准API响应结构
 type APIResponse[T any] struct {
 	Success bool   `json:"success"`
-	Data    T      `json:"data,omitempty"`
-	Error   string `json:"error,omitempty"`
-	Count   int    `json:"count,omitempty"`
+	Data    T      `json:"data"`
+	Error   string `json:"error"`
+	Count   int    `json:"count"`
 }
 
 // RespondJSON 发送成功的JSON响应
 func RespondJSON[T any](c *gin.Context, code int, data T) {
 	c.JSON(code, APIResponse[T]{
-		Success: code >= 200 && code < 300,
+		Success: true,
 		Data:    data,
+	})
+}
+
+// RespondJSONWithCount 发送成功的JSON响应（带总数，用于分页等场景）
+func RespondJSONWithCount[T any](c *gin.Context, code int, data T, count int) {
+	c.JSON(code, APIResponse[T]{
+		Success: true,
+		Data:    data,
+		Count:   count,
 	})
 }
 
@@ -168,6 +177,16 @@ func RespondErrorMsg(c *gin.Context, code int, message string) {
 	c.JSON(code, APIResponse[any]{
 		Success: false,
 		Error:   message,
+	})
+}
+
+// RespondErrorWithData 发送错误响应（携带额外数据）
+// 适用场景：需要把错误上下文（例如批量导入summary）返回给前端展示。
+func RespondErrorWithData[T any](c *gin.Context, code int, message string, data T) {
+	c.JSON(code, APIResponse[T]{
+		Success: false,
+		Error:   message,
+		Data:    data,
 	})
 }
 
