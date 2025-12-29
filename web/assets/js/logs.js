@@ -352,6 +352,7 @@
       const model = document.getElementById('f_model')?.value?.trim() || '';
       const statusCode = document.getElementById('f_status')?.value?.trim() || '';
       const authTokenId = document.getElementById('f_auth_token')?.value?.trim() || '';
+      const range = document.getElementById('f_hours')?.value || 'today';
 
       // 渠道 ID 前缀匹配（输入 "1" 匹配 1, 10, 11, 12 等）
       if (channelId && !String(entry.channel_id || '').startsWith(channelId)) {
@@ -381,6 +382,39 @@
       // 渠道类型匹配（下拉菜单选择）
       if (currentChannelType && currentChannelType !== 'all') {
         if (String(entry.channel_type) !== currentChannelType) {
+          return false;
+        }
+      }
+
+      // 时间范围匹配（SSE 推送的新日志通常都在范围内，但需要检查）
+      const logTimeMs = extractLogTimeMs(entry);
+      if (logTimeMs > 0 && range !== 'all') {
+        const now = Date.now();
+        let rangeStartMs = 0;
+
+        if (range === 'today') {
+          // 今天0点
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          rangeStartMs = today.getTime();
+        } else if (range === 'yesterday') {
+          // 昨天0点到今天0点
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
+          // 昨天的日志，SSE 推送的新日志肯定不是昨天的
+          if (logTimeMs < yesterday.getTime() || logTimeMs >= today.getTime()) {
+            return false;
+          }
+        } else {
+          // 解析小时数（如 "1", "6", "24", "168"）
+          const hours = parseInt(range);
+          if (!isNaN(hours) && hours > 0) {
+            rangeStartMs = now - hours * 60 * 60 * 1000;
+          }
+        }
+
+        if (rangeStartMs > 0 && logTimeMs < rangeStartMs) {
           return false;
         }
       }
@@ -565,6 +599,9 @@
         initDateRangeSelector('f_hours', 'today', () => {
           saveLogsFilters();
           currentLogsPage = 1;
+          // 清空实时缓冲区（筛选条件变化后缓冲区数据可能不符合新条件）
+          realtimeBuffer = [];
+          displayedLogIds.clear();
           load();
         });
         // 设置URL中的值
@@ -591,6 +628,9 @@
       document.getElementById('f_auth_token').addEventListener('change', () => {
         saveLogsFilters();
         currentLogsPage = 1;
+        // 清空实时缓冲区（筛选条件变化后缓冲区数据可能不符合新条件）
+        realtimeBuffer = [];
+        displayedLogIds.clear();
         load();
       });
 
@@ -863,6 +903,9 @@
         saveLogsFilters();
         // 切换渠道类型时重置到第一页并重新加载
         currentLogsPage = 1;
+        // 清空实时缓冲区（筛选条件变化后缓冲区数据可能不符合新条件）
+        realtimeBuffer = [];
+        displayedLogIds.clear();
         load();
       });
     }
