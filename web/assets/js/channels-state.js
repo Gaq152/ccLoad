@@ -312,10 +312,18 @@ const AutoTestTimer = {
   timerId: null,
   nextRunTime: null,
   intervalSeconds: 300, // 默认5分钟
+  initialized: false, // 防止重复初始化
 
   init() {
     const timerEl = document.getElementById('autoTestTimer');
     if (!timerEl) return;
+
+    // 防止重复初始化（页面可见性恢复时只需 sync，不需要重新 init）
+    if (this.initialized) {
+      this.sync();
+      return;
+    }
+    this.initialized = true;
 
     // 初始同步
     this.sync();
