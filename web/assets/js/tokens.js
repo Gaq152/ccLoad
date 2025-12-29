@@ -83,7 +83,7 @@
               showDisableConfirmModal(tokenId);
             } else if (action === 'enable-expired') {
               // 过期令牌：提示需要先修改过期时间
-              showToast('令牌已过期，请先编辑修改过期时间后再启用', 'error');
+              window.showNotification('令牌已过期，请先编辑修改过期时间后再启用', 'error');
             } else {
               enableToken(tokenId);  // 正常启用（包括超限令牌）
             }
@@ -101,14 +101,12 @@
           url += `?range=${currentTimeRange}`;
         }
 
-        const response = await fetchWithAuth(url);
-        if (!response.ok) throw new Error('加载令牌失败');
-        const data = await response.json();
-        allTokens = data.data || [];
+        const data = await fetchDataWithAuth(url);
+        allTokens = (data && data.tokens) || [];
         renderTokens();
       } catch (error) {
         console.error('加载令牌失败:', error);
-        showToast('加载令牌失败: ' + error.message, 'error');
+        window.showNotification('加载令牌失败: ' + error.message, 'error');
       }
     }
 
@@ -475,7 +473,7 @@
       try {
         if (drawerMode === 'create') {
           // 创建令牌
-          const response = await fetchWithAuth(`${API_BASE}/auth-tokens`, {
+          const data = await fetchDataWithAuth(`${API_BASE}/auth-tokens`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -483,19 +481,17 @@
               expires_at: expiresAt
             })
           });
-          if (!response.ok) throw new Error('创建失败');
-          const data = await response.json();
-          const newTokenId = data.data.id;
+          const newTokenId = data.id;
 
           // 保存渠道配置
           await saveDrawerChannels(newTokenId);
 
           closeDrawer();
           // 显示新令牌
-          document.getElementById('newTokenValue').value = data.data.token;
+          document.getElementById('newTokenValue').value = data.token;
           document.getElementById('tokenResultModal').style.display = 'block';
           loadTokens();
-          showToast('令牌创建成功', 'success');
+          window.showNotification('令牌创建成功', 'success');
         } else {
           // 更新令牌
           const tokenId = editingTokenId;
@@ -505,23 +501,22 @@
             expires_at: expiresAt
           };
 
-          const response = await fetchWithAuth(`${API_BASE}/auth-tokens/${tokenId}`, {
+          await fetchDataWithAuth(`${API_BASE}/auth-tokens/${tokenId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(updateData)
           });
-          if (!response.ok) throw new Error('更新失败');
 
           // 保存渠道配置
           await saveDrawerChannels(tokenId);
 
           closeDrawer();
           loadTokens();
-          showToast('更新成功', 'success');
+          window.showNotification('更新成功', 'success');
         }
       } catch (error) {
         console.error('保存失败:', error);
-        showToast('保存失败: ' + error.message, 'error');
+        window.showNotification('保存失败: ' + error.message, 'error');
       }
     }
 
@@ -535,19 +530,13 @@
 
       try {
         // 并行加载渠道列表和令牌配置
-        const [channelsRes, configRes] = await Promise.all([
-          fetchWithAuth(`${API_BASE}/channels`),
-          fetchWithAuth(`${API_BASE}/auth-tokens/${tokenId}/channels`)
+        const [channelsData, configData] = await Promise.all([
+          fetchDataWithAuth(`${API_BASE}/channels`),
+          fetchDataWithAuth(`${API_BASE}/auth-tokens/${tokenId}/channels`)
         ]);
 
-        if (!channelsRes.ok) throw new Error('加载渠道列表失败');
-        if (!configRes.ok) throw new Error('加载令牌渠道配置失败');
-
-        const channelsData = await channelsRes.json();
-        const configData = await configRes.json();
-
-        allChannels = channelsData.data || [];
-        const config = configData.data || {};
+        allChannels = (channelsData && channelsData.channels) || [];
+        const config = configData || {};
 
         // 设置全部渠道开关
         const allChannelsToggle = document.getElementById('drawerAllChannels');
@@ -574,11 +563,8 @@
       updateDrawerChannelCount(0);
 
       try {
-        const channelsRes = await fetchWithAuth(`${API_BASE}/channels`);
-        if (!channelsRes.ok) throw new Error('加载渠道列表失败');
-
-        const channelsData = await channelsRes.json();
-        allChannels = channelsData.data || [];
+        const channelsData = await fetchDataWithAuth(`${API_BASE}/channels`);
+        allChannels = (channelsData && channelsData.channels) || [];
 
         // 渲染渠道列表（无选中项，需要用户手动选择）
         renderDrawerChannelsList([]);
@@ -825,7 +811,7 @@
       const checkboxes = document.querySelectorAll('#drawerChannelsList input[type="checkbox"]:checked');
       const channelIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
 
-      const response = await fetchWithAuth(`${API_BASE}/auth-tokens/${tokenId}/channels`, {
+      await fetchDataWithAuth(`${API_BASE}/auth-tokens/${tokenId}/channels`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -833,8 +819,6 @@
           channel_ids: channelIds
         })
       });
-
-      if (!response.ok) throw new Error('保存渠道配置失败');
     }
 
     /**
@@ -851,12 +835,12 @@
       try {
         // 优先使用现代 Clipboard API
         await navigator.clipboard.writeText(text);
-        showToast('已复制到剪贴板', 'success');
+        window.showNotification('已复制到剪贴板', 'success');
       } catch (err) {
         // 降级方案：使用传统 execCommand
         textarea.select();
         document.execCommand('copy');
-        showToast('已复制到剪贴板', 'success');
+        window.showNotification('已复制到剪贴板', 'success');
       }
     }
 
@@ -895,16 +879,15 @@
       if (!deletingTokenId) return;
 
       try {
-        const response = await fetchWithAuth(`${API_BASE}/auth-tokens/${deletingTokenId}`, {
+        await fetchDataWithAuth(`${API_BASE}/auth-tokens/${deletingTokenId}`, {
           method: 'DELETE'
         });
-        if (!response.ok) throw new Error('删除失败');
         closeDeleteConfirmModal();
         loadTokens();
-        showToast('删除成功', 'success');
+        window.showNotification('删除成功', 'success');
       } catch (error) {
         console.error('删除失败:', error);
-        showToast('删除失败: ' + error.message, 'error');
+        window.showNotification('删除失败: ' + error.message, 'error');
       }
     }
 
@@ -967,18 +950,17 @@
       if (!disablingTokenId) return;
 
       try {
-        const response = await fetchWithAuth(`${API_BASE}/auth-tokens/${disablingTokenId}`, {
+        await fetchDataWithAuth(`${API_BASE}/auth-tokens/${disablingTokenId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ is_active: false })
         });
-        if (!response.ok) throw new Error('禁用失败');
         closeDisableConfirmModal();
         loadTokens();
-        showToast('令牌已禁用', 'success');
+        window.showNotification('令牌已禁用', 'success');
       } catch (error) {
         console.error('禁用失败:', error);
-        showToast('禁用失败: ' + error.message, 'error');
+        window.showNotification('禁用失败: ' + error.message, 'error');
       }
     }
 
@@ -987,43 +969,18 @@
      */
     async function enableToken(id) {
       try {
-        const response = await fetchWithAuth(`${API_BASE}/auth-tokens/${id}`, {
+        await fetchDataWithAuth(`${API_BASE}/auth-tokens/${id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ is_active: true })
         });
 
-        if (!response.ok) {
-          // 解析后端返回的错误信息
-          const errorData = await response.json();
-          const errorMsg = errorData.error || errorData.message || '启用失败';
-          showToast(errorMsg, 'error');
-          return;
-        }
-
         loadTokens();
-        showToast('令牌已启用', 'success');
+        window.showNotification('令牌已启用', 'success');
       } catch (error) {
         console.error('启用失败:', error);
-        showToast('启用失败: ' + error.message, 'error');
+        window.showNotification(error.message || '启用失败', 'error');
       }
-    }
-
-    function showToast(message, type = 'info') {
-      const toast = document.createElement('div');
-      toast.className = `toast toast-${type}`;
-      toast.textContent = message;
-      toast.style.cssText = `
-        position: fixed; top: 20px; right: 20px; padding: 12px 20px;
-        background: ${type === 'success' ? 'var(--success-500)' : type === 'error' ? 'var(--error-500)' : 'var(--primary-500)'};
-        color: white; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-        z-index: 10000; animation: slideIn 0.3s ease-out;
-      `;
-      document.body.appendChild(toast);
-      setTimeout(() => {
-        toast.style.animation = 'slideOut 0.3s ease-out';
-        setTimeout(() => toast.remove(), 300);
-      }, 3000);
     }
 
     // 初始化顶部导航栏

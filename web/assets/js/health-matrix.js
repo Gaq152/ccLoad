@@ -99,13 +99,8 @@ async function initHealthMatrix() {
 // 加载所有内部渠道（用于映射）
 async function loadAllInternalChannels() {
   try {
-    const resp = await fetchWithAuth('/admin/channels?enabled=all');
-    if (!resp.ok) {
-      console.error('加载内部渠道失败:', resp.status);
-      return [];
-    }
-    const data = await resp.json();
-    return data.success ? data.data : data;
+    const data = await fetchDataWithAuth('/admin/channels?enabled=all');
+    return data || [];
   } catch (error) {
     console.error('加载内部渠道异常:', error);
     return [];
@@ -114,6 +109,7 @@ async function loadAllInternalChannels() {
 
 // 获取外部健康数据
 async function fetchHealthData(period = '24h') {
+  // 健康数据代理接口直接返回外部数据，使用 fetchWithAuth 获取原始响应
   const resp = await fetchWithAuth(`/admin/channel-health-proxy?period=${period}`);
   if (!resp.ok) {
     const isStale = resp.headers.get('X-Cache-Stale') === 'true';

@@ -385,7 +385,7 @@ async function testSingleKey(keyIndex) {
   testButton.innerHTML = '<span style="font-size: 10px;">⏳</span>';
 
   try {
-    const res = await fetchWithAuth(`/admin/channels/${editingChannelId}/test`, {
+    const resp = await fetchAPIWithAuth(`/admin/channels/${editingChannelId}/test`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -398,12 +398,7 @@ async function testSingleKey(keyIndex) {
       })
     });
 
-    if (!res.ok) {
-      throw new Error('HTTP ' + res.status);
-    }
-
-    const result = await res.json();
-    const testResult = result.data || result;
+    const testResult = resp.data || {};
 
     await refreshKeyCooldownStatus();
 
@@ -426,38 +421,34 @@ async function refreshKeyCooldownStatus() {
   if (!editingChannelId) return;
 
   try {
-    const res = await fetchWithAuth(`/admin/channels/${editingChannelId}/keys`);
-    if (res.ok) {
-      const data = await res.json();
-      const apiKeys = (data.success ? data.data : data) || [];
+    const apiKeys = await fetchDataWithAuth(`/admin/channels/${editingChannelId}/keys`);
 
-      inlineKeyTableData = apiKeys.map(k => k.api_key || k);
-      if (inlineKeyTableData.length === 0) {
-        inlineKeyTableData = [''];
-      }
+    inlineKeyTableData = (apiKeys || []).map(k => k.api_key || k);
+    if (inlineKeyTableData.length === 0) {
+      inlineKeyTableData = [''];
+    }
 
-      const now = Date.now();
-      currentChannelKeyCooldowns = apiKeys.map((apiKey, index) => {
-        const cooldownUntilMs = (apiKey.cooldown_until || 0) * 1000;
-        const remainingMs = Math.max(0, cooldownUntilMs - now);
-        return {
-          key_index: index,
-          cooldown_remaining_ms: remainingMs
-        };
-      });
+    const now = Date.now();
+    currentChannelKeyCooldowns = (apiKeys || []).map((apiKey, index) => {
+      const cooldownUntilMs = (apiKey.cooldown_until || 0) * 1000;
+      const remainingMs = Math.max(0, cooldownUntilMs - now);
+      return {
+        key_index: index,
+        cooldown_remaining_ms: remainingMs
+      };
+    });
 
-      const tableContainer = document.querySelector('#inlineKeyTableBody').closest('div[style*="max-height"]');
-      const savedScrollTop = tableContainer ? tableContainer.scrollTop : 0;
+    const tableContainer = document.querySelector('#inlineKeyTableBody').closest('div[style*="max-height"]');
+    const savedScrollTop = tableContainer ? tableContainer.scrollTop : 0;
 
-      renderInlineKeyTable();
+    renderInlineKeyTable();
 
-      if (tableContainer && virtualScrollState.enabled) {
-        setTimeout(() => {
-          tableContainer.scrollTop = savedScrollTop;
-          virtualScrollState.scrollTop = savedScrollTop;
-          handleVirtualScroll({ target: tableContainer });
-        }, 0);
-      }
+    if (tableContainer && virtualScrollState.enabled) {
+      setTimeout(() => {
+        tableContainer.scrollTop = savedScrollTop;
+        virtualScrollState.scrollTop = savedScrollTop;
+        handleVirtualScroll({ target: tableContainer });
+      }, 0);
     }
   } catch (e) {
     console.error('刷新冷却状态失败', e);

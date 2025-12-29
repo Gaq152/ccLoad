@@ -342,24 +342,21 @@ const AutoTestTimer = {
     if (!timerEl) return;
 
     try {
-      const res = await fetchWithAuth('/admin/endpoints/status');
-      if (res.ok) {
-        const data = await res.json();
-        if (!data.enabled) {
-          // 自动测速已禁用，隐藏组件
-          timerEl.style.display = 'none';
-          return;
-        }
+      const data = await fetchDataWithAuth('/admin/endpoints/status');
+      if (!data.enabled) {
+        // 自动测速已禁用，隐藏组件
+        timerEl.style.display = 'none';
+        return;
+      }
 
-        // 显示组件
-        timerEl.style.display = 'flex';
+      // 显示组件
+      timerEl.style.display = 'flex';
 
-        if (data.next_run_time) {
-          this.nextRunTime = new Date(data.next_run_time);
-          this.intervalSeconds = data.interval_seconds || 300;
-          this.tick();
-          return;
-        }
+      if (data.next_run_time) {
+        this.nextRunTime = new Date(data.next_run_time);
+        this.intervalSeconds = data.interval_seconds || 300;
+        this.tick();
+        return;
       }
     } catch (e) {
       // 忽略API错误，静默回退到本地估算

@@ -65,11 +65,7 @@ async function editChannel(id) {
 
   let apiKeys = [];
   try {
-    const res = await fetchWithAuth(`/admin/channels/${id}/keys`);
-    if (res.ok) {
-      const data = await res.json();
-      apiKeys = (data.success ? data.data : data) || [];
-    }
+    apiKeys = await fetchDataWithAuth(`/admin/channels/${id}/keys`) || [];
   } catch (e) {
     console.error('获取API Keys失败', e);
   }
@@ -382,28 +378,26 @@ async function saveChannel(event) {
     let channelId = editingChannelId;
 
     if (editingChannelId) {
-      res = await fetchWithAuth(`/admin/channels/${editingChannelId}`, {
+      res = await fetchAPIWithAuth(`/admin/channels/${editingChannelId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData)
       });
     } else {
-      res = await fetchWithAuth('/admin/channels', {
+      res = await fetchAPIWithAuth('/admin/channels', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData)
       });
     }
 
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(text || 'HTTP ' + res.status);
+    if (!res.success) {
+      throw new Error(res.error || '保存失败');
     }
 
     // 新建时获取返回的渠道ID
     if (!editingChannelId) {
-      const result = await res.json();
-      channelId = result.data?.id || result.id;
+      channelId = res.data?.id;
     }
 
     // 保存端点（始终同步端点表，确保数据一致性）
@@ -444,13 +438,12 @@ async function confirmDelete() {
   if (!deletingChannelId) return;
 
   try {
-    const res = await fetchWithAuth(`/admin/channels/${deletingChannelId}`, {
+    const res = await fetchAPIWithAuth(`/admin/channels/${deletingChannelId}`, {
       method: 'DELETE'
     });
 
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(text || 'HTTP ' + res.status);
+    if (!res.success) {
+      throw new Error(res.error || '删除失败');
     }
 
     closeDeleteModal();
@@ -465,12 +458,12 @@ async function confirmDelete() {
 
 async function toggleChannel(id, enabled) {
   try {
-    const res = await fetchWithAuth(`/admin/channels/${id}`, {
+    const res = await fetchAPIWithAuth(`/admin/channels/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ enabled })
     });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
+    if (!res.success) throw new Error(res.error || '操作失败');
     clearChannelsCache();
     await loadChannels(filters.channelType);
     if (window.showSuccess) showSuccess(enabled ? '渠道已启用' : '渠道已禁用');
@@ -494,21 +487,17 @@ async function copyChannel(id, name) {
   // 获取源渠道的端点列表并复制
   let endpointUrls = [channel.url]; // 默认使用渠道URL
   try {
-    const res = await fetchWithAuth(`/admin/channels/${id}/endpoints`);
-    if (res.ok) {
-      const data = await res.json();
-      // 兼容新旧响应格式: 新格式 {success, data: {endpoints, auto_select_endpoint}}
-      const respData = data.success ? data.data : data;
-      const endpoints = Array.isArray(respData) ? respData : (respData?.endpoints || respData?.data || []);
-      if (endpoints.length > 0) {
-        // 确保 active 端点在首位（保持原渠道的 active 优先级）
-        const sorted = [...endpoints].sort((a, b) => {
-          if (a.is_active && !b.is_active) return -1;
-          if (!a.is_active && b.is_active) return 1;
-          return (a.sort_order || 0) - (b.sort_order || 0);
-        });
-        endpointUrls = sorted.map(ep => ep.url);
-      }
+    const data = await fetchDataWithAuth(`/admin/channels/${id}/endpoints`);
+    // 兼容新旧响应格式: data 可能是数组或 {endpoints, auto_select_endpoint}
+    const endpoints = Array.isArray(data) ? data : (data?.endpoints || []);
+    if (endpoints.length > 0) {
+      // 确保 active 端点在首位（保持原渠道的 active 优先级）
+      const sorted = [...endpoints].sort((a, b) => {
+        if (a.is_active && !b.is_active) return -1;
+        if (!a.is_active && b.is_active) return 1;
+        return (a.sort_order || 0) - (b.sort_order || 0);
+      });
+      endpointUrls = sorted.map(ep => ep.url);
     }
   } catch (e) {
     console.error('获取源渠道端点失败，使用默认URL', e);
@@ -859,20 +848,13 @@ async function fetchModelsFromAPI() {
   modelsTextarea.placeholder = '正在获取模型列表...';
 
   try {
-    const res = await fetchWithAuth(endpoint, fetchOptions);
+    const response = await fetchAPIWithAuth(endpoint, fetchOptions);
 
-    if (!res.ok) {
-      const errorData = await res.json().catch(() => ({}));
-      throw new Error(errorData.error || `HTTP ${res.status}`);
-    }
-
-    const response = await res.json();
-
-    if (response.success === false) {
+    if (!response.success) {
       throw new Error(response.error || '获取模型列表失败');
     }
 
-    const data = response.data || response;
+    const data = response.data || {};
 
     if (!data.models || data.models.length === 0) {
       throw new Error('未获取到任何模型');
@@ -1114,13 +1096,11 @@ async function testQuotaFetch() {
     const channelId = editingChannelId || 0;
 
     // 调用后端代理API，发送表单中的配置
-    const res = await fetchWithAuth(`/admin/channels/${channelId}/quota/fetch`, {
+    const result = await fetchAPIWithAuth(`/admin/channels/${channelId}/quota/fetch`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ quota_config: config })
     });
-
-    const result = await res.json();
 
     if (!result.success) {
       throw new Error(result.error || '请求失败');
@@ -1754,7 +1734,7 @@ async function exchangeCodeForToken(code) {
     });
 
     // 通过后端代理请求
-    const res = await fetchWithAuth('/admin/oauth/token', {
+    const result = await fetchAPIWithAuth('/admin/oauth/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1763,8 +1743,6 @@ async function exchangeCodeForToken(code) {
         content_type: 'application/x-www-form-urlencoded'
       })
     });
-
-    const result = await res.json();
 
     if (result.success && result.data) {
       let tokenData = typeof result.data === 'string' ? JSON.parse(result.data) : result.data;
@@ -1823,7 +1801,7 @@ async function refreshCodexToken() {
       client_id: 'app_EMoamEEZ73f0CkXaXp7hrann'
     });
 
-    const res = await fetchWithAuth('/admin/oauth/token', {
+    const result = await fetchAPIWithAuth('/admin/oauth/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1832,8 +1810,6 @@ async function refreshCodexToken() {
         content_type: 'application/x-www-form-urlencoded'
       })
     });
-
-    const result = await res.json();
 
     if (result.success && result.data) {
       let newTokenData = typeof result.data === 'string' ? JSON.parse(result.data) : result.data;
@@ -2156,7 +2132,7 @@ async function exchangeGeminiCodeForToken(code) {
     });
 
     // 通过后端代理请求（避免 CORS）
-    const res = await fetchWithAuth('/admin/oauth/token', {
+    const result = await fetchAPIWithAuth('/admin/oauth/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -2165,8 +2141,6 @@ async function exchangeGeminiCodeForToken(code) {
         content_type: 'application/x-www-form-urlencoded'
       })
     });
-
-    const result = await res.json();
 
     if (result.success && result.data) {
       let tokenData = typeof result.data === 'string' ? JSON.parse(result.data) : result.data;
@@ -2225,7 +2199,7 @@ async function refreshGeminiToken() {
       client_secret: GEMINI_OAUTH_CONFIG.clientSecret
     });
 
-    const res = await fetchWithAuth('/admin/oauth/token', {
+    const result = await fetchAPIWithAuth('/admin/oauth/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -2234,8 +2208,6 @@ async function refreshGeminiToken() {
         content_type: 'application/x-www-form-urlencoded'
       })
     });
-
-    const result = await res.json();
 
     if (result.success && result.data) {
       let newTokenData = typeof result.data === 'string' ? JSON.parse(result.data) : result.data;
