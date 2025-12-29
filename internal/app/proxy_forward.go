@@ -16,6 +16,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/bytedance/sonic"
 )
 
 const (
@@ -316,6 +318,14 @@ func (s *Server) handleSuccessResponse(
 	requestURL string,
 	isGeminiCLI bool,
 ) (*fwResult, float64, error) {
+	// 流式请求：禁用 WriteTimeout，避免长时间流被服务器自己切断
+	if reqCtx.isStreaming {
+		rc := http.NewResponseController(w)
+		if err := rc.SetWriteDeadline(time.Time{}); err != nil {
+			log.Printf("[WARN] 无法禁用流式请求的 WriteTimeout: %v", err)
+		}
+	}
+
 	// 写入响应头
 	filterAndWriteResponseHeaders(w, resp.Header)
 	w.WriteHeader(resp.StatusCode)
@@ -417,6 +427,50 @@ func (s *Server) handleResponse(
 ) (*fwResult, float64, error) {
 	hdrClone := resp.Header.Clone()
 
+	// 软错误检测：200状态码但响应体疑似错误
+	ct := resp.Header.Get("Content-Type")
+	if resp.StatusCode == 200 &&
+		shouldCheckSoftErrorForChannelType(channelType) &&
+		(strings.Contains(ct, "text/plain") || strings.Contains(ct, "application/json")) {
+		peekSize := 512
+		buf := make([]byte, peekSize)
+		n, err := resp.Body.Read(buf)
+		if err != nil && err != io.EOF {
+			log.Printf("[WARN] 软错误检测读取失败: %v", err)
+		}
+
+		validData := buf[:n]
+		if n > 0 && checkSoftError(validData, ct) {
+			log.Printf("[WARN] [软错误检测] 渠道ID=%d, 响应200但疑似错误响应: %s", cfg.ID, truncateErr(safeBodyToString(validData)))
+
+			if _, is1308 := util.ParseResetTimeFrom1308Error(validData); is1308 {
+				resp.StatusCode = util.StatusQuotaExceeded // 596
+			} else {
+				resp.StatusCode = util.StatusSSEError // 597
+			}
+
+			resp.Body = struct {
+				io.Reader
+				io.Closer
+			}{
+				Reader: io.MultiReader(bytes.NewReader(validData), resp.Body),
+				Closer: resp.Body,
+			}
+
+			return s.handleErrorResponse(reqCtx, resp, firstByteTime, hdrClone)
+		}
+
+		if n > 0 {
+			resp.Body = struct {
+				io.Reader
+				io.Closer
+			}{
+				Reader: io.MultiReader(bytes.NewReader(validData), resp.Body),
+				Closer: resp.Body,
+			}
+		}
+	}
+
 	// 错误状态：读取完整响应体
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		// 524 错误详细调试日志（Cloudflare 源站超时）
@@ -505,7 +559,22 @@ func (s *Server) forwardOnceAsync(ctx context.Context, cfg *model.Config, apiKey
 	firstByteTime := reqCtx.Duration()
 
 	// 5. 处理响应(传递channelType用于精确识别usage格式,传递渠道信息用于日志记录)
-	return s.handleResponse(reqCtx, resp, firstByteTime, w, cfg.ChannelType, cfg, apiKey, requestPath, isGeminiCLI)
+	res, duration, err := s.handleResponse(reqCtx, resp, firstByteTime, w, cfg.ChannelType, cfg, apiKey, requestPath, isGeminiCLI)
+
+	// 流式传输过程中首字节超时：确保错误被正确标记为首字节超时
+	if err != nil && reqCtx.firstByteTimeoutTriggered() {
+		timeoutMsg := fmt.Sprintf("upstream first byte timeout after %.2fs", duration)
+		if s.firstByteTimeout > 0 {
+			timeoutMsg = fmt.Sprintf("%s (threshold=%v)", timeoutMsg, s.firstByteTimeout)
+		}
+		err = fmt.Errorf("%s: %w", timeoutMsg, util.ErrUpstreamFirstByteTimeout)
+		if res != nil {
+			res.Status = util.StatusFirstByteTimeout
+		}
+		log.Printf("[TIMEOUT] [上游首字节超时-流传输中断] 渠道ID=%d, 阈值=%v, 实际耗时=%.2fs", cfg.ID, s.firstByteTimeout, duration)
+	}
+
+	return res, duration, err
 }
 
 // ============================================================================
@@ -546,7 +615,7 @@ func (s *Server) forwardAttempt(
 	// 处理网络错误或异常响应（如空响应）
 	// [INFO] 修复：handleResponse可能返回err即使StatusCode=200（例如Content-Length=0）
 	if err != nil {
-		return s.handleNetworkError(ctx, cfg, keyIndex, actualModel, selectedKey, reqCtx.tokenID, reqCtx.tokenName, reqCtx.clientIP, duration, err)
+		return s.handleNetworkError(ctx, cfg, keyIndex, actualModel, selectedKey, reqCtx.tokenID, reqCtx.tokenName, reqCtx.clientIP, duration, err, res, reqCtx)
 	}
 
 	// 处理成功响应（仅当err==nil且状态码2xx时）
@@ -558,15 +627,24 @@ func (s *Server) forwardAttempt(
 			// 只触发冷却，不返回重试动作
 			log.Printf("[WARN]  [SSE错误处理] HTTP状态码200但检测到SSE error事件，触发冷却但不重试（避免混流）")
 			res.Body = res.SSEErrorEvent
+			status := util.StatusSSEError
+			diag := fmt.Sprintf("SSE error event: %s", safeBodyToString(res.SSEErrorEvent))
+			if _, is1308 := util.ParseResetTimeFrom1308Error(res.SSEErrorEvent); is1308 {
+				status = util.StatusQuotaExceeded
+				diag = fmt.Sprintf("Quota Exceeded (1308): %s", safeBodyToString(res.SSEErrorEvent))
+			}
+			res.Status = status
+			res.StreamDiagMsg = diag
+
 			// 触发冷却但不重试
-			_, _ = s.cooldownManager.HandleError(ctx, cfg.ID, keyIndex, 200, res.SSEErrorEvent, false, nil)
+			_, _ = s.cooldownManager.HandleError(ctx, cfg.ID, keyIndex, status, res.SSEErrorEvent, false, nil)
 			s.invalidateChannelRelatedCache(cfg.ID)
 			// 记录失败日志
-			s.AddLogAsync(buildLogEntry(actualModel, cfg.ID, cfg.Name, cfg.GetChannelType(), 200,
-				duration, reqCtx.isStreaming, selectedKey, cfg.URL, reqCtx.tokenID, reqCtx.tokenName, reqCtx.clientIP, res, "SSE error event"))
-			// 返回成功（因为已经写出了200状态码和部分数据）
+			s.AddLogAsync(buildLogEntry(actualModel, cfg.ID, cfg.Name, cfg.GetChannelType(), status,
+				duration, reqCtx.isStreaming, selectedKey, cfg.URL, reqCtx.tokenID, reqCtx.tokenName, reqCtx.clientIP, res, diag))
+			// 返回成功（因为已经写出了部分数据）
 			return &proxyResult{
-				status:    200,
+				status:    status,
 				channelID: &cfg.ID,
 				message:   "partial success with SSE error",
 				duration:  duration,
@@ -611,6 +689,26 @@ func (s *Server) forwardAttempt(
 // tryChannelWithKeys 在单个渠道内尝试多个Key（Key级重试）
 // 从proxy.go提取，遵循SRP原则
 func (s *Server) tryChannelWithKeys(ctx context.Context, cfg *model.Config, reqCtx *proxyRequestContext, w http.ResponseWriter) (*proxyResult, error) {
+	makeCtxDoneResult := func(ctxErr error) *proxyResult {
+		status := util.StatusClientClosedRequest
+		isClientCanceled := errors.Is(ctxErr, context.Canceled)
+		if errors.Is(ctxErr, context.DeadlineExceeded) {
+			status = http.StatusGatewayTimeout
+		}
+
+		return &proxyResult{
+			status:           status,
+			body:             []byte(`{"error":"` + ctxErr.Error() + `"}`),
+			channelID:        &cfg.ID,
+			succeeded:        false,
+			isClientCanceled: isClientCanceled,
+		}
+	}
+
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return makeCtxDoneResult(ctxErr), nil
+	}
+
 	// 查询渠道的API Keys（使用缓存层，<1ms vs 数据库查询10-20ms）
 	// 性能优化：缓存优先，避免高并发场景下的数据库瓶颈
 	apiKeys, err := s.getAPIKeys(ctx, cfg.ID)
@@ -842,4 +940,71 @@ keyLoop:
 
 	// Key重试循环结束，所有Key都失败
 	return nil, fmt.Errorf("all keys exhausted")
+}
+
+func shouldCheckSoftErrorForChannelType(channelType string) bool {
+	switch util.NormalizeChannelType(channelType) {
+	case util.ChannelTypeAnthropic, util.ChannelTypeCodex:
+		return true
+	default:
+		return false
+	}
+}
+
+// checkSoftError 检测“200 OK 但实际是错误”的软错误响应
+// 原则：宁可漏判也不要误判（避免把正常响应当错误导致重试/冷却）
+//
+// 规则：
+// - JSON：先解析，只看顶层结构（顶层 error 字段 或 顶层 type=="error"）
+// - text/plain：只接受“前缀匹配 + 短消息”，禁止 Contains 误判用户内容
+// - SSE：若看起来像 SSE（data:/event:），直接跳过
+func checkSoftError(data []byte, contentType string) bool {
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) == 0 {
+		return false
+	}
+
+	// 非 JSON 形态下，先排除 SSE（上游可能用 text/plain 返回 SSE）
+	if trimmed[0] != '{' {
+		if bytes.HasPrefix(trimmed, []byte("data:")) || bytes.HasPrefix(trimmed, []byte("event:")) ||
+			bytes.Contains(data, []byte("\ndata:")) || bytes.Contains(data, []byte("\nevent:")) {
+			return false
+		}
+	}
+
+	ctLower := strings.ToLower(contentType)
+	isJSONCT := strings.Contains(ctLower, "application/json")
+
+	// JSON：仅看顶层结构
+	if isJSONCT || trimmed[0] == '{' {
+		var obj map[string]any
+		if err := sonic.Unmarshal(trimmed, &obj); err == nil {
+			if v, ok := obj["error"]; ok && v != nil {
+				return true
+			}
+			if t, ok := obj["type"].(string); ok && strings.EqualFold(t, "error") {
+				return true
+			}
+			return false
+		}
+		// 形态像 JSON（以 '{' 开头）但解析失败：不猜，避免误判
+		if trimmed[0] == '{' {
+			return false
+		}
+		// Content-Type 标注为 JSON 但内容不是 JSON：允许继续走 text/plain 的“前缀+短消息”兜底
+	}
+
+	// text/plain：仅前缀 + 短消息
+	const maxPlainLen = 256
+	if len(trimmed) > maxPlainLen {
+		return false
+	}
+	if bytes.HasPrefix(trimmed, []byte("当前模型负载过高")) {
+		return true
+	}
+	if bytes.HasPrefix(trimmed, []byte("Current model load too high")) {
+		return true
+	}
+
+	return false
 }

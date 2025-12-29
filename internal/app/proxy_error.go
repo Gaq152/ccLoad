@@ -50,7 +50,9 @@ func (s *Server) handleProxyError(ctx context.Context, cfg *model.Config, keyInd
 	// 好处：消除重复逻辑，单一职责，便于测试和维护
 	// manager.HandleError 现在不返回错误（日志记录方式）
 	// 因此这里不再需要检查 cooldownErr，直接使用 action 即可
-	action, _ := s.cooldownManager.HandleError(ctx, cfg.ID, keyIndex, statusCode, errorBody, isNetworkError, headers)
+	cooldownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
+	defer cancel()
+	action, _ := s.cooldownManager.HandleError(cooldownCtx, cfg.ID, keyIndex, statusCode, errorBody, isNetworkError, headers)
 
 	// 根据冷却管理器的决策执行相应动作
 	switch action {
@@ -81,18 +83,25 @@ func (s *Server) handleNetworkError(
 	ctx context.Context,
 	cfg *model.Config,
 	keyIndex int,
-	actualModel string, // [INFO] 重定向后的实际模型名称
+	actualModel string,
 	selectedKey string,
-	authTokenID int64,   // [INFO] API令牌ID（用于日志记录，2025-12新增）
-	authTokenName string, // [INFO] API令牌名称（用于SSE日志显示，2025-12新增）
-	clientIP string,     // [INFO] 客户端IP（用于日志记录，2025-12新增）
+	authTokenID int64,
+	authTokenName string,
+	clientIP string,
 	duration float64,
 	err error,
+	res *fwResult,
+	reqCtx *proxyRequestContext,
 ) (*proxyResult, cooldown.Action) {
 	statusCode, _, _ := util.ClassifyError(err)
 	// [INFO] 修复：使用 actualModel 而非 reqCtx.originalModel
 	s.AddLogAsync(buildLogEntry(actualModel, cfg.ID, cfg.Name, cfg.GetChannelType(), statusCode,
-		duration, false, selectedKey, cfg.URL, authTokenID, authTokenName, clientIP, nil, err.Error()))
+		duration, false, selectedKey, cfg.URL, authTokenID, authTokenName, clientIP, res, err.Error()))
+
+	// [FIX] 保留 499 取消场景下已消耗的 token 统计
+	if res != nil && reqCtx != nil && hasConsumedTokens(res) {
+		s.updateTokenStatsAsync(reqCtx.tokenHash, false, duration, reqCtx.isStreaming, res, actualModel)
+	}
 
 	action, _ := s.handleProxyError(ctx, cfg, keyIndex, nil, err)
 	if action == cooldown.ActionReturnClient {
@@ -108,6 +117,17 @@ func (s *Server) handleNetworkError(
 	}
 
 	return nil, action
+}
+
+// hasConsumedTokens 检查响应是否包含已消耗的 token 统计
+func hasConsumedTokens(res *fwResult) bool {
+	if res == nil {
+		return false
+	}
+	return res.InputTokens > 0 ||
+		res.OutputTokens > 0 ||
+		res.CacheReadInputTokens > 0 ||
+		res.CacheCreationInputTokens > 0
 }
 
 type tokenStatsUpdate struct {

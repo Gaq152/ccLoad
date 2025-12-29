@@ -96,10 +96,14 @@ func main() {
 	// 未配置时默认信任私有网段（适用于内网反向代理场景）
 	trustedProxies := getTrustedProxies()
 	if trustedProxies == nil {
-		r.SetTrustedProxies(nil)
+		if err := r.SetTrustedProxies(nil); err != nil {
+			log.Fatalf("[FATAL] 设置可信代理失败: %v", err)
+		}
 		log.Printf("[CONFIG] 可信代理: 无 (直接暴露)")
 	} else {
-		r.SetTrustedProxies(trustedProxies)
+		if err := r.SetTrustedProxies(trustedProxies); err != nil {
+			log.Fatalf("[FATAL] 设置可信代理失败: %v", err)
+		}
 		log.Printf("[CONFIG] 可信代理: %v", trustedProxies)
 	}
 
@@ -121,6 +125,7 @@ func main() {
 	}
 
 	// 使用http.Server支持优雅关闭
+	writeTimeout := srv.GetWriteTimeout()
 	httpServer := &http.Server{
 		Addr:    addr,
 		Handler: r,
@@ -129,9 +134,10 @@ func main() {
 		// 即使绕过应用层并发控制，也会在HTTP层被杀死
 		ReadHeaderTimeout: 5 * time.Second,   // 防止慢速发送header（slowloris攻击）
 		ReadTimeout:       120 * time.Second, // 防止慢速发送body（兼容长请求）
-		WriteTimeout:      120 * time.Second, // 防止慢速读取响应（兼容流式输出）
+		WriteTimeout:      writeTimeout,      // 防止慢速读取响应（兼容流式输出）
 		IdleTimeout:       60 * time.Second,  // 防止keep-alive连接占用fd
 	}
+	log.Printf("[CONFIG] HTTP WriteTimeout: %v", writeTimeout)
 
 	// 启动HTTP服务器（在goroutine中）
 	go func() {

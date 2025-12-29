@@ -359,6 +359,16 @@ func (s *Server) invalidateChannelRelatedCache(channelID int64) {
 	s.invalidateCooldownCache()
 }
 
+// GetWriteTimeout 返回建议的 HTTP WriteTimeout
+// 确保传输层超时不小于业务层非流式超时，避免长流被HTTP层过早切断
+func (s *Server) GetWriteTimeout() time.Duration {
+	const minWriteTimeout = 120 * time.Second
+	if s.nonStreamTimeout > minWriteTimeout {
+		return s.nonStreamTimeout
+	}
+	return minWriteTimeout
+}
+
 // SetupRoutes - 新的路由设置函数，适配Gin
 func (s *Server) SetupRoutes(r *gin.Engine) {
 	// 公开访问的API（代理服务）- 需要 API 认证
@@ -447,8 +457,8 @@ func (s *Server) SetupRoutes(r *gin.Engine) {
 		admin.POST("/auth-tokens", s.HandleCreateAuthToken)
 		admin.PUT("/auth-tokens/:id", s.HandleUpdateAuthToken)
 		admin.DELETE("/auth-tokens/:id", s.HandleDeleteAuthToken)
-		admin.GET("/auth-tokens/:id/channels", s.HandleGetTokenChannels)  // 获取令牌渠道配置（2025-12新增）
-		admin.PUT("/auth-tokens/:id/channels", s.HandleSetTokenChannels)  // 设置令牌渠道配置（2025-12新增）
+		admin.GET("/auth-tokens/:id/channels", s.HandleGetTokenChannels) // 获取令牌渠道配置（2025-12新增）
+		admin.PUT("/auth-tokens/:id/channels", s.HandleSetTokenChannels) // 设置令牌渠道配置（2025-12新增）
 
 		// 系统配置管理
 		admin.GET("/settings", s.AdminListSettings)
