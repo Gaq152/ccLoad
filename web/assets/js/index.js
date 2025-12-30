@@ -104,10 +104,7 @@ function updateStatsDisplay(data) {
 // 加载渠道状态
 async function loadChannelStatus() {
   try {
-    const response = await fetchWithAuth('/admin/channels');
-    if (!response.ok) return;
-    const result = await response.json();
-    const channels = result.success ? result.data : result;
+    const channels = await fetchDataWithAuth('/admin/channels');
     lastChannelsData = channels; // 保存用于缓存
 
     const list = document.getElementById('channel-status-list');
@@ -297,10 +294,7 @@ async function loadTrafficTrend() {
     const bucketMin = window.currentTimeRange === 'today' ? 60 : 1440;
     let url = `/admin/metrics?range=${window.currentTimeRange}&bucket_min=${bucketMin}`;
     if (currentChannelType) url += `&channel_type=${currentChannelType}`;
-    const response = await fetchWithAuth(url);
-    if (!response.ok) return;
-    const result = await response.json();
-    const buckets = result.success ? result.data : result;
+    const buckets = await fetchDataWithAuth(url);
     if (!buckets || !buckets.length) return;
     renderHeatmap(buckets, window.currentTimeRange);
   } catch (e) { console.error('加载趋势失败:', e); }

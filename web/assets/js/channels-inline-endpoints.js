@@ -205,7 +205,7 @@
         is_active: index === 0 // 第一个为激活状态
       }));
 
-      const res = await fetchWithAuth(`/admin/channels/${channelId}/endpoints`, {
+      const result = await fetchAPIWithAuth(`/admin/channels/${channelId}/endpoints`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -214,8 +214,8 @@
         })
       });
 
-      if (!res.ok) {
-        console.error('保存端点失败:', await res.text());
+      if (!result.success) {
+        console.error('保存端点失败');
         return false;
       }
 
@@ -233,16 +233,13 @@
    */
   async function loadEndpointsFromServer(channelId, fallbackUrl) {
     try {
-      const res = await fetchWithAuth(`/admin/channels/${channelId}/endpoints`);
-      if (res.ok) {
-        const data = await res.json();
-        const endpoints = data.data || [];
-        if (endpoints.length > 0) {
-          // 按 is_active 排序，激活的排在前面
-          endpoints.sort((a, b) => (b.is_active ? 1 : 0) - (a.is_active ? 1 : 0));
-          setInlineEndpoints(endpoints.map(ep => ep.url));
-          return;
-        }
+      const data = await fetchDataWithAuth(`/admin/channels/${channelId}/endpoints`);
+      const endpoints = data?.endpoints || (Array.isArray(data) ? data : []);
+      if (endpoints.length > 0) {
+        // 按 is_active 排序，激活的排在前面
+        endpoints.sort((a, b) => (b.is_active ? 1 : 0) - (a.is_active ? 1 : 0));
+        setInlineEndpoints(endpoints.map(ep => ep.url));
+        return;
       }
     } catch (err) {
       console.error('加载端点失败:', err);

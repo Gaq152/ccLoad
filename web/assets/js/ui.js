@@ -316,11 +316,8 @@
      */
     getVisiblePages: async function() {
       try {
-        const resp = await App.auth.fetch('/admin/settings/nav_visible_pages');
-        if (!resp.ok) return null;
-        const data = await resp.json();
-        const setting = data.success ? data.data : data;
-        return (setting.value || '').split(',').map(s => s.trim()).filter(Boolean);
+        const setting = await fetchDataWithAuth('/admin/settings/nav_visible_pages');
+        return (setting?.value || '').split(',').map(s => s.trim()).filter(Boolean);
       } catch { return null; }
     },
 
@@ -530,10 +527,9 @@
     async function getChannelTypes() {
       if (channelTypesCache) return channelTypesCache;
       try {
-        const res = await fetch('/public/channel-types');
-        if (!res.ok) throw new Error(`Status ${res.status}`);
-        const data = await res.json();
-        channelTypesCache = data.data || [];
+        // 公开接口，使用 fetchData（无需认证）
+        const data = await fetchData('/public/channel-types');
+        channelTypesCache = data || [];
         return channelTypesCache;
       } catch (e) {
         console.warn('Load channel types failed:', e);
