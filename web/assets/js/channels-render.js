@@ -765,7 +765,7 @@ function getDragAfterElement(container, y) {
  * API 调用：保存排序
  */
 async function saveChannelOrder(changes) {
-  const response = await fetchWithAuth('/admin/channels/reorder', {
+  const result = await fetchAPIWithAuth('/admin/channels/reorder', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json'
@@ -773,9 +773,9 @@ async function saveChannelOrder(changes) {
     body: JSON.stringify({ changes: changes })
   });
 
-  if (!response.ok) {
+  if (!result.success) {
     throw new Error('Failed to save order');
   }
 
-  return response.json();
+  return result.data;
 }

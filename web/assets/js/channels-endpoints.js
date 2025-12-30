@@ -26,14 +26,9 @@
 
     // 获取端点数据
     try {
-      const res = await fetchWithAuth(`/admin/channels/${channelId}/endpoints`);
-      if (!res.ok) {
-        throw new Error('获取端点列表失败');
-      }
-      const data = await res.json();
-      // 兼容新旧响应格式：新格式 {success, data: {endpoints, auto_select_endpoint}}
-      const respData = data.success ? data.data : data;
-      endpointsData = respData?.endpoints || respData?.data || [];
+      const respData = await fetchDataWithAuth(`/admin/channels/${channelId}/endpoints`);
+      // respData 可能是数组或 {endpoints, auto_select_endpoint}
+      endpointsData = respData?.endpoints || (Array.isArray(respData) ? respData : []);
       // 默认开启自动选择，除非明确设置为 false
       autoSelectEnabled = respData?.auto_select_endpoint !== false;
 
@@ -315,7 +310,7 @@
       const needSave = endpointsData.some(ep => !ep.id || ep.id === 0);
       if (needSave) {
         const autoSelect = document.getElementById('autoSelectEndpoint').checked;
-        const saveRes = await fetchWithAuth(`/admin/channels/${currentChannelId}/endpoints`, {
+        const saveResult = await fetchAPIWithAuth(`/admin/channels/${currentChannelId}/endpoints`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -326,22 +321,21 @@
             auto_select_endpoint: autoSelect
           })
         });
-        if (!saveRes.ok) {
+        if (!saveResult.success) {
           throw new Error('保存端点失败');
         }
       }
 
-      const res = await fetchWithAuth(`/admin/channels/${currentChannelId}/endpoints/test`, {
+      const testResult = await fetchAPIWithAuth(`/admin/channels/${currentChannelId}/endpoints/test`, {
         method: 'POST'
       });
 
-      if (!res.ok) {
+      if (!testResult.success) {
         throw new Error('测速请求失败');
       }
 
-      const data = await res.json();
-      // 兼容新旧响应格式
-      const respData = data.success ? data.data : data;
+      // 统一响应格式，data 已在 fetchAPIWithAuth 中解包
+      const respData = testResult.data;
 
       // 更新端点数据（后端返回的 endpoints 已包含最新 latency_ms）
       if (respData?.endpoints && respData.endpoints.length > 0) {
@@ -400,7 +394,7 @@
     const autoSelect = document.getElementById('autoSelectEndpoint').checked;
 
     try {
-      const res = await fetchWithAuth(`/admin/channels/${currentChannelId}/endpoints`, {
+      const result = await fetchAPIWithAuth(`/admin/channels/${currentChannelId}/endpoints`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -414,7 +408,7 @@
         })
       });
 
-      if (!res.ok) {
+      if (!result.success) {
         throw new Error('保存失败');
       }
 
