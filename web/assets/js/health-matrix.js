@@ -109,17 +109,20 @@ async function loadAllInternalChannels() {
 
 // 获取外部健康数据
 async function fetchHealthData(period = '24h') {
-  // 健康数据代理接口直接返回外部数据，使用 fetchWithAuth 获取原始响应
-  const resp = await fetchWithAuth(`/admin/channel-health-proxy?period=${period}`);
-  if (!resp.ok) {
-    const isStale = resp.headers.get('X-Cache-Stale') === 'true';
-    if (isStale) {
-      console.warn('健康数据来自过期缓存');
-    } else {
-      throw new Error(`获取健康数据失败: ${resp.status}`);
-    }
+  // 使用 fetchAPIWithAuthRaw 获取响应头（X-Cache-Stale）和数据
+  const { res, payload } = await fetchAPIWithAuthRaw(`/admin/channel-health-proxy?period=${period}`);
+
+  // 检查是否使用了过期缓存
+  const isStale = res.headers.get('X-Cache-Stale') === 'true';
+  if (isStale) {
+    console.warn('健康数据来自过期缓存');
   }
-  return resp.json();
+
+  if (!payload.success) {
+    throw new Error(payload.error || '获取健康数据失败');
+  }
+
+  return payload.data;
 }
 
 // 映射外部数据到内部渠道
