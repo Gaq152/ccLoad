@@ -1,6 +1,7 @@
 // 仪表盘状态
 window.currentTimeRange = 'today'; // 全局时间范围（供健康矩阵同步）
 let currentChannelType = ''; // 空表示全部
+let currentChannelStatusTab = 'all'; // 渠道状态 Tab：all/anthropic/codex/gemini
 let refreshCountdown = 30;
 let countdownInterval = null;
 let heatmapTooltip = null;
@@ -106,24 +107,7 @@ async function loadChannelStatus() {
   try {
     const channels = await fetchDataWithAuth('/admin/channels');
     lastChannelsData = channels; // 保存用于缓存
-
-    const list = document.getElementById('channel-status-list');
-    if (!channels || channels.length === 0) {
-      list.innerHTML = '<div class="dash-text-muted" style="padding: 20px; text-align: center;">暂无渠道</div>';
-      return;
-    }
-
-    list.innerHTML = channels.slice(0, 10).map(ch => {
-      const statusClass = ch.cooldown_remaining_ms > 0 ? 'cooldown' : (ch.enabled ? 'active' : 'error');
-      const statusText = ch.cooldown_remaining_ms > 0 ? '冷却中' : (ch.enabled ? '正常' : '禁用');
-      return `
-        <div class="status-item">
-          <div class="status-icon ${statusClass}"></div>
-          <div class="status-name">${escapeHtml(ch.name)}</div>
-          <div class="status-metric">${statusText}</div>
-        </div>
-      `;
-    }).join('');
+    renderChannelStatus(channels);
   } catch (error) {
     console.error('加载渠道状态失败:', error);
   }
@@ -330,14 +314,30 @@ async function initWithCache() {
   }
 }
 
-// 渲染渠道状态（从缓存数据）
+// 渲染渠道状态（从缓存数据，支持按类型筛选）
 function renderChannelStatus(channels) {
   const list = document.getElementById('channel-status-list');
   if (!channels || channels.length === 0) {
     list.innerHTML = '<div class="dash-text-muted" style="padding: 20px; text-align: center;">暂无渠道</div>';
     return;
   }
-  list.innerHTML = channels.slice(0, 10).map(ch => {
+
+  // 按当前 Tab 筛选
+  let filtered = channels;
+  if (currentChannelStatusTab && currentChannelStatusTab !== 'all') {
+    filtered = channels.filter(ch => {
+      const chType = (ch.channel_type || '').toLowerCase();
+      return chType === currentChannelStatusTab.toLowerCase();
+    });
+  }
+
+  if (filtered.length === 0) {
+    list.innerHTML = '<div class="dash-text-muted" style="padding: 20px; text-align: center;">该类型暂无渠道</div>';
+    return;
+  }
+
+  // 全量展示（已按 priority DESC, sort_order ASC 排序）
+  list.innerHTML = filtered.map(ch => {
     const statusClass = ch.cooldown_remaining_ms > 0 ? 'cooldown' : (ch.enabled ? 'active' : 'error');
     const statusText = ch.cooldown_remaining_ms > 0 ? '冷却中' : (ch.enabled ? '正常' : '禁用');
     return `
@@ -348,6 +348,21 @@ function renderChannelStatus(channels) {
       </div>
     `;
   }).join('');
+}
+
+// 初始化渠道状态 Tab 切换
+function initChannelStatusTabs() {
+  document.querySelectorAll('[data-channel-tab]').forEach(btn => {
+    btn.addEventListener('click', function() {
+      document.querySelectorAll('[data-channel-tab]').forEach(b => b.classList.remove('active'));
+      this.classList.add('active');
+      currentChannelStatusTab = this.dataset.channelTab;
+      // 使用缓存数据重新渲染
+      if (lastChannelsData) {
+        renderChannelStatus(lastChannelsData);
+      }
+    });
+  });
 }
 
 // 倒计时
@@ -389,6 +404,7 @@ document.addEventListener('visibilitychange', function() {
 document.addEventListener('DOMContentLoaded', async function() {
   if (window.initTopbar) initTopbar('index');
   initTimeRangeButtons();
+  initChannelStatusTabs();
   connectLogStream();
   await initWithCache();
   // 立即更新倒计时显示
