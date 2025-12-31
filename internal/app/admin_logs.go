@@ -70,6 +70,10 @@ func (s *Server) HandleLogSSE(c *gin.Context) {
 	}
 	w.Flush()
 
+	// 心跳定时器（每30秒发送一次，防止连接被中间代理超时断开）
+	heartbeat := time.NewTicker(30 * time.Second)
+	defer heartbeat.Stop()
+
 	// 监听日志和客户端断开
 	clientGone := c.Request.Context().Done()
 	for {
@@ -83,6 +87,13 @@ func (s *Server) HandleLogSSE(c *gin.Context) {
 			_, _ = w.WriteString("event: close\ndata: {\"reason\":\"server_shutdown\"}\n\n")
 			w.Flush()
 			return
+
+		case <-heartbeat.C:
+			// 发送心跳保活（SSE 注释格式，不触发前端事件）
+			if _, err := w.WriteString(": heartbeat\n\n"); err != nil {
+				return
+			}
+			w.Flush()
 
 		case entry, ok := <-logCh:
 			if !ok {
