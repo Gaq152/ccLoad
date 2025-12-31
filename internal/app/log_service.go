@@ -18,6 +18,7 @@ import (
 // - 异步日志记录（批量写入）
 // - 日志 Worker 管理
 // - 日志清理（定时任务）
+// - 每日统计聚合（在清理前执行）
 // - SSE 实时推送
 // - 优雅关闭
 //
@@ -32,6 +33,8 @@ type LogService struct {
 
 	// 日志保留天数（启动时确定，修改后重启生效）
 	retentionDays int
+	// 统计数据保留天数
+	statsRetentionDays int
 
 	// SSE 订阅者管理
 	sseSubscribers   map[chan *model.LogEntry]struct{}
@@ -50,19 +53,21 @@ func NewLogService(
 	logBufferSize int,
 	logWorkers int,
 	retentionDays int, // 启动时确定，修改后重启生效
+	statsRetentionDays int, // 统计数据保留天数
 	shutdownCh chan struct{},
 	isShuttingDown *atomic.Bool,
 	wg *sync.WaitGroup,
 ) *LogService {
 	return &LogService{
-		store:          store,
-		logChan:        make(chan *model.LogEntry, logBufferSize),
-		logWorkers:     logWorkers,
-		retentionDays:  retentionDays,
-		sseSubscribers: make(map[chan *model.LogEntry]struct{}),
-		shutdownCh:     shutdownCh,
-		isShuttingDown: isShuttingDown,
-		wg:             wg,
+		store:              store,
+		logChan:            make(chan *model.LogEntry, logBufferSize),
+		logWorkers:         logWorkers,
+		retentionDays:      retentionDays,
+		statsRetentionDays: statsRetentionDays,
+		sseSubscribers:     make(map[chan *model.LogEntry]struct{}),
+		shutdownCh:         shutdownCh,
+		isShuttingDown:     isShuttingDown,
+		wg:                 wg,
 	}
 }
 
@@ -236,11 +241,12 @@ func (s *LogService) broadcastToSSE(entry *model.LogEntry) {
 }
 
 // ============================================================================
-// 日志清理
+// 日志清理与统计聚合
 // ============================================================================
 
 // StartCleanupLoop 启动日志清理后台协程
-// 每小时检查一次，删除3天前的日志
+// 每小时检查一次，删除过期日志
+// 在清理前先聚合统计数据，确保历史数据不丢失
 // 支持优雅关闭
 func (s *LogService) StartCleanupLoop() {
 	s.wg.Add(1)
@@ -283,10 +289,78 @@ func (s *LogService) cleanupOldLogsLoop() {
 				}
 			}()
 
-			cutoff := time.Now().AddDate(0, 0, -s.retentionDays)
-			// 通过Store接口清理旧日志，忽略错误（非关键操作）
-			_ = s.store.CleanupLogsBefore(ctx, cutoff)
+			// 1. 先聚合统计数据（在清理日志前）
+			s.aggregatePendingDays(ctx)
+
+			// 2. 清理过期日志
+			if s.retentionDays > 0 {
+				cutoff := time.Now().AddDate(0, 0, -s.retentionDays)
+				if err := s.store.CleanupLogsBefore(ctx, cutoff); err != nil {
+					log.Printf("[ERROR] 清理过期日志失败: %v", err)
+				}
+			}
+
+			// 3. 清理过期统计数据
+			if s.statsRetentionDays > 0 {
+				statsCutoff := time.Now().AddDate(0, 0, -s.statsRetentionDays)
+				if err := s.store.CleanupDailyStatsBefore(ctx, statsCutoff); err != nil {
+					log.Printf("[ERROR] 清理过期统计数据失败: %v", err)
+				}
+			}
+
 			cancel() // 清理完成，取消 context
 		}
 	}
+}
+
+// aggregatePendingDays 聚合待处理的日期（从最后聚合日期到昨天）
+func (s *LogService) aggregatePendingDays(ctx context.Context) {
+	// 获取最新聚合日期
+	latestDate, err := s.store.GetLatestDailyStatsDate(ctx)
+	if err != nil {
+		log.Printf("[ERROR] 获取最新统计日期失败: %v", err)
+		return
+	}
+
+	// 计算需要聚合的日期范围
+	yesterday := time.Now().AddDate(0, 0, -1)
+	yesterday = time.Date(yesterday.Year(), yesterday.Month(), yesterday.Day(), 0, 0, 0, 0, yesterday.Location())
+
+	var startDate time.Time
+	if latestDate.IsZero() {
+		// 没有统计数据，从日志保留天数前开始（最多聚合保留范围内的数据）
+		startDate = time.Now().AddDate(0, 0, -s.retentionDays)
+		startDate = time.Date(startDate.Year(), startDate.Month(), startDate.Day(), 0, 0, 0, 0, startDate.Location())
+	} else {
+		// 从最后聚合日期的下一天开始
+		startDate = latestDate.AddDate(0, 0, 1)
+	}
+
+	// 聚合每一天的数据
+	aggregatedCount := 0
+	for date := startDate; !date.After(yesterday); date = date.AddDate(0, 0, 1) {
+		select {
+		case <-ctx.Done():
+			return // 被取消
+		default:
+		}
+
+		if err := s.store.AggregateDailyStats(ctx, date); err != nil {
+			log.Printf("[ERROR] 聚合 %s 统计数据失败: %v", date.Format("2006-01-02"), err)
+			continue
+		}
+		aggregatedCount++
+	}
+
+	if aggregatedCount > 0 {
+		log.Printf("[INFO] 已聚合 %d 天的统计数据", aggregatedCount)
+	}
+}
+
+// BackfillDailyStats 补全历史统计数据（启动时调用）
+// 从日志中聚合所有缺失的历史数据
+func (s *LogService) BackfillDailyStats(ctx context.Context) {
+	log.Print("[INFO] 开始补全历史统计数据...")
+	s.aggregatePendingDays(ctx)
+	log.Print("[INFO] 历史统计数据补全完成")
 }

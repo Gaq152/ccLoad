@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	"ccLoad/internal/model"
 	"ccLoad/internal/util"
 
 	"github.com/gin-gonic/gin"
@@ -76,12 +77,38 @@ func (s *Server) HandleMetrics(c *gin.Context) {
 
 // handleStats 获取渠道和模型统计
 // GET /admin/stats?range=today&channel_name_like=xxx&model_like=xxx
+//
+// 数据源策略：
+// - 今天的数据：从 logs 表实时查询（数据最新）
+// - 历史数据（昨天及之前）：优先从 daily_stats 聚合表查询（支持日志清理后的历史统计）
+// - 跨天查询（如 this_week）：聚合表 + 实时查询合并
 func (s *Server) HandleStats(c *gin.Context) {
 	params := ParsePaginationParams(c)
 	lf := BuildLogFilter(c)
 
 	startTime, endTime := params.GetTimeRange()
-	stats, err := s.store.GetStats(c.Request.Context(), startTime, endTime, &lf)
+	ctx := c.Request.Context()
+
+	// 判断查询范围是否包含今天
+	now := time.Now()
+	todayStart := beginningOfDay(now)
+	yesterdayEnd := todayStart.Add(-time.Nanosecond) // 昨天 23:59:59.999999999
+
+	var stats []model.StatsEntry
+	var err error
+
+	// 策略：根据时间范围选择数据源
+	if endTime.Before(todayStart) {
+		// 纯历史查询（不包含今天）：直接从聚合表查询
+		stats, err = s.store.GetDailyStatsSummary(ctx, startTime, endTime, &lf)
+	} else if startTime.After(yesterdayEnd) || startTime.Equal(todayStart) {
+		// 纯今天查询：从 logs 表实时查询
+		stats, err = s.store.GetStats(ctx, startTime, endTime, &lf)
+	} else {
+		// 跨天查询（历史 + 今天）：合并两个数据源
+		stats, err = s.getMergedStats(ctx, startTime, endTime, todayStart, &lf)
+	}
+
 	if err != nil {
 		RespondError(c, http.StatusInternalServerError, err)
 		return
@@ -96,17 +123,42 @@ func (s *Server) HandleStats(c *gin.Context) {
 //
 // [SECURITY NOTE] 该端点故意设计为公开访问，用于首页仪表盘展示。
 // 如需隐藏运营数据，可在 server.go:SetupRoutes 中添加 RequireTokenAuth 中间件。
+//
+// 数据源策略（与 HandleStats 一致）：
+// - 今天的数据：从 logs 表实时查询
+// - 历史数据：从 daily_stats 聚合表查询
 func (s *Server) HandlePublicSummary(c *gin.Context) {
 	params := ParsePaginationParams(c)
 	startTime, endTime := params.GetTimeRange()
-	stats, err := s.store.GetStats(c.Request.Context(), startTime, endTime, nil) // 不使用过滤条件
+	ctx := c.Request.Context()
+
+	// 判断查询范围是否包含今天
+	now := time.Now()
+	todayStart := beginningOfDay(now)
+	yesterdayEnd := todayStart.Add(-time.Nanosecond)
+
+	var stats []model.StatsEntry
+	var err error
+
+	// 策略：根据时间范围选择数据源
+	if endTime.Before(todayStart) {
+		// 纯历史查询
+		stats, err = s.store.GetDailyStatsSummary(ctx, startTime, endTime, nil)
+	} else if startTime.After(yesterdayEnd) || startTime.Equal(todayStart) {
+		// 纯今天查询
+		stats, err = s.store.GetStats(ctx, startTime, endTime, nil)
+	} else {
+		// 跨天查询
+		stats, err = s.getMergedStats(ctx, startTime, endTime, todayStart, nil)
+	}
+
 	if err != nil {
 		RespondError(c, http.StatusInternalServerError, err)
 		return
 	}
 
 	// 查询所有渠道的类型映射(channel_id -> channel_type)
-	channelTypes, err := s.fetchChannelTypesMap(c.Request.Context())
+	channelTypes, err := s.fetchChannelTypesMap(ctx)
 	if err != nil {
 		RespondError(c, http.StatusInternalServerError, err)
 		return
@@ -282,4 +334,118 @@ func (s *Server) HandleHealth(c *gin.Context) {
 	}
 
 	RespondJSON(c, http.StatusOK, gin.H{"status": "ok"})
+}
+
+// getMergedStats 合并历史聚合数据和今天的实时数据
+// 用于跨天查询（如 this_week、this_month）
+func (s *Server) getMergedStats(ctx context.Context, startTime, endTime, todayStart time.Time, filter *model.LogFilter) ([]model.StatsEntry, error) {
+	// 1. 从聚合表查询历史数据（startTime 到 昨天）
+	yesterdayEnd := todayStart.Add(-time.Nanosecond)
+	historyStats, err := s.store.GetDailyStatsSummary(ctx, startTime, yesterdayEnd, filter)
+	if err != nil {
+		return nil, fmt.Errorf("query history stats: %w", err)
+	}
+
+	// 2. 从 logs 表查询今天的实时数据
+	todayStats, err := s.store.GetStats(ctx, todayStart, endTime, filter)
+	if err != nil {
+		return nil, fmt.Errorf("query today stats: %w", err)
+	}
+
+	// 3. 合并两个数据源（按 channel_id + model 聚合）
+	return mergeStatsEntries(historyStats, todayStats), nil
+}
+
+// mergeStatsEntries 合并两组统计数据
+// 按 channel_id + model 维度聚合，累加各项指标
+func mergeStatsEntries(history, today []model.StatsEntry) []model.StatsEntry {
+	// 使用 map 按 channel_id + model 聚合
+	type statsKey struct {
+		channelID int
+		model     string
+	}
+	merged := make(map[statsKey]*model.StatsEntry)
+
+	// 辅助函数：累加统计项
+	addEntry := func(entry model.StatsEntry) {
+		chID := 0
+		if entry.ChannelID != nil {
+			chID = *entry.ChannelID
+		}
+		key := statsKey{channelID: chID, model: entry.Model}
+
+		if existing, ok := merged[key]; ok {
+			// 累加基础计数
+			existing.Success += entry.Success
+			existing.Error += entry.Error
+			existing.Total += entry.Total
+
+			// 累加 Token 统计（需要处理 nil）
+			existing.TotalInputTokens = addInt64Ptr(existing.TotalInputTokens, entry.TotalInputTokens)
+			existing.TotalOutputTokens = addInt64Ptr(existing.TotalOutputTokens, entry.TotalOutputTokens)
+			existing.TotalCacheReadInputTokens = addInt64Ptr(existing.TotalCacheReadInputTokens, entry.TotalCacheReadInputTokens)
+			existing.TotalCacheCreationInputTokens = addInt64Ptr(existing.TotalCacheCreationInputTokens, entry.TotalCacheCreationInputTokens)
+			existing.TotalCost = addFloat64Ptr(existing.TotalCost, entry.TotalCost)
+
+			// 平均值需要重新计算（简化处理：取较新的值，即 today 的值）
+			// 因为历史数据的平均值已经是聚合后的，无法精确合并
+			if entry.AvgDurationSeconds != nil {
+				existing.AvgDurationSeconds = entry.AvgDurationSeconds
+			}
+			if entry.AvgFirstByteTimeSeconds != nil {
+				existing.AvgFirstByteTimeSeconds = entry.AvgFirstByteTimeSeconds
+			}
+		} else {
+			// 新条目，复制一份
+			entryCopy := entry
+			merged[key] = &entryCopy
+		}
+	}
+
+	// 先添加历史数据
+	for _, entry := range history {
+		addEntry(entry)
+	}
+	// 再添加今天的数据（会累加到已有条目）
+	for _, entry := range today {
+		addEntry(entry)
+	}
+
+	// 转换为切片返回
+	result := make([]model.StatsEntry, 0, len(merged))
+	for _, entry := range merged {
+		result = append(result, *entry)
+	}
+
+	return result
+}
+
+// addInt64Ptr 累加两个 *int64 指针的值
+func addInt64Ptr(a, b *int64) *int64 {
+	if a == nil && b == nil {
+		return nil
+	}
+	var sum int64
+	if a != nil {
+		sum += *a
+	}
+	if b != nil {
+		sum += *b
+	}
+	return &sum
+}
+
+// addFloat64Ptr 累加两个 *float64 指针的值
+func addFloat64Ptr(a, b *float64) *float64 {
+	if a == nil && b == nil {
+		return nil
+	}
+	var sum float64
+	if a != nil {
+		sum += *a
+	}
+	if b != nil {
+		sum += *b
+	}
+	return &sum
 }

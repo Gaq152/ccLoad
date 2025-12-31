@@ -168,3 +168,36 @@ func DefineLogsTable() *TableBuilder {
 		Index("idx_logs_time_channel_model", "time, channel_id, model").
 		Index("idx_logs_time_auth_token", "time, auth_token_id") // 按时间+令牌查询
 }
+
+// DefineDailyStatsTable 定义daily_stats表结构（每日统计聚合）
+// 设计说明：
+//   - 每天凌晨聚合前一天的日志数据，保留更长时间（默认365天）
+//   - 按 channel_id + channel_type + model + auth_token_id 维度聚合
+//   - 日志清理后仍可查询历史统计数据
+func DefineDailyStatsTable() *TableBuilder {
+	return NewTable("daily_stats").
+		Column("id INT PRIMARY KEY AUTO_INCREMENT").
+		Column("date DATE NOT NULL").                              // 统计日期（YYYY-MM-DD）
+		Column("channel_id INT NOT NULL").                         // 渠道ID
+		Column("channel_type VARCHAR(64) NOT NULL DEFAULT ''").    // 渠道类型（冗余存储，避免JOIN）
+		Column("model VARCHAR(191) NOT NULL DEFAULT ''").          // 模型名称
+		Column("auth_token_id BIGINT NOT NULL DEFAULT 0").         // API令牌ID（0表示未知）
+		Column("success_count INT NOT NULL DEFAULT 0").            // 成功请求数
+		Column("error_count INT NOT NULL DEFAULT 0").              // 失败请求数
+		Column("total_count INT NOT NULL DEFAULT 0").              // 总请求数
+		Column("input_tokens BIGINT NOT NULL DEFAULT 0").          // 输入Token总数
+		Column("output_tokens BIGINT NOT NULL DEFAULT 0").         // 输出Token总数
+		Column("cache_read_tokens BIGINT NOT NULL DEFAULT 0").     // 缓存读取Token总数
+		Column("cache_creation_tokens BIGINT NOT NULL DEFAULT 0"). // 缓存创建Token总数
+		Column("total_cost DOUBLE NOT NULL DEFAULT 0.0").          // 总成本（USD）
+		Column("avg_duration DOUBLE NOT NULL DEFAULT 0.0").        // 平均响应时间（秒）
+		Column("avg_first_byte_time DOUBLE NOT NULL DEFAULT 0.0"). // 平均首字节时间（秒）
+		Column("stream_count INT NOT NULL DEFAULT 0").             // 流式请求数
+		Column("non_stream_count INT NOT NULL DEFAULT 0").         // 非流式请求数
+		Column("created_at BIGINT NOT NULL").                      // 记录创建时间
+		Column("UNIQUE KEY uk_daily_stats (date, channel_id, model, auth_token_id)").
+		Index("idx_daily_stats_date", "date").
+		Index("idx_daily_stats_channel", "date, channel_id").
+		Index("idx_daily_stats_channel_type", "date, channel_type").
+		Index("idx_daily_stats_token", "date, auth_token_id")
+}

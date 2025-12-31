@@ -95,6 +95,7 @@ func NewServer(store storage.Store) *Server {
 	nonStreamTimeout := 120 * time.Second // 非流式请求超时
 
 	logRetentionDays := configService.GetInt("log_retention_days", 7)
+	statsRetentionDays := configService.GetInt("stats_retention_days", 365)
 
 	// 冷却时间配置
 	cooldownMode := configService.GetString("cooldown_mode", "exponential")
@@ -173,13 +174,18 @@ func NewServer(store storage.Store) *Server {
 		store,
 		config.DefaultLogBufferSize,
 		config.DefaultLogWorkers,
-		logRetentionDays, // 启动时读取，修改后重启生效
+		logRetentionDays,      // 日志保留天数（启动时读取，修改后重启生效）
+		statsRetentionDays,    // 统计数据保留天数
 		s.shutdownCh,
 		&s.isShuttingDown,
 		&s.wg,
 	)
 	// 启动日志 Workers
 	s.logService.StartWorkers()
+
+	// 启动时补全历史统计数据（从日志聚合到 daily_stats 表）
+	// 在后台执行，不阻塞启动流程
+	go s.logService.BackfillDailyStats(context.Background())
 
 	// 仅当保留天数>0时启动清理协程（-1表示永久保留，不清理）
 	if logRetentionDays > 0 {

@@ -71,6 +71,15 @@ type Store interface {
 	GetStats(ctx context.Context, startTime, endTime time.Time, filter *model.LogFilter) ([]model.StatsEntry, error)
 
 	// ============================================================================
+	// 每日统计聚合
+	// ============================================================================
+	AggregateDailyStats(ctx context.Context, date time.Time) error                                    // 聚合指定日期的统计数据
+	GetDailyStats(ctx context.Context, startDate, endDate time.Time) ([]*model.DailyStat, error)      // 查询日期范围内的统计
+	GetDailyStatsSummary(ctx context.Context, startDate, endDate time.Time, filter *model.LogFilter) ([]model.StatsEntry, error) // 汇总统计
+	CleanupDailyStatsBefore(ctx context.Context, cutoff time.Time) error                              // 清理过期统计
+	GetLatestDailyStatsDate(ctx context.Context) (time.Time, error)                                   // 获取最新统计日期
+
+	// ============================================================================
 	// API 访问令牌管理
 	// ============================================================================
 	CreateAuthToken(ctx context.Context, token *model.AuthToken) error

@@ -81,7 +81,9 @@ func mysqlToSQLite(mysqlCol string) string {
 	col = replaceVarchar(col)
 
 	// 索引约束简化（MySQL的UNIQUE KEY → SQLite的UNIQUE）
+	// 处理所有 UNIQUE KEY uk_xxx (...) 格式
 	col = strings.ReplaceAll(col, "UNIQUE KEY uk_channel_key", "UNIQUE")
+	col = strings.ReplaceAll(col, "UNIQUE KEY uk_daily_stats", "UNIQUE")
 
 	return col
 }
