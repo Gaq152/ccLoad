@@ -1106,10 +1106,13 @@ async function testQuotaFetch() {
       throw new Error(result.error || '请求失败');
     }
 
+    // 从 result.data 中提取上游响应（后端返回格式：{success, data: {status_code, headers, body}}）
+    const upstreamData = result.data || {};
+
     // 执行提取器脚本
     try {
       // 解析 body（后端返回的是 JSON 字符串）
-      let responseBody = result.body;
+      let responseBody = upstreamData.body;
       if (typeof responseBody === 'string') {
         try {
           responseBody = JSON.parse(responseBody);
@@ -1135,7 +1138,7 @@ async function testQuotaFetch() {
     } catch (extractError) {
       console.error('提取器执行失败', extractError);
       if (window.showWarning) {
-        showWarning('请求成功 (HTTP ' + result.status_code + ')，但提取器执行失败: ' + extractError.message);
+        showWarning('请求成功 (HTTP ' + (upstreamData.status_code || 200) + ')，但提取器执行失败: ' + extractError.message);
       } else if (window.showError) {
         showError('提取器执行失败: ' + extractError.message);
       }
