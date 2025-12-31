@@ -50,3 +50,26 @@ type StatsEntry struct {
 	TotalCacheCreationInputTokens *int64   `json:"total_cache_creation_input_tokens,omitempty"` // 总缓存创建Token
 	TotalCost                     *float64 `json:"total_cost,omitempty"`                        // 总成本（美元）
 }
+
+// DailyStat 每日统计聚合记录
+type DailyStat struct {
+	ID                  int64   `json:"id"`
+	Date                string  `json:"date"`                   // YYYY-MM-DD
+	ChannelID           int64   `json:"channel_id"`             // 渠道ID
+	ChannelType         string  `json:"channel_type"`           // 渠道类型
+	Model               string  `json:"model"`                  // 模型名称
+	AuthTokenID         int64   `json:"auth_token_id"`          // API令牌ID
+	SuccessCount        int     `json:"success_count"`          // 成功请求数
+	ErrorCount          int     `json:"error_count"`            // 失败请求数
+	TotalCount          int     `json:"total_count"`            // 总请求数
+	InputTokens         int64   `json:"input_tokens"`           // 输入Token总数
+	OutputTokens        int64   `json:"output_tokens"`          // 输出Token总数
+	CacheReadTokens     int64   `json:"cache_read_tokens"`      // 缓存读取Token总数
+	CacheCreationTokens int64   `json:"cache_creation_tokens"`  // 缓存创建Token总数
+	TotalCost           float64 `json:"total_cost"`             // 总成本（USD）
+	AvgDuration         float64 `json:"avg_duration"`           // 平均响应时间（秒）
+	AvgFirstByteTime    float64 `json:"avg_first_byte_time"`    // 平均首字节时间（秒）
+	StreamCount         int     `json:"stream_count"`           // 流式请求数
+	NonStreamCount      int     `json:"non_stream_count"`       // 非流式请求数
+	CreatedAt           int64   `json:"created_at"`             // 记录创建时间
+}

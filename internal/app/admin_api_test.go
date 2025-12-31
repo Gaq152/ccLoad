@@ -573,6 +573,7 @@ func setupTestServer(t *testing.T) (*Server, func()) {
 		1000, // logBufferSize
 		1,    // logWorkers
 		7,    // retentionDays
+		365,  // statsRetentionDays
 		shutdownCh,
 		isShuttingDown,
 		wg,

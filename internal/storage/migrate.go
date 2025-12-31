@@ -40,6 +40,7 @@ func migrate(ctx context.Context, db *sql.DB, dialect Dialect) error {
 		schema.DefineSystemSettingsTable,
 		schema.DefineAdminSessionsTable,
 		schema.DefineLogsTable,
+		schema.DefineDailyStatsTable, // 每日统计聚合表（2025-12新增）
 	}
 
 	// 创建表和索引
@@ -789,6 +790,7 @@ func initDefaultSettings(ctx context.Context, db *sql.DB, dialect Dialect) error
 		key, value, valueType, desc, defaultVal string
 	}{
 		{"log_retention_days", "7", "int", "日志保留天数(-1永久保留,1-365天)", "7"},
+		{"stats_retention_days", "365", "int", "统计数据保留天数(-1永久保留,1-3650天)", "365"},
 		{"max_key_retries", "3", "int", "单渠道最大Key重试次数", "3"},
 		{"channel_test_content", "sonnet 4.0的发布日期是什么", "string", "渠道测试默认内容", "sonnet 4.0的发布日期是什么"},
 		{"channel_stats_fields", "calls,rate,first_byte,input,output,cache_read,cache_creation,cost", "string", "渠道统计显示字段(逗号分隔)", "calls,rate,first_byte,input,output,cache_read,cache_creation,cost"},
