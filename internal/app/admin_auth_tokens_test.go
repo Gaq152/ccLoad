@@ -165,10 +165,14 @@ func TestRequireAPIAuth_DisabledToken(t *testing.T) {
 		assert.True(t, c3.IsAborted(), "禁用的令牌应该被拒绝")
 		assert.Equal(t, http.StatusForbidden, w3.Code, "禁用的令牌应该返回 403")
 
-		// 验证错误消息
-		var errResp map[string]string
+		// 验证错误消息（统一响应格式：{success: bool, error: string}）
+		var errResp struct {
+			Success bool   `json:"success"`
+			Error   string `json:"error"`
+		}
 		require.NoError(t, json.Unmarshal(w3.Body.Bytes(), &errResp))
-		assert.Equal(t, "token disabled", errResp["error"], "错误消息应为 'token disabled'")
+		assert.False(t, errResp.Success, "success 应为 false")
+		assert.Equal(t, "token disabled", errResp.Error, "错误消息应为 'token disabled'")
 	})
 
 	// 步骤5: 重新启用令牌，验证可以恢复访问
