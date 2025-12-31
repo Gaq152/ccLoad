@@ -3026,6 +3026,7 @@ body.dashboard-theme .app-container {
 }
 
 .health-card {
+  position: relative; /* 为绝对定位的隐藏按钮提供定位上下文 */
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid var(--dash-border);
   border-radius: 4px;
