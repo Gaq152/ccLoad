@@ -2638,7 +2638,7 @@ body.dashboard-theme .app-container {
 
 .chart-row {
   grid-template-columns: 3fr 1fr;
-  min-height: 400px;
+  height: 460px; /* 固定高度：header + 10条记录的空间 */
 }
 
 .console-row {
@@ -2717,7 +2717,7 @@ body.dashboard-theme .app-container {
   gap: 10px;
   overflow-y: auto;
   flex: 1;
-  max-height: 400px; /* 限制最大高度，超出滚动 */
+  min-height: 0; /* 允许flex子项收缩 */
 }
 
 .status-item {
@@ -2960,14 +2960,20 @@ body.dashboard-theme .app-container {
   color: var(--dash-text-muted);
 }
 
-/* 允许图表坐标轴溢出显示 */
-.chart-row .dash-panel {
+/* 允许图表坐标轴溢出显示（仅限包含图表的面板） */
+.chart-row .dash-panel .chart-container {
   overflow: visible;
 }
 
 @media (max-width: 1200px) {
   .stats-row { grid-template-columns: repeat(2, 1fr); }
-  .chart-row { grid-template-columns: 1fr; }
+  .chart-row {
+    grid-template-columns: 1fr;
+    height: auto; /* 移动端取消固定高度 */
+  }
+  .chart-row .dash-panel {
+    height: 460px; /* 每个面板单独固定高度 */
+  }
 }
 
 /* =================================================================
@@ -2975,10 +2981,10 @@ body.dashboard-theme .app-container {
    ================================================================= */
 
 .health-matrix-panel {
-  min-height: 400px;
+  height: 100%; /* 填满父容器固定高度 */
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  overflow: hidden; /* 防止溢出 */
 }
 
 .health-matrix-panel.loading {
@@ -2990,6 +2996,9 @@ body.dashboard-theme .app-container {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+  flex: 1;
+  min-height: 0; /* 允许flex子项收缩 */
+  overflow-y: auto; /* 启用垂直滚动 */
 }
 
 .service-header {
@@ -3205,7 +3214,7 @@ body.dashboard-theme .app-container {
 }
 
 .tab-content.active {
-  display: block;
+  display: flex; /* 使用flex以支持滚动布局 */
 }
 
 .separator-vertical {
