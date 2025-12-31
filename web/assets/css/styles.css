@@ -2654,6 +2654,8 @@ body.dashboard-theme .app-container {
   display: flex;
   flex-direction: column;
   position: relative;
+  min-height: 0; /* 覆盖 Grid Item 默认的 auto 行为，允许收缩 */
+  overflow: hidden; /* 确保子元素滚动条相对于面板计算 */
 }
 
 .dash-panel .chart-container {
@@ -2981,7 +2983,7 @@ body.dashboard-theme .app-container {
    ================================================================= */
 
 .health-matrix-panel {
-  height: 100%; /* 填满父容器固定高度 */
+  /* Grid Item 默认自动拉伸填满行高，无需显式 height */
   display: flex;
   flex-direction: column;
   overflow: hidden; /* 防止溢出 */
@@ -2999,6 +3001,35 @@ body.dashboard-theme .app-container {
   flex: 1;
   min-height: 0; /* 允许flex子项收缩 */
   overflow-y: auto; /* 启用垂直滚动 */
+}
+
+/* 概览页滚动条美化（健康矩阵和渠道状态） */
+.service-group::-webkit-scrollbar,
+.status-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.service-group::-webkit-scrollbar-track,
+.status-list::-webkit-scrollbar-track {
+  background: var(--theme-scrollbar-track, transparent);
+}
+
+.service-group::-webkit-scrollbar-thumb,
+.status-list::-webkit-scrollbar-thumb {
+  background: var(--theme-scrollbar-thumb, rgba(128, 128, 128, 0.4));
+  border-radius: 3px;
+}
+
+.service-group::-webkit-scrollbar-thumb:hover,
+.status-list::-webkit-scrollbar-thumb:hover {
+  background: var(--theme-scrollbar-thumb-hover, rgba(128, 128, 128, 0.6));
+}
+
+/* Firefox 滚动条 */
+.service-group,
+.status-list {
+  scrollbar-width: thin;
+  scrollbar-color: var(--theme-scrollbar-thumb, rgba(128, 128, 128, 0.4)) var(--theme-scrollbar-track, transparent);
 }
 
 .service-header {
