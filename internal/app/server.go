@@ -184,8 +184,8 @@ func NewServer(store storage.Store) *Server {
 	s.logService.StartWorkers()
 
 	// 启动时补全历史统计数据（从日志聚合到 daily_stats 表）
-	// 在后台执行，不阻塞启动流程
-	go s.logService.BackfillDailyStats(context.Background())
+	// 同步执行，确保在清理循环启动前完成聚合，避免数据丢失
+	s.logService.BackfillDailyStats(context.Background())
 
 	// 仅当保留天数>0时启动清理协程（-1表示永久保留，不清理）
 	if logRetentionDays > 0 {
