@@ -63,9 +63,13 @@ func (p *PaginationParams) GetTimeRange() (startTime, endTime time.Time) {
 		endTime = now
 	case "last_month":
 		// 上月：上月1号0:00到上月最后一天23:59:59
-		lastMonth := now.AddDate(0, -1, 0)
-		startTime = beginningOfMonth(lastMonth)
-		endTime = endOfMonth(lastMonth)
+		// 注意：不能用 now.AddDate(0, -1, 0)，因为当日期是31号时会溢出
+		// 例如：12月31日 - 1个月 = 11月31日 → Go自动规范化为12月1日（错误！）
+		// 正确做法：先获取本月1号，再减1天得到上月最后一天
+		firstDayOfThisMonth := beginningOfMonth(now)
+		lastDayOfLastMonth := firstDayOfThisMonth.AddDate(0, 0, -1)
+		startTime = beginningOfMonth(lastDayOfLastMonth)
+		endTime = endOfDay(lastDayOfLastMonth)
 	default:
 		// 未知范围，默认使用today
 		startTime = beginningOfDay(now)
