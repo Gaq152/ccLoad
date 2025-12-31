@@ -100,28 +100,6 @@ func (cs *ConfigService) GetIntMin(key string, defaultValue, min int) int {
 	return val
 }
 
-// GetDurationNonNegative 获取非负时长配置
-// 如果值为负，记录警告并返回 0（禁用）
-func (cs *ConfigService) GetDurationNonNegative(key string, defaultValue time.Duration) time.Duration {
-	val := cs.GetDuration(key, defaultValue)
-	if val < 0 {
-		log.Printf("[WARN] 无效的 %s=%v（必须 >= 0），已设为 0（禁用）", key, val)
-		return 0
-	}
-	return val
-}
-
-// GetDurationPositive 获取正时长配置
-// 如果值 <= 0，记录警告并返回 defaultValue
-func (cs *ConfigService) GetDurationPositive(key string, defaultValue time.Duration) time.Duration {
-	val := cs.GetDuration(key, defaultValue)
-	if val <= 0 {
-		log.Printf("[WARN] 无效的 %s=%v（必须 > 0），已使用默认值 %v", key, val, defaultValue)
-		return defaultValue
-	}
-	return val
-}
-
 // GetSetting 获取完整配置对象（用于验证等场景）
 func (cs *ConfigService) GetSetting(key string) *model.SystemSetting {
 	cs.mu.RLock()
