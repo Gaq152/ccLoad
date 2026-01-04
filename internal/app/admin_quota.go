@@ -4,16 +4,20 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
 	"ccLoad/internal/model"
 
+	"github.com/dop251/goja"
 	"github.com/gin-gonic/gin"
 )
 
@@ -166,6 +170,24 @@ func (s *Server) handleQuotaFetch(c *gin.Context) {
 			return http.ErrUseLastResponse // 不跟随重定向
 		},
 	}
+
+	// 检查是否需要执行反爬挑战
+	if qc.ChallengeMode == model.ChallengeModeAcwScV2 {
+		statusCode, headers, body, err := s.fetchWithChallenge(ctx, client, req, qc)
+		if err != nil {
+			RespondErrorMsg(c, http.StatusBadGateway, "challenge request failed: "+err.Error())
+			return
+		}
+
+		RespondJSON(c, http.StatusOK, gin.H{
+			"status_code": statusCode,
+			"headers":     headers,
+			"body":        body,
+		})
+		return
+	}
+
+	// 普通请求模式（无挑战）
 	resp, err := client.Do(req)
 	if err != nil {
 		RespondErrorMsg(c, http.StatusBadGateway, "upstream request failed: "+err.Error())
@@ -330,4 +352,271 @@ func validateQuotaURL(rawURL string) error {
 	}
 
 	return nil
+}
+
+// ==================== 反爬挑战模块 ====================
+// 用于处理 acw_sc__v2 类型的动态 Cookie 挑战
+
+// fetchWithChallenge 带反爬挑战的请求流程
+// 1. 先发送一个 GET 请求获取挑战页面（HTML）
+// 2. 提取并执行页面中的 JS 脚本，获取动态 Cookie
+// 3. 合并原有 Cookie 和动态 Cookie，重新发送真正的 API 请求
+func (s *Server) fetchWithChallenge(ctx context.Context, client *http.Client, originalReq *http.Request, qc *model.QuotaConfig) (int, map[string]string, string, error) {
+	// 解析 URL 以获取挑战页面地址（通常是相同域名的根路径或 API 路径）
+	parsedURL, err := url.Parse(qc.RequestURL)
+	if err != nil {
+		return 0, nil, "", fmt.Errorf("invalid request URL: %v", err)
+	}
+
+	// 挑战页面 URL（使用 API 相同的 URL）
+	challengeURL := qc.RequestURL
+
+	// 构建挑战请求（GET）
+	challengeReq, err := http.NewRequestWithContext(ctx, "GET", challengeURL, nil)
+	if err != nil {
+		return 0, nil, "", fmt.Errorf("failed to create challenge request: %v", err)
+	}
+
+	// 复制原始请求头（除了 Content-Type 和 Cookie）
+	for key, values := range originalReq.Header {
+		lowerKey := strings.ToLower(key)
+		// 保留认证相关头部
+		if lowerKey == "cookie" || lowerKey == "new-api-user" || lowerKey == "authorization" || lowerKey == "user-agent" || lowerKey == "accept" {
+			for _, v := range values {
+				challengeReq.Header.Add(key, v)
+			}
+		}
+	}
+
+	// 提取原始请求中的 Cookie
+	originalCookies := originalReq.Header.Get("Cookie")
+
+	log.Printf("[Challenge] 开始反爬挑战，URL: %s", challengeURL)
+
+	// 第一次请求：获取挑战页面
+	resp, err := client.Do(challengeReq)
+	if err != nil {
+		return 0, nil, "", fmt.Errorf("challenge request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20)) // 最大 1MB
+	if err != nil {
+		return 0, nil, "", fmt.Errorf("failed to read challenge response: %v", err)
+	}
+
+	bodyStr := string(bodyBytes)
+
+	// 检查是否需要挑战（如果直接返回 JSON 或非 HTML，说明不需要挑战）
+	contentType := resp.Header.Get("Content-Type")
+	if strings.Contains(contentType, "application/json") {
+		// 不需要挑战，直接返回结果
+		log.Printf("[Challenge] 无需挑战，直接返回 JSON 响应")
+		headers := extractResponseHeaders(resp)
+		return resp.StatusCode, headers, bodyStr, nil
+	}
+
+	// 检查是否是 acw_sc__v2 挑战页面
+	if !strings.Contains(bodyStr, "acw_sc__v2") {
+		// 不是挑战页面，可能是其他错误
+		log.Printf("[Challenge] 响应不包含 acw_sc__v2 挑战，返回原始响应")
+		headers := extractResponseHeaders(resp)
+		return resp.StatusCode, headers, bodyStr, nil
+	}
+
+	log.Printf("[Challenge] 检测到 acw_sc__v2 挑战页面，开始提取脚本")
+
+	// 提取并执行脚本获取动态 Cookie
+	dynamicCookie, err := extractAndExecuteScript(bodyStr)
+	if err != nil {
+		return 0, nil, "", fmt.Errorf("failed to extract challenge cookie: %v", err)
+	}
+
+	log.Printf("[Challenge] 成功获取动态 Cookie: %s", truncateCookie(dynamicCookie))
+
+	// 合并 Cookie
+	var mergedCookies string
+	if originalCookies != "" {
+		mergedCookies = originalCookies + "; " + dynamicCookie
+	} else {
+		mergedCookies = dynamicCookie
+	}
+
+	// 构建真正的 API 请求
+	method := strings.ToUpper(qc.GetRequestMethod())
+	var bodyReader io.Reader
+	if method == "POST" && qc.RequestBody != "" {
+		bodyReader = bytes.NewBufferString(qc.RequestBody)
+	}
+
+	apiReq, err := http.NewRequestWithContext(ctx, method, qc.RequestURL, bodyReader)
+	if err != nil {
+		return 0, nil, "", fmt.Errorf("failed to create API request: %v", err)
+	}
+
+	// 复制原始请求头
+	for key, values := range originalReq.Header {
+		lowerKey := strings.ToLower(key)
+		if lowerKey == "cookie" {
+			continue // Cookie 将被替换
+		}
+		for _, v := range values {
+			apiReq.Header.Add(key, v)
+		}
+	}
+
+	// 设置合并后的 Cookie
+	apiReq.Header.Set("Cookie", mergedCookies)
+	// 设置 Referer（有些反爬检查 Referer）
+	apiReq.Header.Set("Referer", fmt.Sprintf("%s://%s/", parsedURL.Scheme, parsedURL.Host))
+
+	log.Printf("[Challenge] 发送带动态 Cookie 的 API 请求")
+
+	// 发送真正的 API 请求
+	apiResp, err := client.Do(apiReq)
+	if err != nil {
+		return 0, nil, "", fmt.Errorf("API request failed: %v", err)
+	}
+	defer apiResp.Body.Close()
+
+	apiBodyBytes, err := io.ReadAll(io.LimitReader(apiResp.Body, 1<<20))
+	if err != nil {
+		return 0, nil, "", fmt.Errorf("failed to read API response: %v", err)
+	}
+
+	headers := extractResponseHeaders(apiResp)
+	log.Printf("[Challenge] 挑战成功，API 返回状态码: %d", apiResp.StatusCode)
+
+	return apiResp.StatusCode, headers, string(apiBodyBytes), nil
+}
+
+// extractAndExecuteScript 从 HTML 中提取脚本并执行，获取 acw_sc__v2 Cookie
+func extractAndExecuteScript(html string) (string, error) {
+	// 查找包含 acw_sc__v2 的 <script> 标签
+	// 匹配模式：<script>...acw_sc__v2...</script>
+	scriptPattern := regexp.MustCompile(`(?is)<script[^>]*>(.*?acw_sc__v2.*?)</script>`)
+	matches := scriptPattern.FindAllStringSubmatch(html, -1)
+
+	if len(matches) == 0 {
+		return "", errors.New("no acw_sc__v2 script found in HTML")
+	}
+
+	// 尝试每个匹配的脚本
+	for _, match := range matches {
+		if len(match) < 2 {
+			continue
+		}
+		scriptContent := match[1]
+
+		// 跳过太短的脚本（可能是误匹配）
+		if len(scriptContent) < 50 {
+			continue
+		}
+
+		// 尝试执行脚本
+		cookie, err := executeScriptForCookie(scriptContent)
+		if err == nil && cookie != "" {
+			return cookie, nil
+		}
+		log.Printf("[Challenge] 脚本执行失败，尝试下一个: %v", err)
+	}
+
+	return "", errors.New("failed to extract cookie from any script")
+}
+
+// executeScriptForCookie 在沙箱中执行 JS 脚本，捕获 document.cookie 赋值
+func executeScriptForCookie(scriptContent string) (string, error) {
+	vm := goja.New()
+
+	// 设置超时（5 秒）
+	time.AfterFunc(5*time.Second, func() {
+		vm.Interrupt("script execution timeout")
+	})
+
+	var cookieValue string
+
+	// 创建沙箱 document 对象
+	document := vm.NewObject()
+	_ = document.DefineAccessorProperty("cookie",
+		vm.ToValue(func(call goja.FunctionCall) goja.Value {
+			return vm.ToValue(cookieValue)
+		}),
+		vm.ToValue(func(call goja.FunctionCall) goja.Value {
+			if len(call.Arguments) > 0 {
+				cookieValue = call.Arguments[0].String()
+			}
+			return goja.Undefined()
+		}),
+		goja.FLAG_FALSE, goja.FLAG_TRUE)
+	_ = vm.Set("document", document)
+
+	// 创建沙箱 location 对象
+	location := vm.NewObject()
+	_ = location.Set("href", "")
+	_ = location.Set("hostname", "")
+	_ = location.Set("pathname", "")
+	_ = location.Set("reload", func() {})
+	_ = vm.Set("location", location)
+
+	// 创建沙箱 navigator 对象
+	navigator := vm.NewObject()
+	_ = navigator.Set("userAgent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+	_ = vm.Set("navigator", navigator)
+
+	// 创建沙箱 window 对象（循环引用）
+	window := vm.NewObject()
+	_ = window.Set("document", document)
+	_ = window.Set("location", location)
+	_ = window.Set("navigator", navigator)
+	_ = vm.Set("window", window)
+
+	// 提供常用的浏览器 API 空实现
+	_ = vm.Set("setTimeout", func(fn goja.Callable, delay int64) {
+		// 立即执行（简化处理）
+		if fn != nil {
+			_, _ = fn(goja.Undefined())
+		}
+	})
+	_ = vm.Set("setInterval", func(fn goja.Callable, delay int64) {})
+	_ = vm.Set("clearTimeout", func(id int64) {})
+	_ = vm.Set("clearInterval", func(id int64) {})
+	_ = vm.Set("console", vm.NewObject())
+	_ = vm.Set("alert", func(msg string) {})
+
+	// 执行脚本
+	_, err := vm.RunString(scriptContent)
+	if err != nil {
+		// 检查是否是超时中断
+		if strings.Contains(err.Error(), "timeout") {
+			return "", errors.New("script execution timeout")
+		}
+		return "", fmt.Errorf("script execution failed: %v", err)
+	}
+
+	// 提取 cookie 名=值 部分（去掉 path、expires 等）
+	if cookieValue != "" {
+		parts := strings.Split(cookieValue, ";")
+		return strings.TrimSpace(parts[0]), nil
+	}
+
+	return "", errors.New("no cookie produced by script")
+}
+
+// extractResponseHeaders 提取常用响应头
+func extractResponseHeaders(resp *http.Response) map[string]string {
+	headers := make(map[string]string)
+	for _, key := range []string{"Content-Type", "X-RateLimit-Remaining", "X-RateLimit-Limit"} {
+		if val := resp.Header.Get(key); val != "" {
+			headers[key] = val
+		}
+	}
+	return headers
+}
+
+// truncateCookie 截断 Cookie 用于日志输出
+func truncateCookie(cookie string) string {
+	if len(cookie) > 40 {
+		return cookie[:20] + "..." + cookie[len(cookie)-10:]
+	}
+	return cookie
 }

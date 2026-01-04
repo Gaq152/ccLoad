@@ -966,6 +966,12 @@ function loadQuotaConfig(config) {
   document.getElementById('quotaInterval').value = String(config.interval_seconds || 300);
   document.getElementById('quotaExtractor').value = config.extractor_script || '';
 
+  // 加载挑战模式
+  const challengeModeSelect = document.getElementById('quotaChallengeMode');
+  if (challengeModeSelect) {
+    challengeModeSelect.value = config.challenge_mode || '';
+  }
+
   // 加载请求头
   quotaHeadersData = [];
   if (config.request_headers) {
@@ -996,13 +1002,18 @@ function getQuotaConfig() {
     }
   });
 
+  // 获取挑战模式
+  const challengeModeSelect = document.getElementById('quotaChallengeMode');
+  const challengeMode = challengeModeSelect ? challengeModeSelect.value : '';
+
   return {
     enabled: true,
     request_url: document.getElementById('quotaUrl').value.trim(),
     request_method: document.getElementById('quotaMethod').value,
     request_headers: headers,
     extractor_script: document.getElementById('quotaExtractor').value,
-    interval_seconds: parseInt(document.getElementById('quotaInterval').value) || 300
+    interval_seconds: parseInt(document.getElementById('quotaInterval').value) || 300,
+    challenge_mode: challengeMode
   };
 }
 
@@ -1295,6 +1306,37 @@ const QUOTA_TEMPLATES = {
     limitReached: rl.limit_reached || false
   };
 }`
+  },
+
+  // Anyrouter 模板（带反爬挑战）
+  anyrouter: {
+    name: 'Anyrouter (反爬)',
+    endpoint: '/api/user/self',
+    method: 'GET',
+    challengeMode: 'acw_sc_v2',  // 启用反爬挑战模式
+    headers: [
+      { key: 'Content-Type', value: 'application/json' },
+      { key: 'Cookie', value: '你的Session Cookie' },
+      { key: 'New-Api-User', value: '你的用户ID' }
+    ],
+    extractor: `function(response) {
+  // 检查是否为 HTML 响应（反爬挑战页面）
+  if (typeof response === 'string' && response.trim().startsWith('<')) {
+    if (response.includes('acw_sc__v2')) {
+      return { isValid: false, error: "反爬挑战失败，请检查后端日志" };
+    }
+    return { isValid: false, error: "响应不是 JSON 格式" };
+  }
+  const data = typeof response === 'string' ? JSON.parse(response) : response;
+  if (data.success && data.data) {
+    return {
+      isValid: true,
+      remaining: data.data.quota / 500000,
+      unit: "USD"
+    };
+  }
+  return { isValid: false, error: data.message || "查询失败" };
+}`
   }
 };
 
@@ -1341,6 +1383,12 @@ function applyQuotaTemplate(templateKey) {
 
   // 填充提取器脚本
   document.getElementById('quotaExtractor').value = template.extractor;
+
+  // 填充挑战模式（如果模板有定义）
+  const challengeModeSelect = document.getElementById('quotaChallengeMode');
+  if (challengeModeSelect) {
+    challengeModeSelect.value = template.challengeMode || '';
+  }
 
   if (window.showSuccess) {
     const msg = baseUrl
