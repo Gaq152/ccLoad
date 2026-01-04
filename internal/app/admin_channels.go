@@ -149,6 +149,12 @@ func (s *Server) handleCreateChannel(c *gin.Context) {
 	// 创建渠道（不包含API Key）
 	created, err := s.store.CreateConfig(c.Request.Context(), req.ToConfig())
 	if err != nil {
+		// 处理 UNIQUE 约束错误（渠道名称重复）
+		if strings.Contains(err.Error(), "UNIQUE constraint failed") ||
+			strings.Contains(err.Error(), "Duplicate entry") {
+			RespondErrorMsg(c, http.StatusConflict, "渠道名称已存在")
+			return
+		}
 		RespondError(c, http.StatusInternalServerError, err)
 		return
 	}
