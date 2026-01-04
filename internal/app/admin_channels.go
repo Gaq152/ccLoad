@@ -482,7 +482,7 @@ func (s *Server) handleDeleteChannel(c *gin.Context, id int64) {
 	// 删除渠道后刷新缓存
 	s.invalidateChannelRelatedCache(id)
 	// 数据库级联删除会自动清理冷却数据（无需手动清理缓存）
-	c.Status(http.StatusNoContent)
+	RespondJSON[any](c, http.StatusOK, nil)
 }
 
 // 删除渠道下的单个Key，并保持key_index连续
