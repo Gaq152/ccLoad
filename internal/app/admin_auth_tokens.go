@@ -85,7 +85,7 @@ func (s *Server) HandleListAuthTokens(c *gin.Context) {
 		}
 	}
 
-	RespondJSON(c, http.StatusOK, tokens)
+	RespondJSON(c, http.StatusOK, gin.H{"tokens": tokens})
 }
 
 // HandleCreateAuthToken 创建新的API访问令牌
