@@ -535,7 +535,7 @@
           fetchDataWithAuth(`${API_BASE}/auth-tokens/${tokenId}/channels`)
         ]);
 
-        allChannels = (channelsData && channelsData.channels) || [];
+        allChannels = channelsData || [];
         const config = configData || {};
 
         // 设置全部渠道开关
@@ -564,7 +564,7 @@
 
       try {
         const channelsData = await fetchDataWithAuth(`${API_BASE}/channels`);
-        allChannels = (channelsData && channelsData.channels) || [];
+        allChannels = channelsData || [];
 
         // 渲染渠道列表（无选中项，需要用户手动选择）
         renderDrawerChannelsList([]);
