@@ -966,6 +966,12 @@ function loadQuotaConfig(config) {
   document.getElementById('quotaInterval').value = String(config.interval_seconds || 300);
   document.getElementById('quotaExtractor').value = config.extractor_script || '';
 
+  // 加载反爬模式
+  const challengeModeEl = document.getElementById('quotaChallengeMode');
+  if (challengeModeEl) {
+    challengeModeEl.value = config.challenge_mode || '';
+  }
+
   // 加载请求头
   quotaHeadersData = [];
   if (config.request_headers) {
@@ -1002,7 +1008,8 @@ function getQuotaConfig() {
     request_method: document.getElementById('quotaMethod').value,
     request_headers: headers,
     extractor_script: document.getElementById('quotaExtractor').value,
-    interval_seconds: parseInt(document.getElementById('quotaInterval').value) || 300
+    interval_seconds: parseInt(document.getElementById('quotaInterval').value) || 300,
+    challenge_mode: document.getElementById('quotaChallengeMode')?.value || ''
   };
 }
 
@@ -1295,6 +1302,36 @@ const QUOTA_TEMPLATES = {
     limitReached: rl.limit_reached || false
   };
 }`
+  },
+
+  // AnyRouter 模板（需要反爬挑战支持）
+  anyrouter: {
+    name: 'AnyRouter',
+    absoluteUrl: 'https://anyrouter.top/api/user/self',  // 绝对 URL
+    method: 'GET',
+    headers: [
+      { key: 'Cookie', value: 'session=你的Session' },
+      { key: 'New-Api-User', value: '你的用户ID' }
+    ],
+    challengeMode: 'acw_sc__v2',  // 反爬挑战模式
+    extractor: `function(response) {
+  // 检查是否为 HTML 响应（挑战页面）
+  if (typeof response === 'string' && response.trim().startsWith('<')) {
+    if (response.includes('acw_sc__v2') || response.includes('arg1=')) {
+      return { isValid: false, error: "遇到反爬挑战，请检查 Cookie 服务配置" };
+    }
+    return { isValid: false, error: "响应不是 JSON 格式" };
+  }
+  const data = typeof response === 'string' ? JSON.parse(response) : response;
+  if (data.success && data.data) {
+    return {
+      isValid: true,
+      remaining: data.data.quota / 500000,
+      unit: "USD"
+    };
+  }
+  return { isValid: false, error: data.message || "查询失败" };
+}`
   }
 };
 
@@ -1315,20 +1352,26 @@ function applyQuotaTemplate(templateKey) {
     return;
   }
 
-  // 从渠道URL自动生成用量查询URL
+  // 计算用量查询URL
   let quotaUrl = '';
 
-  // 优先使用端点列表的第一个URL，否则使用channelUrl输入框
-  const endpoints = typeof getInlineEndpoints === 'function' ? getInlineEndpoints() : [];
-  let baseUrl = endpoints[0] || document.getElementById('channelUrl')?.value?.trim() || '';
-
-  if (baseUrl) {
-    // 移除末尾的斜杠和可能的 /v1 路径
-    baseUrl = baseUrl.replace(/\/+$/, '').replace(/\/v1$/, '');
-    quotaUrl = baseUrl + template.endpoint;
+  if (template.absoluteUrl) {
+    // 使用绝对URL（如 anyrouter）
+    quotaUrl = template.absoluteUrl;
   } else {
-    // 没有渠道URL时使用占位符
-    quotaUrl = 'https://你的域名' + template.endpoint;
+    // 从渠道URL自动生成用量查询URL
+    // 优先使用端点列表的第一个URL，否则使用channelUrl输入框
+    const endpoints = typeof getInlineEndpoints === 'function' ? getInlineEndpoints() : [];
+    let baseUrl = endpoints[0] || document.getElementById('channelUrl')?.value?.trim() || '';
+
+    if (baseUrl) {
+      // 移除末尾的斜杠和可能的 /v1 路径
+      baseUrl = baseUrl.replace(/\/+$/, '').replace(/\/v1$/, '');
+      quotaUrl = baseUrl + template.endpoint;
+    } else {
+      // 没有渠道URL时使用占位符
+      quotaUrl = 'https://你的域名' + template.endpoint;
+    }
   }
 
   // 填充URL和方法
@@ -1342,10 +1385,18 @@ function applyQuotaTemplate(templateKey) {
   // 填充提取器脚本
   document.getElementById('quotaExtractor').value = template.extractor;
 
+  // 填充反爬模式（如果模板有指定）
+  const challengeModeEl = document.getElementById('quotaChallengeMode');
+  if (challengeModeEl) {
+    challengeModeEl.value = template.challengeMode || '';
+  }
+
   if (window.showSuccess) {
-    const msg = baseUrl
-      ? `已应用 ${template.name} 模板，请填写Token和用户ID`
-      : `已应用 ${template.name} 模板，请先填写渠道URL`;
+    const msg = template.absoluteUrl
+      ? `已应用 ${template.name} 模板，请填写认证信息`
+      : (quotaUrl.includes('你的域名')
+        ? `已应用 ${template.name} 模板，请先填写渠道URL`
+        : `已应用 ${template.name} 模板，请填写Token和用户ID`);
     showSuccess(msg);
   }
 }

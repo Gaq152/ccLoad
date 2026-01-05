@@ -495,6 +495,9 @@
                 <button type="button" class="btn btn-secondary btn-sm" onclick="applyQuotaTemplate('oneapi')" style="padding: 4px 10px; font-size: 12px;">
                   OneAPI
                 </button>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="applyQuotaTemplate('anyrouter')" style="padding: 4px 10px; font-size: 12px;">
+                  AnyRouter
+                </button>
                 <button type="button" id="codexQuotaTemplateBtn" class="btn btn-secondary btn-sm" onclick="applyQuotaTemplate('codex')" style="padding: 4px 10px; font-size: 12px; display: none;">
                   Codex 官方
                 </button>
@@ -521,6 +524,13 @@
                   <option value="300" selected>5分钟</option>
                   <option value="600">10分钟</option>
                   <option value="1800">30分钟</option>
+                </select>
+              </div>
+              <div style="width: 150px;">
+                <label style="font-size: 12px; color: var(--neutral-600); margin-bottom: 4px; display: block;">反爬模式</label>
+                <select id="quotaChallengeMode" class="form-input" style="font-size: 13px;">
+                  <option value="">无</option>
+                  <option value="acw_sc__v2">acw_sc__v2 (AnyRouter)</option>
                 </select>
               </div>
             </div>

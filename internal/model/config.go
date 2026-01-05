@@ -130,6 +130,7 @@ type QuotaConfig struct {
 	RequestBody     string            `json:"request_body"`      // POST请求体（可选）
 	ExtractorScript string            `json:"extractor_script"`  // JS提取器脚本（在前端执行）
 	IntervalSeconds int               `json:"interval_seconds"`  // 轮询间隔（秒），默认300
+	ChallengeMode   string            `json:"challenge_mode"`    // 反爬挑战模式: "" (无) | "acw_sc__v2" (anyrouter)
 }
 
 // GetIntervalSeconds 返回轮询间隔，默认300秒（5分钟）
