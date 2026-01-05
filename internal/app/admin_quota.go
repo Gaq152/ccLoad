@@ -2,12 +2,15 @@ package app
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -85,6 +88,12 @@ func (s *Server) handleQuotaFetch(c *gin.Context) {
 	method := strings.ToUpper(qc.GetRequestMethod())
 	if method != "GET" && method != "POST" {
 		RespondErrorMsg(c, http.StatusBadRequest, "invalid request method, only GET/POST allowed")
+		return
+	}
+
+	// acw_sc__v2 反爬模式：直接调用外部服务完成用量查询
+	if qc.ChallengeMode == "acw_sc__v2" {
+		s.handleAcwScV2QuotaFetch(c, qc)
 		return
 	}
 
@@ -173,11 +182,63 @@ func (s *Server) handleQuotaFetch(c *gin.Context) {
 	}
 	defer resp.Body.Close()
 
-	// 读取响应体（限制大小，防止OOM）
-	bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20)) // 最大1MB
+	// 读取响应体（限制大小，防止OOM，支持 gzip 解压）
+	bodyBytes, err := readResponseBody(resp)
 	if err != nil {
 		RespondErrorMsg(c, http.StatusInternalServerError, "failed to read response body: "+err.Error())
 		return
+	}
+
+	contentType := resp.Header.Get("Content-Type")
+
+	// 检测 acw_sc__v2 反爬挑战页面
+	if qc.ChallengeMode == "acw_sc__v2" && isAcwScV2Challenge(contentType, bodyBytes) {
+		// 调用外部服务获取动态 Cookie
+		challengeCookie, err := fetchChallengeCookie(qc.RequestURL)
+		if err != nil {
+			RespondErrorMsg(c, http.StatusBadGateway, "获取反爬 Cookie 失败: "+err.Error())
+			return
+		}
+
+		// 使用新 Cookie 重新构建请求
+		var retryBodyReader io.Reader
+		if method == "POST" && qc.RequestBody != "" {
+			retryBodyReader = bytes.NewBufferString(qc.RequestBody)
+		}
+
+		retryReq, err := http.NewRequestWithContext(ctx, method, qc.RequestURL, retryBodyReader)
+		if err != nil {
+			RespondErrorMsg(c, http.StatusInternalServerError, "failed to create retry request: "+err.Error())
+			return
+		}
+
+		// 复制原始请求头
+		retryReq.Header = req.Header.Clone()
+
+		// 合并动态 Cookie 到现有 Cookie
+		existingCookie := retryReq.Header.Get("Cookie")
+		if existingCookie != "" {
+			retryReq.Header.Set("Cookie", existingCookie+"; "+challengeCookie)
+		} else {
+			retryReq.Header.Set("Cookie", challengeCookie)
+		}
+
+		// 重新发送请求
+		retryResp, err := client.Do(retryReq)
+		if err != nil {
+			RespondErrorMsg(c, http.StatusBadGateway, "retry request failed: "+err.Error())
+			return
+		}
+		defer retryResp.Body.Close()
+
+		bodyBytes, err = readResponseBody(retryResp)
+		if err != nil {
+			RespondErrorMsg(c, http.StatusInternalServerError, "failed to read retry response: "+err.Error())
+			return
+		}
+
+		resp = retryResp
+		contentType = resp.Header.Get("Content-Type")
 	}
 
 	// 提取响应头（只保留常用的）
@@ -193,6 +254,147 @@ func (s *Server) handleQuotaFetch(c *gin.Context) {
 		"headers":     respHeaders,
 		"body":        string(bodyBytes),
 	})
+}
+
+// handleAcwScV2QuotaFetch 处理 acw_sc__v2 反爬模式的用量查询
+// 直接调用外部 Deno 服务完成挑战处理和用量查询
+func (s *Server) handleAcwScV2QuotaFetch(c *gin.Context, qc *model.QuotaConfig) {
+	serviceURL := os.Getenv("ANYROUTER_COOKIE_SERVICE")
+	if serviceURL == "" {
+		RespondErrorMsg(c, http.StatusBadRequest, "ANYROUTER_COOKIE_SERVICE 环境变量未设置")
+		return
+	}
+
+	// 从请求头配置中提取 Cookie 和 New-Api-User
+	cookieHeader := ""
+	userID := ""
+	for key, value := range qc.RequestHeaders {
+		lowerKey := strings.ToLower(key)
+		if lowerKey == "cookie" {
+			cookieHeader = value
+		} else if lowerKey == "new-api-user" {
+			userID = value
+		}
+	}
+
+	if cookieHeader == "" {
+		RespondErrorMsg(c, http.StatusBadRequest, "缺少 Cookie 请求头配置")
+		return
+	}
+	if userID == "" {
+		RespondErrorMsg(c, http.StatusBadRequest, "缺少 New-Api-User 请求头配置")
+		return
+	}
+
+	// 从 Cookie 中提取 session（剔除 acw_sc__v2）
+	session := extractSessionFromCookie(cookieHeader)
+	if session == "" {
+		RespondErrorMsg(c, http.StatusBadRequest, "Cookie 中未找到 session")
+		return
+	}
+
+	// 解析目标 URL 获取路径
+	parsedURL, err := url.Parse(qc.RequestURL)
+	if err != nil {
+		RespondErrorMsg(c, http.StatusBadRequest, "无效的请求 URL")
+		return
+	}
+	targetPath := parsedURL.Path
+	if targetPath == "" {
+		targetPath = "/api/user/self"
+	}
+
+	// 调用外部服务的 /api/quota 端点
+	reqURL := strings.TrimSuffix(serviceURL, "/") + "/api/quota"
+
+	reqBody := map[string]string{
+		"session": session,
+		"user_id": userID,
+		"target":  targetPath,
+	}
+	reqBodyBytes, _ := json.Marshal(reqBody)
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "POST", reqURL, bytes.NewReader(reqBodyBytes))
+	if err != nil {
+		RespondErrorMsg(c, http.StatusInternalServerError, "创建请求失败: "+err.Error())
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			Proxy: http.ProxyFromEnvironment,
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true,
+			},
+		},
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		RespondErrorMsg(c, http.StatusBadGateway, "请求外部服务失败: "+err.Error())
+		return
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		RespondErrorMsg(c, http.StatusInternalServerError, "读取响应失败: "+err.Error())
+		return
+	}
+
+	// 解析外部服务响应
+	var extResp struct {
+		Success bool            `json:"success"`
+		Data    json.RawMessage `json:"data"`
+		Error   *string         `json:"error"`
+	}
+	if err := json.Unmarshal(bodyBytes, &extResp); err != nil {
+		RespondErrorMsg(c, http.StatusBadGateway, "解析外部服务响应失败: "+err.Error())
+		return
+	}
+
+	if !extResp.Success {
+		errMsg := "外部服务返回错误"
+		if extResp.Error != nil {
+			errMsg = *extResp.Error
+		}
+		RespondErrorMsg(c, http.StatusBadGateway, errMsg)
+		return
+	}
+
+	// 返回与原有格式一致的响应
+	RespondJSON(c, http.StatusOK, gin.H{
+		"status_code": 200,
+		"headers":     map[string]string{"Content-Type": "application/json"},
+		"body":        string(extResp.Data),
+	})
+}
+
+// extractSessionFromCookie 从 Cookie 字符串中提取 session 值，自动剔除 acw_sc__v2
+// 支持格式：
+//   - "session=xxx"
+//   - "session=xxx; acw_sc__v2=yyy"
+//   - "acw_sc__v2=yyy; session=xxx"
+//   - "other=aaa; session=xxx; acw_sc__v2=yyy"
+func extractSessionFromCookie(cookieHeader string) string {
+	// 按分号分割
+	parts := strings.Split(cookieHeader, ";")
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		// 跳过 acw_sc__v2
+		if strings.HasPrefix(part, "acw_sc__v2=") {
+			continue
+		}
+		// 提取 session
+		if strings.HasPrefix(part, "session=") {
+			return strings.TrimPrefix(part, "session=")
+		}
+	}
+	return ""
 }
 
 // validateQuotaURL 验证用量查询URL的安全性（防止SSRF）
@@ -330,4 +532,106 @@ func validateQuotaURL(rawURL string) error {
 	}
 
 	return nil
+}
+
+// readResponseBody 读取 HTTP 响应体，自动处理 gzip 解压
+// 限制最大读取 1MB，防止 OOM
+func readResponseBody(resp *http.Response) ([]byte, error) {
+	var reader io.Reader = resp.Body
+
+	// 检查是否为 gzip 压缩
+	if resp.Header.Get("Content-Encoding") == "gzip" {
+		gzReader, err := gzip.NewReader(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("gzip reader 创建失败: %v", err)
+		}
+		defer gzReader.Close()
+		reader = gzReader
+	}
+
+	return io.ReadAll(io.LimitReader(reader, 1<<20)) // 最大 1MB
+}
+
+// isAcwScV2Challenge 检测响应是否为 acw_sc__v2 反爬挑战页面
+// 特征：Content-Type 为 text/html 且响应体包含 acw_sc__v2 关键字
+func isAcwScV2Challenge(contentType string, body []byte) bool {
+	if !strings.Contains(contentType, "text/html") {
+		return false
+	}
+	// 检查响应体是否包含挑战脚本特征
+	bodyStr := string(body)
+	return strings.Contains(bodyStr, "acw_sc__v2") || strings.Contains(bodyStr, "arg1=")
+}
+
+// challengeCookieResponse 外部服务返回的 Cookie 响应格式
+type challengeCookieResponse struct {
+	Target string  `json:"target"`
+	Cookie string  `json:"cookie"`
+	Error  *string `json:"error"`
+}
+
+// fetchChallengeCookie 调用外部 Deno 服务获取 acw_sc__v2 动态 cookie
+// 环境变量 ANYROUTER_COOKIE_SERVICE 指定服务地址
+func fetchChallengeCookie(targetURL string) (string, error) {
+	serviceURL := os.Getenv("ANYROUTER_COOKIE_SERVICE")
+	if serviceURL == "" {
+		return "", fmt.Errorf("ANYROUTER_COOKIE_SERVICE 环境变量未设置")
+	}
+
+	// 解析目标 URL 提取路径
+	parsedURL, err := url.Parse(targetURL)
+	if err != nil {
+		return "", fmt.Errorf("无效的目标 URL: %v", err)
+	}
+
+	// 构建服务请求 URL: {serviceURL}/debug-cookie?target={path}
+	reqURL := strings.TrimSuffix(serviceURL, "/") + "/debug-cookie?target=" + url.QueryEscape(parsedURL.Path)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
+	if err != nil {
+		return "", fmt.Errorf("创建请求失败: %v", err)
+	}
+
+	// 使用支持代理和宽松 TLS 的客户端（Deno Deploy 在某些代理下证书链验证可能失败）
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			Proxy: http.ProxyFromEnvironment,
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true, // 外部 Cookie 服务允许跳过验证
+			},
+		},
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("请求外部服务失败: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("外部服务返回错误状态码: %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<16)) // 最大64KB
+	if err != nil {
+		return "", fmt.Errorf("读取响应失败: %v", err)
+	}
+
+	var cookieResp challengeCookieResponse
+	if err := json.Unmarshal(body, &cookieResp); err != nil {
+		return "", fmt.Errorf("解析响应失败: %v", err)
+	}
+
+	if cookieResp.Error != nil && *cookieResp.Error != "" {
+		return "", fmt.Errorf("外部服务错误: %s", *cookieResp.Error)
+	}
+
+	if cookieResp.Cookie == "" {
+		return "", fmt.Errorf("外部服务未返回 Cookie")
+	}
+
+	return cookieResp.Cookie, nil
 }
