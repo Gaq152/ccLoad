@@ -81,6 +81,18 @@
 .topnav-link.active { background: rgba(17,24,39,0.10); color: var(--topbar-fg); border: 1px solid rgba(17,24,39,0.12); }
 .topbar-right { display: flex; align-items: center; gap: var(--space-3); }
 
+/* 版本徽章 */
+.version-badge {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--theme-bg-hover);
+  color: var(--theme-text-muted);
+  border: 1px solid var(--theme-border-light);
+  letter-spacing: 0.3px;
+}
+
 /* 顶部背景（静态渐变，无动画） */
 .bg-anim {
   position: fixed; inset: 0; z-index: 0; pointer-events: none;

@@ -28,6 +28,17 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Replace version placeholder
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/}
+          else
+            VERSION="${{ github.event.inputs.tag }}"
+          fi
+          echo "Replacing version placeholder with: $VERSION"
+          find web -name "*.html" -exec sed -i "s/>DEV</>$VERSION</g" {} \;
+          find web -name "*.js" -exec sed -i "s/>DEV</>$VERSION</g" {} \;
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 

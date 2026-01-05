@@ -394,7 +394,11 @@
         style: 'padding: 6px; margin-right: 8px;'
       }, [icons.doc()]);
 
+      // 版本徽章 - 开发模式显示 DEV，构建时由 GitHub Actions 替换为实际版本
+      const versionBadge = h('span', { class: 'version-badge' }, '>DEV<');
+
       const right = h('div', { class: 'topbar-right' }, [
+        versionBadge,
         docBtn,
         themeBtn,
         h('button', {
