@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log"
 	"time"
 
 	"ccLoad/internal/model"
@@ -273,9 +272,6 @@ func (s *SQLStore) GetDailyStatsMetrics(ctx context.Context, startDate, endDate 
 	startStr := startDate.Format("2006-01-02")
 	endStr := endDate.Format("2006-01-02")
 
-	log.Printf("[DEBUG] GetDailyStatsMetrics: startStr=%s, endStr=%s, channelType=%s, model=%s, authTokenID=%d",
-		startStr, endStr, channelType, modelFilter, authTokenID)
-
 	// 基础查询：按日期和渠道聚合
 	query := `
 		SELECT
@@ -314,8 +310,6 @@ func (s *SQLStore) GetDailyStatsMetrics(ctx context.Context, startDate, endDate 
 
 	query += " GROUP BY date, channel_id ORDER BY date ASC"
 
-	log.Printf("[DEBUG] GetDailyStatsMetrics query: %s, args: %v", query, args)
-
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query daily stats metrics: %w", err)
@@ -325,10 +319,8 @@ func (s *SQLStore) GetDailyStatsMetrics(ctx context.Context, startDate, endDate 
 	// 按日期聚合数据
 	dateMap := make(map[string]*model.MetricPoint)
 	channelIDsToFetch := make(map[int64]bool)
-	rowCount := 0
 
 	for rows.Next() {
-		rowCount++
 		var dateStr string
 		var channelID sql.NullInt64
 		var success, errorCount int
@@ -341,6 +333,11 @@ func (s *SQLStore) GetDailyStatsMetrics(ctx context.Context, startDate, endDate 
 			&inputTokens, &outputTokens, &cacheReadTokens, &cacheCreationTokens,
 			&avgFirstByteTime, &avgDuration, &streamCount, &totalCount); err != nil {
 			return nil, fmt.Errorf("scan daily stats metrics: %w", err)
+		}
+
+		// 统一日期格式为 "2006-01-02"（数据库可能返回带时间的格式）
+		if len(dateStr) > 10 {
+			dateStr = dateStr[:10]
 		}
 
 		// 获取或创建该日期的 MetricPoint
@@ -431,8 +428,6 @@ func (s *SQLStore) GetDailyStatsMetrics(ctx context.Context, startDate, endDate 
 		return nil, err
 	}
 
-	log.Printf("[DEBUG] GetDailyStatsMetrics: rowCount=%d, dateMapLen=%d", rowCount, len(dateMap))
-
 	// 批量获取渠道名称
 	channelNames := make(map[int64]string)
 	if len(channelIDsToFetch) > 0 {
@@ -463,14 +458,6 @@ func (s *SQLStore) GetDailyStatsMetrics(ctx context.Context, startDate, endDate 
 
 	// 按日期排序输出
 	result := make([]model.MetricPoint, 0, len(dateMap))
-
-	// 调试：打印 dateMap 的所有 keys
-	dateMapKeys := make([]string, 0, len(dateMap))
-	for k := range dateMap {
-		dateMapKeys = append(dateMapKeys, k)
-	}
-	log.Printf("[DEBUG] GetDailyStatsMetrics: dateMapKeys=%v, startDate=%v, endDate=%v", dateMapKeys, startDate, endDate)
-
 	for d := startDate; !d.After(endDate); d = d.AddDate(0, 0, 1) {
 		dateStr := d.Format("2006-01-02")
 		if mp, ok := dateMap[dateStr]; ok {
