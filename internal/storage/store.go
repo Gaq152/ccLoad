@@ -76,6 +76,7 @@ type Store interface {
 	AggregateDailyStats(ctx context.Context, date time.Time) error                                    // 聚合指定日期的统计数据
 	GetDailyStats(ctx context.Context, startDate, endDate time.Time) ([]*model.DailyStat, error)      // 查询日期范围内的统计
 	GetDailyStatsSummary(ctx context.Context, startDate, endDate time.Time, filter *model.LogFilter) ([]model.StatsEntry, error) // 汇总统计
+	GetDailyStatsMetrics(ctx context.Context, startDate, endDate time.Time, channelType, modelFilter string, authTokenID int64) ([]model.MetricPoint, error) // 趋势图数据
 	CleanupDailyStatsBefore(ctx context.Context, cutoff time.Time) error                              // 清理过期统计
 	GetLatestDailyStatsDate(ctx context.Context) (time.Time, error)                                   // 获取最新统计日期
 

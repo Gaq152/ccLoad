@@ -42,6 +42,11 @@ func (s *Server) HandleErrors(c *gin.Context) {
 
 // handleMetrics 获取聚合指标数据
 // GET /admin/metrics?range=today&bucket_min=5&channel_type=anthropic&model=claude-3-5-sonnet-20241022
+//
+// 数据源策略：
+// - 今天的数据：从 logs 表实时查询（按 bucket_min 分桶）
+// - 历史数据（昨天及之前）：从 daily_stats 聚合表查询（每天一个数据点）
+// - 跨天查询：合并两个数据源
 func (s *Server) HandleMetrics(c *gin.Context) {
 	params := ParsePaginationParams(c)
 	bucketMin, _ := strconv.Atoi(c.DefaultQuery("bucket_min", "5"))
@@ -55,7 +60,26 @@ func (s *Server) HandleMetrics(c *gin.Context) {
 	authTokenID, _ := strconv.ParseInt(c.Query("auth_token_id"), 10, 64)
 
 	since, until := params.GetTimeRange()
-	pts, err := s.store.AggregateRangeWithFilter(c.Request.Context(), since, until, time.Duration(bucketMin)*time.Minute, channelType, modelFilter, authTokenID)
+	ctx := c.Request.Context()
+
+	// 判断查询范围是否包含今天
+	now := time.Now()
+	todayStart := beginningOfDay(now)
+
+	var pts []model.MetricPoint
+	var err error
+
+	// 策略：根据时间范围选择数据源
+	if until.Before(todayStart) {
+		// 纯历史查询（不包含今天）：从 daily_stats 查询，每天一个数据点
+		pts, err = s.store.GetDailyStatsMetrics(ctx, since, until, channelType, modelFilter, authTokenID)
+	} else if since.After(todayStart.Add(-time.Second)) || since.Equal(todayStart) {
+		// 纯今天查询：从 logs 表实时查询
+		pts, err = s.store.AggregateRangeWithFilter(ctx, since, until, time.Duration(bucketMin)*time.Minute, channelType, modelFilter, authTokenID)
+	} else {
+		// 跨天查询（历史 + 今天）：合并两个数据源
+		pts, err = s.getMergedMetrics(ctx, since, until, todayStart, bucketMin, channelType, modelFilter, authTokenID)
+	}
 
 	if err != nil {
 		RespondError(c, http.StatusInternalServerError, err)
@@ -73,6 +97,29 @@ func (s *Server) HandleMetrics(c *gin.Context) {
 	c.Header("X-Debug-Total", fmt.Sprintf("%d", totalReqs))
 
 	RespondJSON(c, http.StatusOK, pts)
+}
+
+// getMergedMetrics 合并历史聚合数据和今天的实时数据（用于趋势图）
+func (s *Server) getMergedMetrics(ctx context.Context, startTime, endTime, todayStart time.Time, bucketMin int, channelType, modelFilter string, authTokenID int64) ([]model.MetricPoint, error) {
+	// 1. 从 daily_stats 查询历史数据（startTime 到 昨天）
+	yesterdayEnd := todayStart.Add(-time.Nanosecond)
+	historyPts, err := s.store.GetDailyStatsMetrics(ctx, startTime, yesterdayEnd, channelType, modelFilter, authTokenID)
+	if err != nil {
+		return nil, fmt.Errorf("query history metrics: %w", err)
+	}
+
+	// 2. 从 logs 表查询今天的实时数据
+	todayPts, err := s.store.AggregateRangeWithFilter(ctx, todayStart, endTime, time.Duration(bucketMin)*time.Minute, channelType, modelFilter, authTokenID)
+	if err != nil {
+		return nil, fmt.Errorf("query today metrics: %w", err)
+	}
+
+	// 3. 合并两个数据源（历史在前，今天在后）
+	result := make([]model.MetricPoint, 0, len(historyPts)+len(todayPts))
+	result = append(result, historyPts...)
+	result = append(result, todayPts...)
+
+	return result, nil
 }
 
 // handleStats 获取渠道和模型统计

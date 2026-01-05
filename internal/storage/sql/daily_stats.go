@@ -266,6 +266,210 @@ func (s *SQLStore) GetLatestDailyStatsDate(ctx context.Context) (time.Time, erro
 	return date, nil
 }
 
+// GetDailyStatsMetrics 从 daily_stats 表查询趋势图数据（每天一个数据点）
+// 用于历史数据查询，支持渠道类型、模型和令牌过滤
+func (s *SQLStore) GetDailyStatsMetrics(ctx context.Context, startDate, endDate time.Time, channelType, modelFilter string, authTokenID int64) ([]model.MetricPoint, error) {
+	startStr := startDate.Format("2006-01-02")
+	endStr := endDate.Format("2006-01-02")
+
+	// 基础查询：按日期和渠道聚合
+	query := `
+		SELECT
+			date,
+			channel_id,
+			SUM(success_count) AS success,
+			SUM(error_count) AS error,
+			SUM(total_cost) AS total_cost,
+			SUM(input_tokens) AS input_tokens,
+			SUM(output_tokens) AS output_tokens,
+			SUM(cache_read_tokens) AS cache_read_tokens,
+			SUM(cache_creation_tokens) AS cache_creation_tokens,
+			SUM(avg_first_byte_time * stream_count) / NULLIF(SUM(stream_count), 0) AS avg_first_byte_time,
+			SUM(avg_duration * total_count) / NULLIF(SUM(total_count), 0) AS avg_duration,
+			SUM(stream_count) AS stream_count,
+			SUM(total_count) AS total_count
+		FROM daily_stats
+		WHERE date >= ? AND date <= ?
+	`
+
+	args := []any{startStr, endStr}
+
+	// 添加过滤条件
+	if channelType != "" {
+		query += " AND channel_type = ?"
+		args = append(args, channelType)
+	}
+	if modelFilter != "" {
+		query += " AND model = ?"
+		args = append(args, modelFilter)
+	}
+	if authTokenID > 0 {
+		query += " AND auth_token_id = ?"
+		args = append(args, authTokenID)
+	}
+
+	query += " GROUP BY date, channel_id ORDER BY date ASC"
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query daily stats metrics: %w", err)
+	}
+	defer rows.Close()
+
+	// 按日期聚合数据
+	dateMap := make(map[string]*model.MetricPoint)
+	channelIDsToFetch := make(map[int64]bool)
+
+	for rows.Next() {
+		var dateStr string
+		var channelID sql.NullInt64
+		var success, errorCount int
+		var totalCost float64
+		var inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens int64
+		var avgFirstByteTime, avgDuration sql.NullFloat64
+		var streamCount, totalCount int
+
+		if err := rows.Scan(&dateStr, &channelID, &success, &errorCount, &totalCost,
+			&inputTokens, &outputTokens, &cacheReadTokens, &cacheCreationTokens,
+			&avgFirstByteTime, &avgDuration, &streamCount, &totalCount); err != nil {
+			return nil, fmt.Errorf("scan daily stats metrics: %w", err)
+		}
+
+		// 获取或创建该日期的 MetricPoint
+		mp, ok := dateMap[dateStr]
+		if !ok {
+			// 解析日期为时间（设置为当天中午12点，避免时区问题）
+			date, _ := time.Parse("2006-01-02", dateStr)
+			date = date.Add(12 * time.Hour)
+			mp = &model.MetricPoint{
+				Ts:       date,
+				Channels: make(map[string]model.ChannelMetric),
+			}
+			dateMap[dateStr] = mp
+		}
+
+		// 累加总体统计
+		mp.Success += success
+		mp.Error += errorCount
+		mp.InputTokens += inputTokens
+		mp.OutputTokens += outputTokens
+		mp.CacheReadTokens += cacheReadTokens
+		mp.CacheCreationTokens += cacheCreationTokens
+
+		if mp.TotalCost == nil {
+			mp.TotalCost = new(float64)
+		}
+		*mp.TotalCost += totalCost
+
+		// 渠道级别统计
+		if channelID.Valid && channelID.Int64 > 0 {
+			channelIDsToFetch[channelID.Int64] = true
+			channelKey := fmt.Sprintf("ch_%d", channelID.Int64)
+
+			var avgFBT *float64
+			if avgFirstByteTime.Valid && avgFirstByteTime.Float64 > 0 {
+				avgFBT = new(float64)
+				*avgFBT = avgFirstByteTime.Float64
+			}
+			var avgDur *float64
+			if avgDuration.Valid && avgDuration.Float64 > 0 {
+				avgDur = new(float64)
+				*avgDur = avgDuration.Float64
+			}
+			var chCost *float64
+			if totalCost > 0 {
+				chCost = new(float64)
+				*chCost = totalCost
+			}
+
+			// 合并同一天同一渠道的数据
+			if existing, ok := mp.Channels[channelKey]; ok {
+				existing.Success += success
+				existing.Error += errorCount
+				existing.InputTokens += inputTokens
+				existing.OutputTokens += outputTokens
+				existing.CacheReadTokens += cacheReadTokens
+				existing.CacheCreationTokens += cacheCreationTokens
+				if existing.TotalCost != nil && chCost != nil {
+					*existing.TotalCost += *chCost
+				} else if chCost != nil {
+					existing.TotalCost = chCost
+				}
+				// 平均值取最新的
+				if avgFBT != nil {
+					existing.AvgFirstByteTimeSeconds = avgFBT
+				}
+				if avgDur != nil {
+					existing.AvgDurationSeconds = avgDur
+				}
+				mp.Channels[channelKey] = existing
+			} else {
+				mp.Channels[channelKey] = model.ChannelMetric{
+					Success:                 success,
+					Error:                   errorCount,
+					AvgFirstByteTimeSeconds: avgFBT,
+					AvgDurationSeconds:      avgDur,
+					TotalCost:               chCost,
+					InputTokens:             inputTokens,
+					OutputTokens:            outputTokens,
+					CacheReadTokens:         cacheReadTokens,
+					CacheCreationTokens:     cacheCreationTokens,
+				}
+			}
+		}
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// 批量获取渠道名称
+	channelNames := make(map[int64]string)
+	if len(channelIDsToFetch) > 0 {
+		var err error
+		channelNames, err = s.batchGetChannelNames(ctx, channelIDsToFetch)
+		if err != nil {
+			return nil, fmt.Errorf("batch get channel names: %w", err)
+		}
+	}
+
+	// 替换渠道ID为渠道名称
+	for _, mp := range dateMap {
+		newChannels := make(map[string]model.ChannelMetric)
+		for key, metric := range mp.Channels {
+			var channelID int64
+			fmt.Sscanf(key, "ch_%d", &channelID)
+			if name, ok := channelNames[channelID]; ok {
+				newChannels[name] = metric
+			} else {
+				newChannels["未知渠道"] = metric
+			}
+		}
+		mp.Channels = newChannels
+
+		// 计算总体平均值（简化处理：使用加权平均）
+		// 这里需要额外查询来获取准确的平均值，暂时跳过
+	}
+
+	// 按日期排序输出
+	result := make([]model.MetricPoint, 0, len(dateMap))
+	for d := startDate; !d.After(endDate); d = d.AddDate(0, 0, 1) {
+		dateStr := d.Format("2006-01-02")
+		if mp, ok := dateMap[dateStr]; ok {
+			result = append(result, *mp)
+		} else {
+			// 该日期无数据，添加空数据点
+			date := d.Add(12 * time.Hour)
+			result = append(result, model.MetricPoint{
+				Ts:       date,
+				Channels: make(map[string]model.ChannelMetric),
+			})
+		}
+	}
+
+	return result, nil
+}
+
 // batchGetChannelNames 批量获取渠道名称
 func (s *SQLStore) batchGetChannelNames(ctx context.Context, channelIDs map[int64]bool) (map[int64]string, error) {
 	if len(channelIDs) == 0 {
