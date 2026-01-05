@@ -1030,6 +1030,92 @@
   color: var(--neutral-700);
 }
 
+/* 模态框关闭按钮（通用） */
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 1.75rem;
+  cursor: pointer;
+  color: var(--neutral-500);
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  transition: all 0.2s;
+  line-height: 1;
+}
+
+.modal-close:hover {
+  background: var(--neutral-100);
+  color: var(--neutral-700);
+}
+
+/* 文档弹窗内容样式 */
+.doc-content {
+  line-height: 1.7;
+  color: var(--neutral-700);
+}
+
+.doc-content h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--neutral-800);
+  margin: 1.5rem 0 0.75rem 0;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--neutral-200);
+}
+
+.doc-content h3:first-child {
+  margin-top: 0;
+}
+
+.doc-content h4 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--neutral-700);
+  margin: 1rem 0 0.5rem 0;
+}
+
+.doc-content p {
+  margin: 0.5rem 0;
+}
+
+.doc-content ul {
+  margin: 0.5rem 0;
+  padding-left: 1.5rem;
+}
+
+.doc-content li {
+  margin: 0.25rem 0;
+}
+
+.doc-content code {
+  background: var(--neutral-100);
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  color: var(--primary-600);
+}
+
+.doc-content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.75rem 0;
+}
+
+.doc-content table td {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--neutral-200);
+}
+
+.doc-content table td:first-child {
+  width: 100px;
+  white-space: nowrap;
+}
+
 .form-actions {
   display: flex;
   gap: var(--space-3);
