@@ -270,7 +270,8 @@
       alert: () => App.ui._svg(`<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.864-.833-2.634 0L4.18 16.5c-.77.833.192 2.5 1.732 2.5z"/>`),
       key: () => App.ui._svg(`<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/>`),
       cog: () => App.ui._svg(`<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>`),
-      test: () => App.ui._svg(`<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>`)
+      test: () => App.ui._svg(`<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>`),
+      doc: () => App.ui._svg(`<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>`)
     },
 
     /**
@@ -357,7 +358,7 @@
       const left = h('div', { class: 'topbar-left' }, [
         h('div', { class: 'brand' }, [
           h('img', { class: 'brand-icon', src: '/web/favicon.svg', alt: 'Logo' }),
-          h('div', { class: 'brand-text' }, 'Claude Code & Codex Proxy')
+          h('div', { class: 'brand-text' }, 'AI Proxy')
         ])
       ]);
 
@@ -378,7 +379,15 @@
         title: '切换主题'
       });
 
+      const docBtn = h('button', {
+        class: 'btn btn-icon',
+        onclick: () => App.ui.showDocModal(),
+        title: '使用文档',
+        style: 'padding: 6px; margin-right: 8px;'
+      }, [icons.doc()]);
+
       const right = h('div', { class: 'topbar-right' }, [
+        docBtn,
         themeBtn,
         h('button', {
           class: 'btn btn-secondary btn-sm',
@@ -498,6 +507,83 @@
           if (el.parentNode) el.parentNode.removeChild(el);
         }, 320);
       }, 3600);
+    },
+
+    /**
+     * 显示使用文档弹窗
+     */
+    showDocModal: function() {
+      const { h } = App.ui;
+
+      // 如果已存在则移除
+      const existing = document.getElementById('doc-modal');
+      if (existing) existing.remove();
+
+      const docContent = `
+<h3>🚀 API 代理端点</h3>
+<p>本服务支持以下 AI 模型的 API 代理转发：</p>
+
+<h4>Claude (Anthropic)</h4>
+<ul>
+  <li><code>POST /v1/messages</code> - Claude Messages API</li>
+  <li>支持流式响应、Prompt Caching</li>
+</ul>
+
+<h4>Codex (OpenAI 兼容)</h4>
+<ul>
+  <li><code>POST /v1/chat/completions</code> - Chat Completions API</li>
+  <li><code>POST /v1/responses</code> - Responses API</li>
+</ul>
+
+<h4>Google Gemini</h4>
+<ul>
+  <li><code>POST /v1beta/models/{model}:generateContent</code></li>
+  <li><code>POST /v1beta/models/{model}:streamGenerateContent</code></li>
+</ul>
+
+<h3>🔓 公开端点（无需认证）</h3>
+<ul>
+  <li><code>GET /health</code> - 健康检查</li>
+  <li><code>GET /public/summary</code> - 调用统计摘要</li>
+  <li><code>GET /public/channel-types</code> - 渠道类型列表</li>
+</ul>
+
+<h3>📊 管理页面功能</h3>
+<table>
+  <tr><td><b>概览</b></td><td>实时请求统计、渠道状态监控</td></tr>
+  <tr><td><b>渠道管理</b></td><td>添加/编辑渠道、API Key 管理、多端点配置</td></tr>
+  <tr><td><b>调用统计</b></td><td>按渠道/模型维度的详细统计</td></tr>
+  <tr><td><b>请求趋势</b></td><td>历史请求量、成功率趋势图</td></tr>
+  <tr><td><b>请求日志</b></td><td>实时日志流、错误排查</td></tr>
+  <tr><td><b>API 令牌</b></td><td>访问令牌管理、渠道权限控制</td></tr>
+  <tr><td><b>系统设置</b></td><td>冷却策略、日志保留、页面显示配置</td></tr>
+</table>
+
+<h3>🔑 认证方式</h3>
+<p>API 请求需在 Header 中携带令牌：</p>
+<code>Authorization: Bearer &lt;your-token&gt;</code>
+`;
+
+      const modal = h('div', { id: 'doc-modal', class: 'modal', style: 'display: flex;' }, [
+        h('div', { class: 'modal-content', style: 'max-width: 680px; max-height: 80vh; overflow-y: auto;' }, [
+          h('div', { class: 'modal-header' }, [
+            h('h2', { class: 'modal-title' }, '使用文档'),
+            h('button', {
+              class: 'modal-close',
+              onclick: () => modal.remove(),
+              innerHTML: '&times;'
+            })
+          ]),
+          h('div', { class: 'modal-body doc-content', innerHTML: docContent })
+        ])
+      ]);
+
+      // 点击背景关闭
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) modal.remove();
+      });
+
+      document.body.appendChild(modal);
     }
   };
 
