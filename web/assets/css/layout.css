@@ -37,6 +37,31 @@
   border-bottom: 1px solid var(--glass-border);
   z-index: 300;
 }
+
+/* 导航栏顶部渐变装饰线 */
+.topbar::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 5px;
+  background: linear-gradient(90deg, #f59e0b, #ec4899, #8b5cf6, #f59e0b);
+  background-size: 200% 100%;
+  animation: gradient-flow 4s linear infinite;
+}
+
+@keyframes gradient-flow {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .topbar::before {
+    animation: none;
+    background-size: 100% 100%;
+  }
+}
 .topbar-left { display: flex; align-items: center; gap: var(--space-4); }
 .brand { display: flex; align-items: center; gap: var(--space-3); }
 .brand-icon {

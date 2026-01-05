@@ -10,10 +10,35 @@
   <title>系统设置 - AI Proxy</title>
   <link rel="stylesheet" href="/web/assets/css/theme.css">
   <link rel="stylesheet" href="/web/assets/css/styles.css">
+  <link rel="stylesheet" href="/web/assets/css/layout.css">
   <script src="/web/assets/js/theme.js"></script>
   <link href="/web/assets/css/inter.css" rel="stylesheet">
 </head>
-<body class="dashboard-theme">
+<body class="dashboard-theme top-layout">
+  <!-- 顶部导航栏 -->
+  <nav class="topbar">
+    <div class="topbar-left">
+      <a href="/web/index.html" class="brand">
+        <img src="/web/favicon-192.png" alt="AI Proxy" class="brand-icon">
+        <span class="brand-text">AI Proxy</span>
+      </a>
+    </div>
+    <div class="topnav">
+      <a href="/web/index.html" class="topnav-link">仪表盘</a>
+      <a href="/web/channels.html" class="topnav-link">渠道管理</a>
+      <a href="/web/tokens.html" class="topnav-link">令牌管理</a>
+      <a href="/web/logs.html" class="topnav-link">日志查询</a>
+      <a href="/web/settings.html" class="topnav-link active">系统设置</a>
+    </div>
+    <div class="topbar-right">
+      <button class="theme-toggle" onclick="window.toggleTheme && window.toggleTheme()" title="切换主题">
+        <svg class="icon-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+        </svg>
+      </button>
+    </div>
+  </nav>
+
   <div class="app-container">
     <main class="main-content">
       <div class="content-area">
