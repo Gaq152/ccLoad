@@ -253,6 +253,29 @@ html.theme-transition *::after {
   100% { transform: rotate(360deg) scale(1); }
 }
 
+/* === GitHub 链接按钮样式 === */
+.brand-github {
+  margin-left: var(--space-2, 8px);
+  color: var(--theme-text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  background: var(--theme-bg-hover);
+}
+
+.brand-github:hover {
+  color: var(--theme-text-main);
+  background: var(--theme-bg-active);
+}
+
+.brand-github svg {
+  width: 20px;
+  height: 20px;
+}
+
 /* === JS 交互状态工具类 === */
 
 /* 表格行高亮状态 */
@@ -325,4 +348,29 @@ html.theme-transition *::after {
 .modern-table tbody tr.log-row-warning:hover {
   background-color: var(--theme-bg-row-warning) !important;
   filter: brightness(0.95);
+}
+
+/* === 全局滚动条样式 === */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--theme-scrollbar-track);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--theme-scrollbar-thumb);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--theme-scrollbar-thumb-hover);
+}
+
+/* Firefox 滚动条 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--theme-scrollbar-thumb) var(--theme-scrollbar-track);
 }
