@@ -463,6 +463,14 @@ func (s *SQLStore) GetDailyStatsMetrics(ctx context.Context, startDate, endDate 
 
 	// 按日期排序输出
 	result := make([]model.MetricPoint, 0, len(dateMap))
+
+	// 调试：打印 dateMap 的所有 keys
+	dateMapKeys := make([]string, 0, len(dateMap))
+	for k := range dateMap {
+		dateMapKeys = append(dateMapKeys, k)
+	}
+	log.Printf("[DEBUG] GetDailyStatsMetrics: dateMapKeys=%v, startDate=%v, endDate=%v", dateMapKeys, startDate, endDate)
+
 	for d := startDate; !d.After(endDate); d = d.AddDate(0, 0, 1) {
 		dateStr := d.Format("2006-01-02")
 		if mp, ok := dateMap[dateStr]; ok {
