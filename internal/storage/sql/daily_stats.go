@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"time"
 
 	"ccLoad/internal/model"
@@ -272,6 +273,9 @@ func (s *SQLStore) GetDailyStatsMetrics(ctx context.Context, startDate, endDate 
 	startStr := startDate.Format("2006-01-02")
 	endStr := endDate.Format("2006-01-02")
 
+	log.Printf("[DEBUG] GetDailyStatsMetrics: startStr=%s, endStr=%s, channelType=%s, model=%s, authTokenID=%d",
+		startStr, endStr, channelType, modelFilter, authTokenID)
+
 	// 基础查询：按日期和渠道聚合
 	query := `
 		SELECT
@@ -310,6 +314,8 @@ func (s *SQLStore) GetDailyStatsMetrics(ctx context.Context, startDate, endDate 
 
 	query += " GROUP BY date, channel_id ORDER BY date ASC"
 
+	log.Printf("[DEBUG] GetDailyStatsMetrics query: %s, args: %v", query, args)
+
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query daily stats metrics: %w", err)
@@ -319,8 +325,10 @@ func (s *SQLStore) GetDailyStatsMetrics(ctx context.Context, startDate, endDate 
 	// 按日期聚合数据
 	dateMap := make(map[string]*model.MetricPoint)
 	channelIDsToFetch := make(map[int64]bool)
+	rowCount := 0
 
 	for rows.Next() {
+		rowCount++
 		var dateStr string
 		var channelID sql.NullInt64
 		var success, errorCount int
@@ -422,6 +430,8 @@ func (s *SQLStore) GetDailyStatsMetrics(ctx context.Context, startDate, endDate 
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+
+	log.Printf("[DEBUG] GetDailyStatsMetrics: rowCount=%d, dateMapLen=%d", rowCount, len(dateMap))
 
 	// 批量获取渠道名称
 	channelNames := make(map[int64]string)
