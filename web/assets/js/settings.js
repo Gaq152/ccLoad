@@ -5,7 +5,8 @@ let originalSettings = {}; // 保存原始值用于比较
 
 async function loadSettings() {
   try {
-    const data = await fetchDataWithAuth('/admin/settings');
+    const resp = await fetchDataWithAuth('/admin/settings');
+    const data = resp.settings || resp;
     if (!Array.isArray(data)) throw new Error('响应不是数组');
     renderSettings(data);
   } catch (err) {
