@@ -212,6 +212,10 @@ func (s *Server) HandleProxyRequest(c *gin.Context) {
 		return
 	}
 
+	// 注册活跃请求（用于实时追踪进行中的请求）
+	activeReqID := s.activeReqManager.Register(originalModel, c.ClientIP(), isStreaming)
+	defer s.activeReqManager.Remove(activeReqID)
+
 	reqCtx := &proxyRequestContext{
 		originalModel: originalModel,
 		requestMethod: requestMethod,
@@ -224,6 +228,8 @@ func (s *Server) HandleProxyRequest(c *gin.Context) {
 		tokenID:       tokenIDInt64,
 		tokenName:     tokenNameStr,
 		clientIP:      c.ClientIP(),
+		activeReqID:   activeReqID,
+		onBytesRead:   func(n int64) { s.activeReqManager.AddBytes(activeReqID, n) },
 	}
 
 	// 按优先级遍历候选渠道，尝试转发

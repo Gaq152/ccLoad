@@ -163,3 +163,10 @@ func writeSSELog(w gin.ResponseWriter, entry *model.LogEntry) error {
 	_, err = w.WriteString("\n\n")
 	return err
 }
+
+// HandleActiveRequests 获取当前活跃请求列表
+// GET /admin/logs/active
+func (s *Server) HandleActiveRequests(c *gin.Context) {
+	requests := s.activeReqManager.List()
+	RespondJSON(c, 200, requests)
+}

@@ -85,6 +85,10 @@ type proxyRequestContext struct {
 
 	// 时间记录（2026-01新增）
 	attemptStartTime time.Time // 渠道尝试开始时间（用于日志记录，每次渠道切换时更新）
+
+	// 活跃请求追踪（2026-01新增）
+	activeReqID int64       // 活跃请求ID（用于更新渠道信息和字节数）
+	onBytesRead func(int64) // 字节读取回调（可选，用于实时更新活跃请求统计）
 }
 
 // proxyResult 代理请求结果

@@ -317,6 +317,7 @@ func (s *Server) handleSuccessResponse(
 	requestPath string,
 	requestURL string,
 	isGeminiCLI bool,
+	onBytesRead func(int64),
 ) (*fwResult, float64, error) {
 	// 流式请求：禁用 WriteTimeout，避免长时间流被服务器自己切断
 	if reqCtx.isStreaming {
@@ -341,6 +342,7 @@ func (s *Server) handleSuccessResponse(
 				actualFirstByteTime = reqCtx.Duration()
 			}
 		},
+		onBytesRead: onBytesRead, // 传递字节读取回调（用于活跃请求统计）
 	}
 
 	// 流式传输并解析usage
@@ -424,6 +426,7 @@ func (s *Server) handleResponse(
 	apiKey string,
 	requestPath string,
 	isGeminiCLI bool,
+	onBytesRead func(int64),
 ) (*fwResult, float64, error) {
 	hdrClone := resp.Header.Clone()
 
@@ -500,7 +503,7 @@ func (s *Server) handleResponse(
 	// 成功状态：流式转发（传递渠道信息用于日志记录）
 	channelID := &cfg.ID
 	requestURL := cfg.URL + requestPath // 构建完整请求URL用于调试日志
-	return s.handleSuccessResponse(reqCtx, resp, firstByteTime, hdrClone, w, channelType, channelID, apiKey, requestPath, requestURL, isGeminiCLI)
+	return s.handleSuccessResponse(reqCtx, resp, firstByteTime, hdrClone, w, channelType, channelID, apiKey, requestPath, requestURL, isGeminiCLI, onBytesRead)
 }
 
 // ============================================================================
@@ -513,7 +516,7 @@ func (s *Server) handleResponse(
 // 参数新增 method 用于支持任意HTTP方法（GET、POST、PUT、DELETE等）
 // 参数新增 codexHeaders 用于 Codex 渠道的额外请求头（非 Codex 渠道传 nil）
 // 参数新增 isGeminiCLI 用于 Gemini CLI 官方预设的特殊认证
-func (s *Server) forwardOnceAsync(ctx context.Context, cfg *model.Config, apiKey string, method string, body []byte, hdr http.Header, rawQuery, requestPath string, w http.ResponseWriter, codexHeaders *CodexExtraHeaders, isGeminiCLI bool) (*fwResult, float64, error) {
+func (s *Server) forwardOnceAsync(ctx context.Context, cfg *model.Config, apiKey string, method string, body []byte, hdr http.Header, rawQuery, requestPath string, w http.ResponseWriter, codexHeaders *CodexExtraHeaders, isGeminiCLI bool, onBytesRead func(int64)) (*fwResult, float64, error) {
 	// 1. 创建请求上下文（处理超时）
 	reqCtx := s.newRequestContext(ctx, requestPath, body)
 	defer reqCtx.cleanup() // [INFO] 统一清理：定时器 + context（总是安全）
@@ -559,7 +562,7 @@ func (s *Server) forwardOnceAsync(ctx context.Context, cfg *model.Config, apiKey
 	firstByteTime := reqCtx.Duration()
 
 	// 5. 处理响应(传递channelType用于精确识别usage格式,传递渠道信息用于日志记录)
-	res, duration, err := s.handleResponse(reqCtx, resp, firstByteTime, w, cfg.ChannelType, cfg, apiKey, requestPath, isGeminiCLI)
+	res, duration, err := s.handleResponse(reqCtx, resp, firstByteTime, w, cfg.ChannelType, cfg, apiKey, requestPath, isGeminiCLI, onBytesRead)
 
 	// 流式传输过程中首字节超时：确保错误被正确标记为首字节超时
 	if err != nil && reqCtx.firstByteTimeoutTriggered() {
@@ -599,6 +602,11 @@ func (s *Server) forwardAttempt(
 	// 记录渠道尝试开始时间（用于日志记录，每次渠道/Key切换时更新）
 	reqCtx.attemptStartTime = time.Now()
 
+	// 更新活跃请求的渠道信息（用于前端实时显示）
+	if reqCtx.activeReqID > 0 {
+		s.activeReqManager.Update(reqCtx.activeReqID, cfg.ID, cfg.Name, cfg.GetChannelType(), selectedKey, reqCtx.tokenID)
+	}
+
 	// [VALIDATE] Key级验证器检查(88code套餐验证等)
 	// 每个Key单独验证，避免误杀免费key或误放付费key
 	if s.validatorManager != nil {
@@ -613,7 +621,7 @@ func (s *Server) forwardAttempt(
 	// 转发请求（传递实际的API Key字符串）
 	// [INFO] Codex 渠道额外传递 codexHeaders，Gemini CLI 传递 isGeminiCLI 标志
 	res, duration, err := s.forwardOnceAsync(ctx, cfg, selectedKey, reqCtx.requestMethod,
-		bodyToSend, reqCtx.header, reqCtx.rawQuery, reqCtx.requestPath, w, reqCtx.codexHeaders, reqCtx.isGeminiCLI)
+		bodyToSend, reqCtx.header, reqCtx.rawQuery, reqCtx.requestPath, w, reqCtx.codexHeaders, reqCtx.isGeminiCLI, reqCtx.onBytesRead)
 
 	// 处理网络错误或异常响应（如空响应）
 	// [INFO] 修复：handleResponse可能返回err即使StatusCode=200（例如Content-Length=0）
