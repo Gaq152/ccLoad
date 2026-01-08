@@ -596,6 +596,9 @@ func (s *Server) forwardAttempt(
 	bodyToSend []byte,
 	w http.ResponseWriter,
 ) (*proxyResult, cooldown.Action) {
+	// 记录渠道尝试开始时间（用于日志记录，每次渠道/Key切换时更新）
+	reqCtx.attemptStartTime = time.Now()
+
 	// [VALIDATE] Key级验证器检查(88code套餐验证等)
 	// 每个Key单独验证，避免误杀免费key或误放付费key
 	if s.validatorManager != nil {
@@ -641,7 +644,7 @@ func (s *Server) forwardAttempt(
 			s.invalidateChannelRelatedCache(cfg.ID)
 			// 记录失败日志
 			s.AddLogAsync(buildLogEntry(actualModel, cfg.ID, cfg.Name, cfg.GetChannelType(), status,
-				duration, reqCtx.isStreaming, selectedKey, cfg.URL, reqCtx.tokenID, reqCtx.tokenName, reqCtx.clientIP, res, diag))
+				duration, reqCtx.isStreaming, selectedKey, cfg.URL, reqCtx.tokenID, reqCtx.tokenName, reqCtx.clientIP, res, diag, reqCtx.attemptStartTime))
 			// 返回成功（因为已经写出了部分数据）
 			return &proxyResult{
 				status:    status,
@@ -664,7 +667,7 @@ func (s *Server) forwardAttempt(
 			s.invalidateChannelRelatedCache(cfg.ID)
 			// 记录失败日志
 			s.AddLogAsync(buildLogEntry(actualModel, cfg.ID, cfg.Name, cfg.GetChannelType(), util.StatusStreamIncomplete,
-				duration, reqCtx.isStreaming, selectedKey, cfg.URL, reqCtx.tokenID, reqCtx.tokenName, reqCtx.clientIP, res, res.StreamDiagMsg))
+				duration, reqCtx.isStreaming, selectedKey, cfg.URL, reqCtx.tokenID, reqCtx.tokenName, reqCtx.clientIP, res, res.StreamDiagMsg, reqCtx.attemptStartTime))
 			// 返回成功（因为已经写出了200状态码和部分数据）
 			return &proxyResult{
 				status:    200,

@@ -82,6 +82,9 @@ type proxyRequestContext struct {
 
 	// Thinking 兼容处理（2025-12新增）
 	thinkingBlockRemoved bool // thinking 块是否已被清理（避免重复清理）
+
+	// 时间记录（2026-01新增）
+	attemptStartTime time.Time // 渠道尝试开始时间（用于日志记录，每次渠道切换时更新）
 }
 
 // proxyResult 代理请求结果
@@ -456,13 +459,19 @@ func maskAPIKey(key string) string {
 // buildLogEntry 构建日志条目（消除重复代码，遵循DRY原则）
 func buildLogEntry(originalModel string, channelID int64, channelName string, channelType string, statusCode int,
 	duration float64, isStreaming bool, apiKeyUsed string, apiBaseURL string, authTokenID int64, authTokenName string, clientIP string,
-	res *fwResult, errMsg string) *model.LogEntry {
+	res *fwResult, errMsg string, startTime time.Time) *model.LogEntry {
 
 	// API Key 脱敏（SSE 推送和数据库写入都需要脱敏）
 	maskedKey := maskAPIKey(apiKeyUsed)
 
+	// 使用传入的开始时间，如果未设置则使用当前时间
+	logTime := startTime
+	if logTime.IsZero() {
+		logTime = time.Now()
+	}
+
 	entry := &model.LogEntry{
-		Time:          model.JSONTime{Time: time.Now()},
+		Time:          model.JSONTime{Time: logTime},
 		Model:         originalModel,
 		ChannelID:     channelID,
 		ChannelName:   channelName,
