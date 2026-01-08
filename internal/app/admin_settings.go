@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strconv"
 
+	"ccLoad/internal/util"
+
 	"github.com/gin-gonic/gin"
 )
 
@@ -82,6 +84,9 @@ func (s *Server) AdminUpdateSetting(c *gin.Context) {
 		return
 	}
 
+	// 冷却配置更新后需要刷新内存中的配置
+	s.refreshCooldownConfigIfNeeded(key)
+
 	log.Printf("[INFO] Setting updated: %s = %s", key, req.Value)
 
 	RespondJSON(c, http.StatusOK, gin.H{
@@ -113,6 +118,9 @@ func (s *Server) AdminResetSetting(c *gin.Context) {
 		RespondError(c, http.StatusInternalServerError, err)
 		return
 	}
+
+	// 冷却配置更新后需要刷新内存中的配置
+	s.refreshCooldownConfigIfNeeded(key)
 
 	log.Printf("[INFO] Setting reset to default: %s = %s", key, setting.DefaultValue)
 
@@ -156,6 +164,11 @@ func (s *Server) AdminBatchUpdateSettings(c *gin.Context) {
 		log.Printf("[ERROR] AdminBatchUpdateSettings failed: %v", err)
 		RespondError(c, http.StatusInternalServerError, err)
 		return
+	}
+
+	// 检查是否包含冷却相关配置，如有则刷新
+	for key := range req {
+		s.refreshCooldownConfigIfNeeded(key)
 	}
 
 	log.Printf("[INFO] Batch updated %d settings", len(req))
@@ -211,4 +224,18 @@ func validateSettingValue(key, valueType, value string) error {
 	}
 
 	return nil
+}
+
+// refreshCooldownConfigIfNeeded 检查并刷新冷却配置
+// 当更新 cooldown_mode 或 cooldown_fixed_interval 时，需要同步刷新内存中的配置
+func (s *Server) refreshCooldownConfigIfNeeded(key string) {
+	if key != "cooldown_mode" && key != "cooldown_fixed_interval" {
+		return
+	}
+
+	// 重新读取两个冷却配置并刷新内存
+	mode := s.configService.GetString("cooldown_mode", "exponential")
+	interval := s.configService.GetIntMin("cooldown_fixed_interval", 30, 1)
+	util.SetCooldownConfig(mode, interval)
+	log.Printf("[INFO] 冷却配置已刷新: mode=%s, fixed_interval=%ds", mode, interval)
 }
