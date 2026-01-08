@@ -246,6 +246,7 @@ func TestForwardOnceAsync_Integration(t *testing.T) {
 			recorder,
 			nil,   // codexHeaders
 			false, // isGeminiCLI
+			nil,   // onBytesRead
 		)
 
 		if err != nil {
@@ -280,6 +281,7 @@ func TestForwardOnceAsync_Integration(t *testing.T) {
 			recorder,
 			nil,   // codexHeaders
 			false, // isGeminiCLI
+			nil,   // onBytesRead
 		)
 
 		if err != nil {
@@ -372,6 +374,7 @@ func TestClientCancelClosesUpstream(t *testing.T) {
 			recorder,
 			nil,   // codexHeaders
 			false, // isGeminiCLI
+			nil,   // onBytesRead
 		)
 		resultChan <- struct {
 			result   *fwResult
@@ -456,6 +459,7 @@ func TestNoGoroutineLeak(t *testing.T) {
 				recorder,
 				nil,   // codexHeaders
 				false, // isGeminiCLI
+				nil,   // onBytesRead
 			)
 		}
 
@@ -491,7 +495,7 @@ func TestNoGoroutineLeak(t *testing.T) {
 				cancel()
 			}()
 
-			srv.forwardOnceAsync(ctx, cfg, "sk-test", http.MethodPost, []byte(`{}`), http.Header{}, "", "/v1/messages", recorder, nil, false)
+			srv.forwardOnceAsync(ctx, cfg, "sk-test", http.MethodPost, []byte(`{}`), http.Header{}, "", "/v1/messages", recorder, nil, false, nil)
 		}
 
 		runtime.GC()
@@ -530,6 +534,7 @@ func TestNoGoroutineLeak(t *testing.T) {
 				recorder,
 				nil,   // codexHeaders
 				false, // isGeminiCLI
+				nil,   // onBytesRead
 			)
 		}
 

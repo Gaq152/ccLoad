@@ -1513,6 +1513,22 @@
   font-weight: var(--font-medium);
 }
 
+.status-pending {
+  color: var(--warning-500);
+  font-weight: var(--font-medium);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.pending-row {
+  background: var(--warning-50);
+  border-left: 3px solid var(--warning-400);
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
 .config-info {
   font-family: var(--font-family-mono);
   font-size: var(--text-xs);

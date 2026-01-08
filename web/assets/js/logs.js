@@ -6,6 +6,10 @@
     let authTokens = []; // 令牌列表
     let defaultTestContent = 'sonnet 4.0的发布日期是什么'; // 默认测试内容（从设置加载）
 
+    // 活跃请求轮询
+    let activeRequestsTimer = null;
+    const ACTIVE_REQUESTS_INTERVAL = 1000; // 1秒刷新一次
+
     // SSE 实时日志缓冲区（混合分页模式）
     let realtimeBuffer = []; // SSE 推送的新日志缓冲区
     const BUFFER_MAX_SIZE = 500; // 缓冲区最大容量
@@ -175,6 +179,104 @@
         const rowEl = createLogRow(entry);
         if (rowEl) tbody.appendChild(rowEl);
       }
+    }
+
+    // ============================================================
+    // 活跃请求显示（进行中的请求）
+    // ============================================================
+
+    // 格式化字节数为可读形式（K/M/G）
+    function formatBytes(bytes) {
+      if (bytes == null || bytes <= 0) return '';
+      const UNITS = ['B', 'K', 'M', 'G'];
+      const FACTOR = 1024;
+      const i = Math.min(Math.floor(Math.log(bytes) / Math.log(FACTOR)), UNITS.length - 1);
+      const value = bytes / Math.pow(FACTOR, i);
+      return value.toFixed(i > 0 ? 1 : 0) + ' ' + UNITS[i];
+    }
+
+    function clearActiveRequestsRows() {
+      document.querySelectorAll('tr.pending-row').forEach(el => el.remove());
+    }
+
+    // 渲染进行中的请求（插入到表格顶部）
+    function renderActiveRequests(activeRequests) {
+      clearActiveRequestsRows();
+      if (!activeRequests || activeRequests.length === 0) return;
+
+      const tbody = document.getElementById('tbody');
+      const firstRow = tbody.firstChild;
+      const totalCols = getTableColspan();
+      const fragment = document.createDocumentFragment();
+
+      for (const req of activeRequests) {
+        const startMs = req.start_time ? req.start_time * 1000 : 0;
+        const elapsed = startMs ? ((Date.now() - startMs) / 1000).toFixed(1) : '-';
+        const streamFlag = req.is_streaming ?
+          '<span class="stream-flag">流</span>' :
+          '<span class="stream-flag placeholder">流</span>';
+
+        // 渠道显示
+        let channelDisplay = '<span style="color: var(--neutral-500);">选择中...</span>';
+        if (req.channel_name) {
+          channelDisplay = `${escapeHtml(req.channel_name)} <small>(#${req.channel_id})</small>`;
+        }
+
+        // Key显示
+        let keyDisplay = '<span style="color: var(--neutral-500);">-</span>';
+        if (req.api_key_used) {
+          keyDisplay = `<span style="font-family: monospace; font-size: 0.85em;">${escapeHtml(req.api_key_used)}</span>`;
+        }
+
+        // 字节数显示
+        const bytesInfo = formatBytes(req.bytes_received);
+        const hasBytes = !!bytesInfo;
+        const infoDisplay = hasBytes ? `已接收 ${bytesInfo}` : '请求处理中...';
+        const infoColor = hasBytes ? 'var(--success-600)' : 'var(--neutral-500)';
+
+        const row = document.createElement('tr');
+        row.className = 'pending-row';
+        row.innerHTML = `
+          <td>${formatTime(req.start_time)}</td>
+          <td>${escapeHtml(req.client_ip || '-')}</td>
+          <td class="config-info">${channelDisplay}</td>
+          <td><span class="model-tag">${escapeHtml(req.model)}</span></td>
+          <td style="text-align: center;">${keyDisplay}</td>
+          <td><span class="status-pending">进行中</span></td>
+          <td style="text-align: right;">${elapsed}s... ${streamFlag}</td>
+          <td></td>
+          <td><span style="color: ${infoColor};">${escapeHtml(infoDisplay)}</span></td>
+        `;
+        fragment.appendChild(row);
+      }
+
+      tbody.insertBefore(fragment, firstRow);
+    }
+
+    // 加载活跃请求
+    async function loadActiveRequests() {
+      try {
+        const data = await fetchDataWithAuth('/admin/logs/active');
+        renderActiveRequests(data || []);
+      } catch (e) {
+        console.warn('加载活跃请求失败:', e);
+      }
+    }
+
+    // 启动活跃请求轮询
+    function startActiveRequestsPolling() {
+      if (activeRequestsTimer) return;
+      loadActiveRequests();
+      activeRequestsTimer = setInterval(loadActiveRequests, ACTIVE_REQUESTS_INTERVAL);
+    }
+
+    // 停止活跃请求轮询
+    function stopActiveRequestsPolling() {
+      if (activeRequestsTimer) {
+        clearInterval(activeRequestsTimer);
+        activeRequestsTimer = null;
+      }
+      clearActiveRequestsRows();
     }
 
     // ============================================================
@@ -1419,8 +1521,10 @@
       localStorage.setItem(REALTIME_MODE_KEY, enabled ? 'true' : 'false');
       if (enabled) {
         connectSSE();
+        startActiveRequestsPolling();
       } else {
         disconnectSSE();
+        stopActiveRequestsPolling();
         // 用户主动关闭时重置状态
         lastReceivedLogTimeMs = 0;
         displayedLogIds.clear();
@@ -1441,6 +1545,7 @@
         if (realtimeModeEnabled && sseEventSource) {
           console.log('[SSE DEBUG] 页面隐藏，断开 SSE');
           disconnectSSE();
+          stopActiveRequestsPolling();
         }
       } else {
         // 页面重新可见时，检查是否需要重连
@@ -1457,6 +1562,7 @@
             }
             console.log('[SSE DEBUG] 重新连接 SSE，since_ms:', lastReceivedLogTimeMs);
             connectSSE();
+            startActiveRequestsPolling();
           }
         }
       }

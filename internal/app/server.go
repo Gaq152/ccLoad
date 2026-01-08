@@ -58,8 +58,9 @@ type Server struct {
 	maxConcurrency int           // 最大并发数（默认1000）
 
 	// 后台服务
-	endpointTester  *EndpointTester  // 后台端点测速服务
-	cooldownService *CooldownService // 冷却事件 SSE 广播服务
+	endpointTester   *EndpointTester        // 后台端点测速服务
+	cooldownService  *CooldownService       // 冷却事件 SSE 广播服务
+	activeReqManager *activeRequestManager  // 活跃请求管理器
 
 	// 优雅关闭机制
 	shutdownCh     chan struct{}  // 关闭信号channel
@@ -164,6 +165,9 @@ func NewServer(store storage.Store) *Server {
 
 	// 初始化Key选择器（移除store依赖，避免重复查询）
 	s.keySelector = NewKeySelector()
+
+	// 初始化活跃请求管理器（用于追踪进行中的请求）
+	s.activeReqManager = newActiveRequestManager()
 
 	// ============================================================================
 	// 创建服务层（仅保留有价值的服务）
@@ -470,6 +474,7 @@ func (s *Server) SetupRoutes(r *gin.Engine) {
 
 		// 日志实时推送（SSE）
 		admin.GET("/logs/stream", s.HandleLogSSE)
+		admin.GET("/logs/active", s.HandleActiveRequests)
 
 		// 冷却事件实时推送（SSE）
 		admin.GET("/cooldown/stream", s.HandleCooldownSSE)
