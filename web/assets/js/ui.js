@@ -590,6 +590,86 @@
       });
 
       document.body.appendChild(modal);
+    },
+
+    /**
+     * 显示确认弹窗（替代原生 confirm）
+     * @param {Object} options - 配置选项
+     * @param {string} options.title - 标题（默认"确认"）
+     * @param {string} options.message - 提示内容
+     * @param {string} options.confirmText - 确认按钮文本（默认"确定"）
+     * @param {string} options.cancelText - 取消按钮文本（默认"取消"）
+     * @param {string} options.type - 类型: 'danger' | 'warning' | 'info'（默认 'info'）
+     * @returns {Promise<boolean>} - 用户点击确认返回 true，取消返回 false
+     */
+    showConfirm: function(options) {
+      return new Promise((resolve) => {
+        const { h } = App.ui;
+        const title = options.title || '确认';
+        const message = options.message || '确定要执行此操作吗？';
+        const confirmText = options.confirmText || '确定';
+        const cancelText = options.cancelText || '取消';
+        const type = options.type || 'info';
+
+        // 移除可能已存在的确认框
+        const existing = document.getElementById('confirm-dialog-modal');
+        if (existing) existing.remove();
+
+        // 根据类型设置确认按钮样式
+        let confirmBtnClass = 'btn btn-primary';
+        if (type === 'danger') {
+          confirmBtnClass = 'btn btn-danger';
+        } else if (type === 'warning') {
+          confirmBtnClass = 'btn btn-warning';
+        }
+
+        const modal = h('div', { id: 'confirm-dialog-modal', class: 'modal show' }, [
+          h('div', { class: 'modal-content confirm-modal' }, [
+            h('h2', { class: 'modal-title' }, title),
+            h('p', { style: 'margin: 20px 0; color: var(--neutral-600);' }, message),
+            h('div', { class: 'confirm-actions' }, [
+              h('button', {
+                class: 'btn btn-secondary',
+                onclick: () => {
+                  modal.remove();
+                  resolve(false);
+                }
+              }, cancelText),
+              h('button', {
+                class: confirmBtnClass,
+                onclick: () => {
+                  modal.remove();
+                  resolve(true);
+                }
+              }, confirmText)
+            ])
+          ])
+        ]);
+
+        // 点击背景取消
+        modal.addEventListener('click', (e) => {
+          if (e.target === modal) {
+            modal.remove();
+            resolve(false);
+          }
+        });
+
+        // ESC 键取消
+        const handleEsc = (e) => {
+          if (e.key === 'Escape') {
+            modal.remove();
+            resolve(false);
+            document.removeEventListener('keydown', handleEsc);
+          }
+        };
+        document.addEventListener('keydown', handleEsc);
+
+        document.body.appendChild(modal);
+
+        // 自动聚焦取消按钮（安全默认）
+        const cancelBtn = modal.querySelector('.btn-secondary');
+        if (cancelBtn) cancelBtn.focus();
+      });
     }
   };
 
@@ -749,6 +829,8 @@ window.initTopbar = App.ui.initTopbar;
 window.showNotification = App.ui.showToast;
 window.showSuccess = (msg) => App.ui.showToast(msg, 'success');
 window.showError = (msg) => App.ui.showToast(msg, 'error');
+window.showWarning = (msg) => App.ui.showToast(msg, 'warning');
+window.showConfirm = App.ui.showConfirm;
 window.pauseBackgroundAnimation = App.ui.pauseBackgroundAnimation;
 window.resumeBackgroundAnimation = App.ui.resumeBackgroundAnimation;
 window.setButtonLoading = App.ui.setButtonLoading;
