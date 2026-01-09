@@ -399,11 +399,11 @@ func isThinkingModeError(body []byte) bool {
 	// 检测 Anthropic API 的 thinking 模式错误
 	// 1. "Expected `thinking` or `redacted_thinking`, but found `text`"
 	// 2. "must start with a thinking block"
-	// 3. "Invalid `signature` in `thinking` block" (signature 无效或缺失)
+	// 3. "Invalid `signature` in `thinking` block" / "signature: Field required"
 	if !strings.Contains(bodyStr, "thinking") {
 		return false
 	}
 	return (strings.Contains(bodyStr, "Expected") && strings.Contains(bodyStr, "found")) ||
 		strings.Contains(bodyStr, "must start with a thinking block") ||
-		(strings.Contains(bodyStr, "Invalid") && strings.Contains(bodyStr, "signature"))
+		strings.Contains(bodyStr, "signature")
 }
