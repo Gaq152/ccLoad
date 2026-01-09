@@ -320,12 +320,11 @@ func (s *Server) handleSuccessResponse(
 	isGeminiCLI bool,
 	onBytesRead func(int64),
 ) (*fwResult, float64, error) {
-	// 流式请求：禁用 WriteTimeout，避免长时间流被服务器自己切断
+	// 流式请求：尝试禁用 WriteTimeout，避免长时间流被服务器自己切断
+	// 注意：某些环境（Docker、反向代理、HTTP/2）的底层连接不支持此操作，静默忽略
 	if reqCtx.isStreaming {
 		rc := http.NewResponseController(w)
-		if err := rc.SetWriteDeadline(time.Time{}); err != nil {
-			log.Printf("[WARN] 无法禁用流式请求的 WriteTimeout: %v", err)
-		}
+		_ = rc.SetWriteDeadline(time.Time{}) // 忽略错误，不影响功能
 	}
 
 	// 写入响应头
@@ -1096,21 +1095,26 @@ func (s *Server) captureForMonitorWithCapture(
 	}
 
 	// 优先使用 ResponseCapture 捕获的数据（包括流式响应）
+	// 如果 capture 为空或未捕获到数据，降级使用 fwResult 中的响应体
+	var capturedBody []byte
 	if capture != nil {
-		capturedBody := capture.Body()
-		if len(capturedBody) > 0 {
-			if capture.IsTruncated() {
-				trace.ResponseBody = string(capturedBody) + "\n...(truncated)"
-			} else {
-				trace.ResponseBody = string(capturedBody)
-			}
-		}
+		capturedBody = capture.Body()
 		// 如果 res 没有状态码，使用 capture 的状态码
 		if trace.StatusCode == 0 {
 			trace.StatusCode = capture.StatusCode()
 		}
+	}
+
+	// 确定响应体来源：优先 capture，降级 res.Body
+	if len(capturedBody) > 0 {
+		if capture.IsTruncated() {
+			trace.ResponseBody = string(capturedBody) + "\n...(truncated)"
+		} else {
+			trace.ResponseBody = string(capturedBody)
+		}
 	} else if res != nil && len(res.Body) > 0 {
-		// 降级：使用 fwResult 中的响应体
+		// 降级：capture 为空或未捕获到数据时，使用 fwResult 中的响应体
+		// 这通常发生在错误响应时（handleErrorResponse 读取响应体但不写入 ResponseWriter）
 		if len(res.Body) <= maxCaptureSize {
 			trace.ResponseBody = string(res.Body)
 		} else {
