@@ -460,6 +460,9 @@ func (s *Server) SetupRoutes(r *gin.Engine) {
 		// OAuth Token 代理（用于 Codex 渠道 OAuth 流程）
 		admin.POST("/oauth/token", s.HandleOAuthToken)
 
+		// Kiro Token 刷新
+		admin.POST("/kiro/refresh", s.HandleKiroRefresh)
+
 		// 统计分析
 		admin.GET("/logs", s.HandleErrors)
 		admin.GET("/metrics", s.HandleMetrics)
