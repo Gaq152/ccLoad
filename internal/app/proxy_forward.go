@@ -628,8 +628,17 @@ func (s *Server) forwardAttempt(
 		targetWriter = responseCapture
 	}
 
-	res, duration, err := s.forwardOnceAsync(ctx, cfg, selectedKey, reqCtx.requestMethod,
-		bodyToSend, reqCtx.header, reqCtx.rawQuery, reqCtx.requestPath, targetWriter, reqCtx.codexHeaders, reqCtx.isGeminiCLI, reqCtx.onBytesRead)
+	var res *fwResult
+	var duration float64
+	var err error
+
+	// [INFO] Kiro 预设使用专门的转发逻辑
+	if reqCtx.isKiro {
+		res, duration, err = s.forwardKiroRequest(ctx, cfg, reqCtx, bodyToSend, targetWriter)
+	} else {
+		res, duration, err = s.forwardOnceAsync(ctx, cfg, selectedKey, reqCtx.requestMethod,
+			bodyToSend, reqCtx.header, reqCtx.rawQuery, reqCtx.requestPath, targetWriter, reqCtx.codexHeaders, reqCtx.isGeminiCLI, reqCtx.onBytesRead)
+	}
 
 	// 监控捕获（仅在监控开启时执行，异步不阻塞主流程）
 	// 使用 ResponseCapture 捕获的数据（包括流式响应）
@@ -802,6 +811,19 @@ func (s *Server) tryChannelWithKeys(ctx context.Context, cfg *model.Config, reqC
 		}
 	}
 
+	// [INFO] Kiro 预设预处理：转换请求体格式（Anthropic → CodeWhisperer）
+	// Kiro 是 AWS CodeWhisperer 的 Claude 接口，需要特殊的请求格式
+	isKiroPreset := cfg.ChannelType == util.ChannelTypeAnthropic && cfg.Preset == "kiro"
+	if isKiroPreset {
+		reqCtx.isKiro = true
+		kiroBody, err := TransformToKiroRequest(bodyToSend)
+		if err != nil {
+			log.Printf("[ERROR] [Kiro] 请求体转换失败: %v", err)
+			return nil, fmt.Errorf("kiro request transform failed: %w", err)
+		}
+		bodyToSend = kiroBody
+	}
+
 	// Key重试循环
 keyLoop:
 	for range maxKeyRetries {
@@ -891,6 +913,67 @@ keyLoop:
 			}
 
 			actualKey = refreshedKey
+		}
+
+		// [INFO] Kiro 预设：处理 OAuth 认证
+		// Kiro 是 AWS CodeWhisperer 的 Claude 接口，使用 AWS SSO 认证
+		if isKiroPreset {
+			// 从 apiKeys 中查找对应的 Key
+			var foundKey *model.APIKey
+			for _, ak := range apiKeys {
+				if ak.KeyIndex == keyIndex {
+					foundKey = ak
+					break
+				}
+			}
+
+			if foundKey == nil {
+				log.Printf("[WARN] [Kiro] Key#%d 未找到，跳过", keyIndex)
+				continue
+			}
+
+			// 构建 Kiro 认证配置（从 OAuth Token 字段读取）
+			// 前端将 Token 存储在: refresh_token, access_token, id_token（IdC配置JSON）, token_expires_at
+			if foundKey.RefreshToken == "" {
+				log.Printf("[WARN] [Kiro] Key#%d 缺少 RefreshToken，跳过", keyIndex)
+				continue
+			}
+
+			kiroConfig := &KiroAuthConfig{
+				AuthType:     KiroAuthMethodSocial, // 默认 Social 方式
+				RefreshToken: foundKey.RefreshToken,
+			}
+
+			// 检查是否是 IdC 方式（id_token 字段存储了 IdC 配置 JSON）
+			if foundKey.IDToken != "" && strings.HasPrefix(foundKey.IDToken, "{") {
+				var idcInfo struct {
+					StartUrl     string `json:"startUrl"`
+					Region       string `json:"region"`
+					ClientID     string `json:"clientId"`
+					ClientSecret string `json:"clientSecret"`
+				}
+				if err := sonic.Unmarshal([]byte(foundKey.IDToken), &idcInfo); err == nil && idcInfo.StartUrl != "" {
+					kiroConfig.AuthType = KiroAuthMethodIdC
+					kiroConfig.ClientID = idcInfo.ClientID
+					kiroConfig.ClientSecret = idcInfo.ClientSecret
+				}
+			}
+
+			// 检查并刷新 Token
+			accessToken, expiresAt, err := s.RefreshKiroTokenIfNeeded(
+				ctx, cfg.ID, keyIndex, kiroConfig, foundKey.AccessToken, foundKey.TokenExpiresAt)
+			if err != nil {
+				log.Printf("[ERROR] [Kiro] Token 刷新失败: %v", err)
+				continue
+			}
+
+			// 更新上下文中的 Token
+			reqCtx.kiroAccessToken = accessToken
+			// 更新数据库中的过期时间（如果刷新了）
+			if expiresAt != foundKey.TokenExpiresAt {
+				foundKey.AccessToken = accessToken
+				foundKey.TokenExpiresAt = expiresAt
+			}
 		}
 		// 自定义预设或其他：直接使用普通 API Key，无需特殊处理
 
