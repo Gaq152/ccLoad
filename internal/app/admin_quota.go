@@ -269,10 +269,10 @@ func (s *Server) handleAcwScV2QuotaFetch(c *gin.Context, qc *model.QuotaConfig) 
 	cookieHeader := ""
 	userID := ""
 	for key, value := range qc.RequestHeaders {
-		lowerKey := strings.ToLower(key)
-		if lowerKey == "cookie" {
+		switch strings.ToLower(key) {
+		case "cookie":
 			cookieHeader = value
-		} else if lowerKey == "new-api-user" {
+		case "new-api-user":
 			userID = value
 		}
 	}
