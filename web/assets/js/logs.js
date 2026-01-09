@@ -807,7 +807,8 @@
     async function loadAuthTokens() {
       try {
         const data = await fetchDataWithAuth('/admin/auth-tokens');
-        authTokens = data || [];
+        // [FIX] 后端返回格式是 {tokens: [...]}，需要提取 tokens 数组
+        authTokens = data?.tokens || data || [];
 
         // 填充令牌选择器
         const tokenSelect = document.getElementById('f_auth_token');
