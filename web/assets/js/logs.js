@@ -239,8 +239,8 @@
         row.innerHTML = `
           <td>${formatTime(req.start_time)}</td>
           <td>${escapeHtml(req.client_ip || '-')}</td>
-          <td class="config-info">${channelDisplay}</td>
           <td><span class="model-tag">${escapeHtml(req.model)}</span></td>
+          <td class="config-info">${channelDisplay}</td>
           <td style="text-align: center;">${keyDisplay}</td>
           <td><span class="status-pending">进行中</span></td>
           <td style="text-align: right;">${elapsed}s... ${streamFlag}</td>
