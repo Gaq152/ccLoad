@@ -1544,19 +1544,20 @@
 .pending-row {
   background: linear-gradient(
     90deg,
-    rgba(59, 130, 246, 0.08) 0%,
-    rgba(16, 185, 129, 0.06) 50%,
-    rgba(59, 130, 246, 0.08) 100%
-  );
+    rgba(59, 130, 246, 0.20) 0%,
+    rgba(16, 185, 129, 0.15) 50%,
+    rgba(59, 130, 246, 0.20) 100%
+  ) !important;
   background-size: 200% 100%;
-  animation: pendingRowFlow 3s ease-in-out infinite;
-  border-left: 3px solid var(--primary-500);
+  animation: pendingRowFlow 2.5s ease-in-out infinite;
+  border-left: 4px solid var(--primary-500);
   position: relative;
 }
 
 .pending-row td {
-  border-top: 1px solid rgba(59, 130, 246, 0.2) !important;
-  border-bottom: 1px solid rgba(59, 130, 246, 0.2) !important;
+  background: transparent !important;
+  border-top: 1px solid rgba(59, 130, 246, 0.35) !important;
+  border-bottom: 1px solid rgba(59, 130, 246, 0.35) !important;
 }
 
 .pending-row td:first-child {
@@ -1589,18 +1590,19 @@
 .dashboard-theme .pending-row {
   background: linear-gradient(
     90deg,
-    rgba(59, 130, 246, 0.12) 0%,
-    rgba(16, 185, 129, 0.08) 50%,
-    rgba(59, 130, 246, 0.12) 100%
-  );
+    rgba(59, 130, 246, 0.25) 0%,
+    rgba(16, 185, 129, 0.18) 50%,
+    rgba(59, 130, 246, 0.25) 100%
+  ) !important;
   background-size: 200% 100%;
-  animation: pendingRowFlow 3s ease-in-out infinite;
+  animation: pendingRowFlow 2.5s ease-in-out infinite;
   border-left-color: var(--primary-400);
 }
 
 .dashboard-theme .pending-row td {
-  border-top-color: rgba(59, 130, 246, 0.25) !important;
-  border-bottom-color: rgba(59, 130, 246, 0.25) !important;
+  background: transparent !important;
+  border-top-color: rgba(59, 130, 246, 0.4) !important;
+  border-bottom-color: rgba(59, 130, 246, 0.4) !important;
 }
 
 .dashboard-theme .status-pending {
