@@ -1518,20 +1518,98 @@
   font-weight: var(--font-medium);
 }
 
+/* 活跃请求状态标签 */
 .status-pending {
-  color: var(--primary-500);
-  font-weight: var(--font-medium);
-  animation: pulse 1.5s ease-in-out infinite;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--primary-600);
+  font-weight: 600;
+  padding: 2px 8px;
+  background: rgba(59, 130, 246, 0.15);
+  border-radius: 999px;
+  font-size: 12px;
 }
 
+.status-pending::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  background: var(--primary-500);
+  border-radius: 50%;
+  animation: statusPulse 1.5s ease-in-out infinite;
+}
+
+/* 活跃请求行 - 渐变呼吸效果 */
 .pending-row {
-  background: var(--primary-50);
+  background: linear-gradient(
+    90deg,
+    rgba(59, 130, 246, 0.08) 0%,
+    rgba(16, 185, 129, 0.06) 50%,
+    rgba(59, 130, 246, 0.08) 100%
+  );
+  background-size: 200% 100%;
+  animation: pendingRowFlow 3s ease-in-out infinite;
   border-left: 3px solid var(--primary-500);
+  position: relative;
 }
 
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.6; }
+.pending-row td {
+  border-top: 1px solid rgba(59, 130, 246, 0.2) !important;
+  border-bottom: 1px solid rgba(59, 130, 246, 0.2) !important;
+}
+
+.pending-row td:first-child {
+  border-left: none;
+}
+
+/* 活跃请求行流动动画 */
+@keyframes pendingRowFlow {
+  0%, 100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+/* 状态点脉冲动画 */
+@keyframes statusPulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(1.3);
+  }
+}
+
+/* 暗色主题适配 */
+.dashboard-theme .pending-row {
+  background: linear-gradient(
+    90deg,
+    rgba(59, 130, 246, 0.12) 0%,
+    rgba(16, 185, 129, 0.08) 50%,
+    rgba(59, 130, 246, 0.12) 100%
+  );
+  background-size: 200% 100%;
+  animation: pendingRowFlow 3s ease-in-out infinite;
+  border-left-color: var(--primary-400);
+}
+
+.dashboard-theme .pending-row td {
+  border-top-color: rgba(59, 130, 246, 0.25) !important;
+  border-bottom-color: rgba(59, 130, 246, 0.25) !important;
+}
+
+.dashboard-theme .status-pending {
+  color: var(--primary-400);
+  background: rgba(59, 130, 246, 0.2);
+}
+
+.dashboard-theme .status-pending::before {
+  background: var(--primary-400);
 }
 
 .config-info {
