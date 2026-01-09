@@ -30,11 +30,8 @@ type CodexOAuthToken struct {
 
 // Codex OAuth 配置常量
 const (
-	// Codex CLI 官方客户端 ID
+	// Codex CLI 官方客户端 ID（授权和刷新都使用同一个）
 	CodexClientID = "app_EMoamEEZ73f0CkXaXp7hrann"
-
-	// done-hub 使用的客户端 ID（用于 refresh token）
-	CodexRefreshClientID = "pdlLIX2Y72MIl2rhLhTE9VV9bN905kBh"
 
 	// Token 刷新 URL（注意：与首次授权 URL 不同）
 	CodexRefreshTokenURL = "https://auth0.openai.com/oauth/token"
@@ -154,10 +151,10 @@ func (s *Server) RefreshCodexTokenIfNeeded(
 
 // refreshCodexToken 执行实际的 Token 刷新
 func (s *Server) refreshCodexToken(ctx context.Context, token *CodexOAuthToken) (*CodexOAuthToken, error) {
-	// 构建刷新请求
+	// 构建刷新请求（使用与授权时相同的 client_id）
 	body := url.Values{
 		"grant_type":    {"refresh_token"},
-		"client_id":     {CodexRefreshClientID},
+		"client_id":     {CodexClientID},
 		"refresh_token": {token.RefreshToken},
 	}
 
