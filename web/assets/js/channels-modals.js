@@ -2524,9 +2524,10 @@ function updateKiroTokenUI(token) {
   const authTypeEl = document.getElementById('kiroAuthType');
   const expiresAtEl = document.getElementById('kiroExpiresAt');
 
-  const applyBtn = document.getElementById('applyKiroTokenBtn');
+  const filePathSection = document.getElementById('kiroFilePathSection');
+  const manualSection = document.getElementById('kiroManualSection');
+  const refreshBtn = document.getElementById('refreshKiroTokenBtn');
   const clearBtn = document.getElementById('clearKiroTokenBtn');
-  const tokenInput = document.getElementById('kiroTokenInput');
 
   // Kiro Token 只需要 refreshToken，accessToken 会在首次请求时自动刷新获取
   if (token && (token.refreshToken || token.refresh_token)) {
@@ -2544,7 +2545,8 @@ function updateKiroTokenUI(token) {
     // 显示过期时间
     const expiresAt = token.expiresAt || token.expires_at;
     if (expiresAt) {
-      const expDate = new Date(expiresAt);
+      // 处理 ISO 字符串或时间戳
+      const expDate = typeof expiresAt === 'string' ? new Date(expiresAt) : new Date(expiresAt * 1000);
       const now = new Date();
       if (expDate > now) {
         expiresAtEl.textContent = expDate.toLocaleString();
@@ -2554,13 +2556,14 @@ function updateKiroTokenUI(token) {
         expiresAtEl.style.color = 'var(--warning-600)';
       }
     } else {
-      expiresAtEl.textContent = '未知';
+      expiresAtEl.textContent = '首次请求时自动获取';
       expiresAtEl.style.color = 'var(--neutral-500)';
     }
 
-    // 隐藏输入区域，显示清除按钮
-    if (tokenInput) tokenInput.style.display = 'none';
-    if (applyBtn) applyBtn.style.display = 'none';
+    // 隐藏输入区域，显示操作按钮
+    if (filePathSection) filePathSection.style.display = 'none';
+    if (manualSection) manualSection.style.display = 'none';
+    if (refreshBtn) refreshBtn.style.display = 'inline-flex';
     if (clearBtn) clearBtn.style.display = 'inline-flex';
 
     // 更新隐藏的 input 值（用于表单提交）
@@ -2574,9 +2577,10 @@ function updateKiroTokenUI(token) {
 
     tokenInfo.style.display = 'none';
 
-    // 显示输入区域，隐藏清除按钮
-    if (tokenInput) tokenInput.style.display = 'block';
-    if (applyBtn) applyBtn.style.display = 'inline-flex';
+    // 显示输入区域，隐藏操作按钮
+    if (filePathSection) filePathSection.style.display = 'block';
+    if (manualSection) manualSection.style.display = 'block';
+    if (refreshBtn) refreshBtn.style.display = 'none';
     if (clearBtn) clearBtn.style.display = 'none';
 
     // 清空隐藏的 input
@@ -2586,9 +2590,10 @@ function updateKiroTokenUI(token) {
 
 /**
  * 应用粘贴的 Kiro Token 配置
- * 支持两种格式：
+ * 支持三种格式：
  * 1. 完整 JSON 配置文件内容
- * 2. 仅包含必要字段的简化格式
+ * 2. 仅包含 refreshToken 的简化 JSON
+ * 3. 直接粘贴 refreshToken 字符串
  */
 function applyKiroToken() {
   const textarea = document.getElementById('kiroTokenInput');
@@ -2600,30 +2605,50 @@ function applyKiroToken() {
   }
 
   try {
-    const config = JSON.parse(rawInput);
+    let normalizedToken;
 
-    // 验证必要字段
-    if (!config.refreshToken && !config.refresh_token) {
-      throw new Error('缺少 refreshToken 字段');
+    // 尝试解析为 JSON
+    if (rawInput.startsWith('{')) {
+      const config = JSON.parse(rawInput);
+
+      // 验证必要字段
+      if (!config.refreshToken && !config.refresh_token) {
+        throw new Error('缺少 refreshToken 字段');
+      }
+
+      // 标准化字段名（支持 camelCase 和 snake_case）
+      normalizedToken = {
+        refreshToken: config.refreshToken || config.refresh_token,
+        accessToken: config.accessToken || config.access_token || '',
+        expiresAt: config.expiresAt || config.expires_at || '',
+        // IdC 认证相关字段
+        startUrl: config.startUrl || config.start_url || '',
+        region: config.region || 'us-east-1',
+        clientId: config.clientId || config.client_id || '',
+        clientSecret: config.clientSecret || config.client_secret || ''
+      };
+    } else {
+      // 直接作为 refreshToken 字符串处理
+      normalizedToken = {
+        refreshToken: rawInput,
+        accessToken: '',
+        expiresAt: '',
+        startUrl: '',
+        region: 'us-east-1',
+        clientId: '',
+        clientSecret: ''
+      };
     }
-
-    // 标准化字段名（支持 camelCase 和 snake_case）
-    const normalizedToken = {
-      refreshToken: config.refreshToken || config.refresh_token,
-      accessToken: config.accessToken || config.access_token || '',
-      expiresAt: config.expiresAt || config.expires_at || '',
-      // IdC 认证相关字段
-      startUrl: config.startUrl || config.start_url || '',
-      region: config.region || 'us-east-1',
-      clientId: config.clientId || config.client_id || '',
-      clientSecret: config.clientSecret || config.client_secret || ''
-    };
 
     // 更新 UI
     updateKiroTokenUI(normalizedToken);
 
     // 清空输入框
     textarea.value = '';
+
+    // 折叠手动输入区域
+    const manualSection = document.getElementById('kiroManualSection');
+    if (manualSection) manualSection.open = false;
 
     if (window.showSuccess) showSuccess('Kiro Token 配置已应用');
 
@@ -2704,7 +2729,81 @@ async function clearKiroToken() {
   });
   if (confirmed) {
     document.getElementById('kiroApiKey').value = '';
-    document.getElementById('kiroTokenInput').value = '';
+    const tokenInput = document.getElementById('kiroTokenInput');
+    if (tokenInput) tokenInput.value = '';
     updateKiroTokenUI(null);
+  }
+}
+
+/**
+ * 刷新 Kiro Token（手动触发）
+ * 调用后端 API 刷新 Token，更新本地状态
+ */
+async function refreshKiroToken() {
+  const tokenJson = document.getElementById('kiroApiKey').value;
+  if (!tokenJson) {
+    if (window.showError) showError('没有 Token 配置');
+    return;
+  }
+
+  let token;
+  try {
+    token = JSON.parse(tokenJson);
+  } catch (e) {
+    if (window.showError) showError('Token 配置格式错误');
+    return;
+  }
+
+  if (!token.refreshToken && !token.refresh_token) {
+    if (window.showError) showError('缺少 refreshToken');
+    return;
+  }
+
+  const refreshBtn = document.getElementById('refreshKiroTokenBtn');
+  if (refreshBtn) {
+    refreshBtn.disabled = true;
+    refreshBtn.textContent = '刷新中...';
+  }
+
+  try {
+    // 构建刷新请求
+    const refreshToken = token.refreshToken || token.refresh_token;
+    const isIdC = !!(token.startUrl && token.clientId && token.clientSecret);
+
+    const reqBody = {
+      refresh_token: refreshToken,
+      auth_type: isIdC ? 'IdC' : 'Social'
+    };
+
+    if (isIdC) {
+      reqBody.client_id = token.clientId;
+      reqBody.client_secret = token.clientSecret;
+    }
+
+    const result = await fetchAPIWithAuth('/admin/kiro/refresh', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(reqBody)
+    });
+
+    if (result.success && result.data) {
+      // 更新本地 Token
+      token.accessToken = result.data.access_token || result.data.accessToken;
+      token.expiresAt = result.data.expires_at || result.data.expiresAt;
+
+      updateKiroTokenUI(token);
+      if (window.showSuccess) showSuccess('Token 刷新成功');
+    } else {
+      throw new Error(result.error || '刷新失败');
+    }
+
+  } catch (e) {
+    console.error('Kiro Token 刷新失败:', e);
+    if (window.showError) showError('刷新失败: ' + e.message);
+  } finally {
+    if (refreshBtn) {
+      refreshBtn.disabled = false;
+      refreshBtn.textContent = '🔄 刷新 Token';
+    }
   }
 }
