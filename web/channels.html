@@ -183,6 +183,11 @@
                   <span>Antigravity</span>
                   <span style="color: var(--neutral-500); font-size: 11px;">（Google 反代）</span>
                 </label>
+                <label id="kiroPresetLabel" style="display: none; align-items: center; gap: 4px; cursor: pointer; font-size: 13px;">
+                  <input type="radio" name="channelPreset" value="kiro" onchange="handlePresetChange('kiro')">
+                  <span>Kiro</span>
+                  <span style="color: var(--neutral-500); font-size: 11px;">（AWS CodeWhisperer）</span>
+                </label>
               </div>
             </div>
           </div>
@@ -404,6 +409,58 @@
                         提交
                       </button>
                     </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Kiro OAuth Section (仅 Anthropic Kiro 预设显示) -->
+              <div id="kiroOAuthSection" style="display: none;">
+                <!-- 隐藏字段存储 Kiro Token JSON -->
+                <input type="hidden" id="kiroApiKey">
+
+                <!-- Kiro Token 配置容器 -->
+                <div id="kiroOAuthContainer">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                    <div id="kiroTokenStatus" style="display: flex; align-items: center; gap: 8px;">
+                      <span id="kiroTokenStatusBadge" class="status-badge" style="padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; background: var(--neutral-200); color: var(--neutral-600);">未配置</span>
+                    </div>
+                  </div>
+
+                  <div id="kiroTokenInfo" style="display: none; margin-bottom: 12px; padding: 10px; background: var(--card-bg); border-radius: 6px; font-size: 13px;">
+                    <div style="display: flex; gap: 16px; flex-wrap: wrap;">
+                      <div><span style="color: var(--neutral-500);">认证方式:</span> <code id="kiroAuthType" style="background: var(--neutral-100); padding: 2px 6px; border-radius: 4px;">-</code></div>
+                      <div><span style="color: var(--neutral-500);">过期时间:</span> <span id="kiroExpiresAt" style="font-weight: 500;">-</span></div>
+                    </div>
+                  </div>
+
+                  <div style="margin-bottom: 12px; font-size: 12px; color: var(--neutral-500);">
+                    <p style="margin: 0 0 8px 0;">Kiro 使用 AWS SSO 认证。请从本地文件获取 Token 配置：</p>
+                    <ul style="margin: 0; padding-left: 20px; line-height: 1.6;">
+                      <li><strong>Social 方式:</strong> <code style="background: var(--neutral-100); padding: 1px 4px; border-radius: 3px;">~/.aws/sso/cache/kiro-auth-token.json</code></li>
+                      <li><strong>IdC 方式:</strong> <code style="background: var(--neutral-100); padding: 1px 4px; border-radius: 3px;">~/.aws/sso/cache/</code> 目录下的 JSON 文件</li>
+                    </ul>
+                  </div>
+
+                  <!-- Token 配置输入 -->
+                  <div style="margin-bottom: 12px;">
+                    <div style="font-size: 12px; color: var(--neutral-500); margin-bottom: 8px;">
+                      Token 配置（JSON 格式）
+                    </div>
+                    <textarea id="kiroTokenInput" class="form-input" placeholder='{"auth":"Social","refreshToken":"..."}'
+                      style="font-size: 12px; font-family: monospace; min-height: 80px; resize: vertical;"></textarea>
+                  </div>
+
+                  <div style="display: flex; gap: 8px;">
+                    <button type="button" id="applyKiroTokenBtn" class="btn btn-primary btn-sm" onclick="applyKiroToken()" style="padding: 8px 16px;">
+                      ✓ 应用配置
+                    </button>
+                    <label class="btn btn-secondary btn-sm" style="padding: 8px 16px; cursor: pointer;">
+                      📁 上传文件
+                      <input type="file" accept=".json" onchange="uploadKiroTokenFile(this)" style="display: none;">
+                    </label>
+                    <button type="button" id="clearKiroTokenBtn" class="btn btn-secondary btn-sm" onclick="clearKiroToken()" style="padding: 8px 16px; display: none;">
+                      🗑️ 清除配置
+                    </button>
                   </div>
                 </div>
               </div>

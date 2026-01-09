@@ -32,6 +32,7 @@ function showAddModal() {
   handleChannelTypeChange('anthropic');
   updateCodexTokenUI(null);
   updateGeminiTokenUI(null);
+  updateKiroTokenUI(null);
   initChannelTypeEventListener();
   // [FIX] 移除 toggleCodexAuthMode('oauth') 调用
   // handleChannelTypeChange → handlePresetChange 已经正确设置了 UI 状态
@@ -200,7 +201,7 @@ async function editChannel(id) {
       updateGeminiTokenUI(null);
     }
   } else if (channelType === 'anthropic') {
-    // Anthropic 渠道：支持 antigravity 预设和 OpenAI 兼容模式
+    // Anthropic 渠道：支持 antigravity/kiro 预设和 OpenAI 兼容模式
     const preset = channel.preset || 'custom';
     const presetRadio = document.querySelector(`input[name="channelPreset"][value="${preset}"]`);
     if (presetRadio) {
@@ -213,6 +214,36 @@ async function editChannel(id) {
     const openaiCompatCheckbox = document.getElementById('openaiCompatCheckbox');
     if (openaiCompatCheckbox) {
       openaiCompatCheckbox.checked = channel.openai_compat || false;
+    }
+
+    // Kiro 预设：加载 Token 配置
+    if (preset === 'kiro' && apiKeys.length > 0) {
+      const firstKey = apiKeys[0];
+      // 从数据库字段恢复 Kiro Token
+      if (firstKey?.refresh_token) {
+        const kiroToken = {
+          refreshToken: firstKey.refresh_token,
+          accessToken: firstKey.access_token || '',
+          expiresAt: firstKey.token_expires_at ? new Date(firstKey.token_expires_at * 1000).toISOString() : ''
+        };
+        // 如果有 IdC 认证信息，从 id_token 字段解析
+        if (firstKey.id_token && firstKey.id_token.startsWith('{')) {
+          try {
+            const idcInfo = JSON.parse(firstKey.id_token);
+            kiroToken.startUrl = idcInfo.startUrl || '';
+            kiroToken.region = idcInfo.region || 'us-east-1';
+            kiroToken.clientId = idcInfo.clientId || '';
+            kiroToken.clientSecret = idcInfo.clientSecret || '';
+          } catch (e) {
+            console.warn('解析 Kiro IdC 信息失败', e);
+          }
+        }
+        updateKiroTokenUI(kiroToken);
+      } else {
+        updateKiroTokenUI(null);
+      }
+    } else {
+      updateKiroTokenUI(null);
     }
 
     updateCodexTokenUI(null);
@@ -259,12 +290,56 @@ async function saveChannel(event) {
   let validKeys;
   const isOAuthChannel = channelType === 'codex' || channelType === 'gemini';
 
-  // 收集预设类型（OAuth 渠道和 Anthropic 的 Antigravity 预设）
+  // 收集预设类型（OAuth 渠道和 Anthropic 的 Antigravity/Kiro 预设）
   if (isOAuthChannel || channelType === 'anthropic') {
     preset = document.querySelector('input[name="channelPreset"]:checked')?.value || 'custom';
   }
 
-  if (isOAuthChannel && preset === 'official') {
+  // Kiro 预设特殊处理
+  const isKiroPreset = channelType === 'anthropic' && preset === 'kiro';
+
+  if (isKiroPreset) {
+    // Kiro 预设：使用 Kiro Token 配置
+    const tokenJson = document.getElementById('kiroApiKey')?.value;
+
+    if (!tokenJson || !tokenJson.startsWith('{')) {
+      if (window.showError) {
+        showError('请先配置 Kiro Token');
+      } else {
+        alert('请先配置 Kiro Token');
+      }
+      return;
+    }
+
+    // 解析 Kiro Token JSON
+    try {
+      const token = JSON.parse(tokenJson);
+      // Kiro Token 使用 camelCase 字段名
+      accessToken = token.accessToken || token.access_token || '';
+      refreshToken = token.refreshToken || token.refresh_token || '';
+      // Kiro 的 expiresAt 是 ISO 日期字符串，转换为时间戳
+      const expiresAtStr = token.expiresAt || token.expires_at || '';
+      if (expiresAtStr) {
+        tokenExpiresAt = Math.floor(new Date(expiresAtStr).getTime() / 1000);
+      }
+      // IdC 认证相关信息存入 id_token 字段（JSON 格式）
+      if (token.startUrl) {
+        idToken = JSON.stringify({
+          startUrl: token.startUrl,
+          region: token.region || 'us-east-1',
+          clientId: token.clientId || '',
+          clientSecret: token.clientSecret || ''
+        });
+      }
+    } catch (e) {
+      if (window.showError) {
+        showError('Kiro Token 格式错误');
+      }
+      return;
+    }
+
+    validKeys = []; // Kiro 预设不使用 api_key 字段
+  } else if (isOAuthChannel && preset === 'official') {
     // 官方预设：使用 OAuth Token
     // Codex 使用 channelApiKey，Gemini 使用 geminiApiKey
     const tokenInputId = channelType === 'codex' ? 'channelApiKey' : 'geminiApiKey';
@@ -358,8 +433,8 @@ async function saveChannel(event) {
     openai_compat: openaiCompat
   };
 
-  // 验证必填字段（OAuth 渠道官方预设使用 OAuth，不需要 api_key）
-  const needsApiKey = !isOAuthChannel || preset !== 'official';
+  // 验证必填字段（OAuth 渠道官方预设和 Kiro 预设使用 Token，不需要 api_key）
+  const needsApiKey = !isOAuthChannel && !isKiroPreset || (isOAuthChannel && preset !== 'official');
   if (!formData.name || !formData.url || formData.models.length === 0) {
     if (window.showError) showError('请填写所有必填字段');
     return;
@@ -370,6 +445,10 @@ async function saveChannel(event) {
   }
   if (isOAuthChannel && preset === 'official' && !accessToken) {
     if (window.showError) showError('请完成OAuth授权');
+    return;
+  }
+  if (isKiroPreset && !refreshToken) {
+    if (window.showError) showError('请配置 Kiro Token');
     return;
   }
 
@@ -575,9 +654,19 @@ async function copyChannel(id, name) {
       updateCodexTokenUI(null);
       updateGeminiTokenUI(null);
     }
+    updateKiroTokenUI(null);
+  } else if (channelType === 'anthropic' && sourcePreset === 'kiro') {
+    // Kiro 预设：清空 Token，需要重新配置
+    updateKiroTokenUI(null);
+    updateCodexTokenUI(null);
+    updateGeminiTokenUI(null);
+    if (window.showWarning) {
+      showWarning('Kiro 预设复制后需要重新配置 Token');
+    }
   } else {
     updateCodexTokenUI(null);
     updateGeminiTokenUI(null);
+    updateKiroTokenUI(null);
   }
 
   // 添加 OAuth 回调消息监听
@@ -888,8 +977,15 @@ async function fetchModelsFromAPI() {
   }
 }
 
-function clearAllModels() {
-  if (confirm('确定要清除所有模型吗？此操作不可恢复！')) {
+async function clearAllModels() {
+  const confirmed = await showConfirm({
+    title: '清除所有模型',
+    message: '确定要清除所有模型吗？此操作不可恢复！',
+    confirmText: '清除',
+    cancelText: '取消',
+    type: 'danger'
+  });
+  if (confirmed) {
     const modelsTextarea = document.getElementById('channelModels');
     modelsTextarea.value = '';
     modelsTextarea.focus();
@@ -1496,6 +1592,7 @@ function handleChannelTypeChange(type) {
   const channelPresetContainer = document.getElementById('channelPresetContainer');
   const officialPresetLabel = document.getElementById('officialPresetLabel');
   const antigravityPresetLabel = document.getElementById('antigravityPresetLabel');
+  const kiroPresetLabel = document.getElementById('kiroPresetLabel');
 
   // 所有渠道类型都显示预设选项
   if (channelPresetContainer) channelPresetContainer.style.display = 'block';
@@ -1511,6 +1608,17 @@ function handleChannelTypeChange(type) {
     // 如果当前选中 antigravity 但渠道类型不是 anthropic，切换到 custom
     const currentPreset = document.querySelector('input[name="channelPreset"]:checked')?.value;
     if (currentPreset === 'antigravity' && type !== 'anthropic') {
+      const customRadio = document.querySelector('input[name="channelPreset"][value="custom"]');
+      if (customRadio) customRadio.checked = true;
+    }
+  }
+
+  // Kiro 预设仅对 Anthropic 渠道类型显示
+  if (kiroPresetLabel) {
+    kiroPresetLabel.style.display = (type === 'anthropic') ? 'flex' : 'none';
+    // 如果当前选中 kiro 但渠道类型不是 anthropic，切换到 custom
+    const currentPreset = document.querySelector('input[name="channelPreset"]:checked')?.value;
+    if (currentPreset === 'kiro' && type !== 'anthropic') {
       const customRadio = document.querySelector('input[name="channelPreset"][value="custom"]');
       if (customRadio) customRadio.checked = true;
     }
@@ -1560,15 +1668,18 @@ function isOfficialUrl(url, type) {
  * official: 自动填写官方 URL，Codex/Gemini 显示 OAuth，其他渠道显示 API Key
  * custom: 用户自填 URL，显示 API Key
  * antigravity: Anthropic 专用，用户自填 URL，显示 API Key（请求体过滤 Gemini 不支持的字段）
+ * kiro: Anthropic 专用，使用 AWS CodeWhisperer API，显示 Kiro Token 配置
  */
 function handlePresetChange(preset) {
   const isOfficial = preset === 'official';
   const isAntigravity = preset === 'antigravity';
+  const isKiro = preset === 'kiro';
   const channelType = document.querySelector('input[name="channelType"]:checked')?.value || 'anthropic';
   const codexAuthSwitch = document.getElementById('codexAuthSwitch');
   const standardKeyContainer = document.getElementById('standardKeyContainer');
   const codexOAuthSection = document.getElementById('codexOAuthSection');
   const geminiOAuthSection = document.getElementById('geminiOAuthSection');
+  const kiroOAuthSection = document.getElementById('kiroOAuthSection');
   const codexQuotaTemplateBtn = document.getElementById('codexQuotaTemplateBtn');
   const quotaTemplateHint = document.getElementById('quotaTemplateHint');
   const openaiCompatContainer = document.getElementById('openaiCompatContainer');
@@ -1577,14 +1688,33 @@ function handlePresetChange(preset) {
   if (codexAuthSwitch) codexAuthSwitch.style.display = 'none';
 
   // OpenAI 兼容模式开关：
-  // - Anthropic（非 antigravity）直接显示
+  // - Anthropic（非 antigravity、非 kiro）直接显示
   // - Gemini/Codex 仅自定义预设显示
-  // - Antigravity 不显示（Antigravity 使用原生 Anthropic 格式）
+  // - Antigravity/Kiro 不显示（使用原生格式）
   if (openaiCompatContainer) {
-    const showCompat = (channelType === 'anthropic' && !isAntigravity) ||
+    const showCompat = (channelType === 'anthropic' && !isAntigravity && !isKiro) ||
                        ((channelType === 'gemini' || channelType === 'codex') && !isOfficial);
     openaiCompatContainer.style.display = showCompat ? 'block' : 'none';
   }
+
+  // Kiro 预设：显示 Kiro Token 配置区块
+  if (isKiro) {
+    // Kiro 使用固定的 AWS CodeWhisperer 端点（不需要用户填写）
+    if (typeof setInlineEndpoints === 'function') {
+      setInlineEndpoints(['https://codewhisperer.us-east-1.amazonaws.com']);
+    }
+
+    if (standardKeyContainer) standardKeyContainer.style.display = 'none';
+    if (codexOAuthSection) codexOAuthSection.style.display = 'none';
+    if (geminiOAuthSection) geminiOAuthSection.style.display = 'none';
+    if (kiroOAuthSection) kiroOAuthSection.style.display = 'block';
+    if (codexQuotaTemplateBtn) codexQuotaTemplateBtn.style.display = 'none';
+    if (quotaTemplateHint) quotaTemplateHint.textContent = '选择后请替换占位符';
+    return;
+  }
+
+  // 隐藏 Kiro 区块（非 Kiro 预设）
+  if (kiroOAuthSection) kiroOAuthSection.style.display = 'none';
 
   if (isOfficial) {
     // 官方预设：自动填写官方 URL
@@ -1906,8 +2036,15 @@ async function refreshCodexToken() {
 /**
  * 清除 Codex 授权
  */
-function clearCodexToken() {
-  if (confirm('确定要清除授权信息吗？')) {
+async function clearCodexToken() {
+  const confirmed = await showConfirm({
+    title: '清除授权',
+    message: '确定要清除 Codex 授权信息吗？清除后需要重新授权。',
+    confirmText: '清除',
+    cancelText: '取消',
+    type: 'danger'
+  });
+  if (confirmed) {
     document.getElementById('channelApiKey').value = '';
     updateCodexTokenUI(null);
   }
@@ -2306,8 +2443,15 @@ async function refreshGeminiToken() {
 /**
  * 清除 Gemini 授权
  */
-function clearGeminiToken() {
-  if (confirm('确定要清除授权信息吗？')) {
+async function clearGeminiToken() {
+  const confirmed = await showConfirm({
+    title: '清除授权',
+    message: '确定要清除 Gemini 授权信息吗？清除后需要重新授权。',
+    confirmText: '清除',
+    cancelText: '取消',
+    type: 'danger'
+  });
+  if (confirmed) {
     document.getElementById('geminiApiKey').value = '';
     updateGeminiTokenUI(null);
   }
@@ -2358,4 +2502,201 @@ function extractEmailFromGoogleIdToken(idToken) {
 function handleOpenAICompatChange(checked) {
   // 当前仅记录状态变化，保存时读取 checkbox 状态
   console.log('[OpenAI Compat] 模式切换:', checked ? '启用' : '禁用');
+}
+
+// ==================== Kiro Token 配置 ====================
+
+/**
+ * 更新 Kiro Token 状态 UI
+ * @param {Object|null} token - Token 配置对象
+ */
+function updateKiroTokenUI(token) {
+  const statusBadge = document.getElementById('kiroTokenStatusBadge');
+  const tokenInfo = document.getElementById('kiroTokenInfo');
+  const authTypeEl = document.getElementById('kiroAuthType');
+  const expiresAtEl = document.getElementById('kiroExpiresAt');
+
+  const applyBtn = document.getElementById('applyKiroTokenBtn');
+  const clearBtn = document.getElementById('clearKiroTokenBtn');
+  const tokenInput = document.getElementById('kiroTokenInput');
+
+  // Kiro Token 只需要 refreshToken，accessToken 会在首次请求时自动刷新获取
+  if (token && (token.refreshToken || token.refresh_token)) {
+    // 已配置
+    statusBadge.textContent = '✓ 已配置';
+    statusBadge.style.background = 'var(--success-100)';
+    statusBadge.style.color = 'var(--success-700)';
+
+    tokenInfo.style.display = 'block';
+
+    // 判断认证类型
+    const authType = token.startUrl ? 'IdC (SSO)' : 'Social (Builder ID)';
+    authTypeEl.textContent = authType;
+
+    // 显示过期时间
+    const expiresAt = token.expiresAt || token.expires_at;
+    if (expiresAt) {
+      const expDate = new Date(expiresAt);
+      const now = new Date();
+      if (expDate > now) {
+        expiresAtEl.textContent = expDate.toLocaleString();
+        expiresAtEl.style.color = 'var(--success-600)';
+      } else {
+        expiresAtEl.textContent = expDate.toLocaleString() + ' (已过期，将自动刷新)';
+        expiresAtEl.style.color = 'var(--warning-600)';
+      }
+    } else {
+      expiresAtEl.textContent = '未知';
+      expiresAtEl.style.color = 'var(--neutral-500)';
+    }
+
+    // 隐藏输入区域，显示清除按钮
+    if (tokenInput) tokenInput.style.display = 'none';
+    if (applyBtn) applyBtn.style.display = 'none';
+    if (clearBtn) clearBtn.style.display = 'inline-flex';
+
+    // 更新隐藏的 input 值（用于表单提交）
+    document.getElementById('kiroApiKey').value = JSON.stringify(token);
+
+  } else {
+    // 未配置
+    statusBadge.textContent = '未配置';
+    statusBadge.style.background = 'var(--neutral-200)';
+    statusBadge.style.color = 'var(--neutral-600)';
+
+    tokenInfo.style.display = 'none';
+
+    // 显示输入区域，隐藏清除按钮
+    if (tokenInput) tokenInput.style.display = 'block';
+    if (applyBtn) applyBtn.style.display = 'inline-flex';
+    if (clearBtn) clearBtn.style.display = 'none';
+
+    // 清空隐藏的 input
+    document.getElementById('kiroApiKey').value = '';
+  }
+}
+
+/**
+ * 应用粘贴的 Kiro Token 配置
+ * 支持两种格式：
+ * 1. 完整 JSON 配置文件内容
+ * 2. 仅包含必要字段的简化格式
+ */
+function applyKiroToken() {
+  const textarea = document.getElementById('kiroTokenInput');
+  const rawInput = textarea?.value?.trim();
+
+  if (!rawInput) {
+    if (window.showError) showError('请粘贴 Kiro Token 配置');
+    return;
+  }
+
+  try {
+    const config = JSON.parse(rawInput);
+
+    // 验证必要字段
+    if (!config.refreshToken && !config.refresh_token) {
+      throw new Error('缺少 refreshToken 字段');
+    }
+
+    // 标准化字段名（支持 camelCase 和 snake_case）
+    const normalizedToken = {
+      refreshToken: config.refreshToken || config.refresh_token,
+      accessToken: config.accessToken || config.access_token || '',
+      expiresAt: config.expiresAt || config.expires_at || '',
+      // IdC 认证相关字段
+      startUrl: config.startUrl || config.start_url || '',
+      region: config.region || 'us-east-1',
+      clientId: config.clientId || config.client_id || '',
+      clientSecret: config.clientSecret || config.client_secret || ''
+    };
+
+    // 更新 UI
+    updateKiroTokenUI(normalizedToken);
+
+    // 清空输入框
+    textarea.value = '';
+
+    if (window.showSuccess) showSuccess('Kiro Token 配置已应用');
+
+  } catch (e) {
+    console.error('解析 Kiro Token 失败:', e);
+    if (window.showError) showError('Token 格式错误: ' + e.message);
+  }
+}
+
+/**
+ * 处理 Kiro Token 文件上传
+ * @param {HTMLInputElement} input - 文件输入元素
+ */
+function uploadKiroTokenFile(input) {
+  const file = input?.files?.[0];
+  if (!file) return;
+
+  // 检查文件类型
+  if (!file.name.endsWith('.json')) {
+    if (window.showError) showError('请上传 JSON 文件');
+    input.value = '';
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const content = e.target.result;
+      const config = JSON.parse(content);
+
+      // 验证必要字段
+      if (!config.refreshToken && !config.refresh_token) {
+        throw new Error('缺少 refreshToken 字段');
+      }
+
+      // 标准化字段名
+      const normalizedToken = {
+        refreshToken: config.refreshToken || config.refresh_token,
+        accessToken: config.accessToken || config.access_token || '',
+        expiresAt: config.expiresAt || config.expires_at || '',
+        startUrl: config.startUrl || config.start_url || '',
+        region: config.region || 'us-east-1',
+        clientId: config.clientId || config.client_id || '',
+        clientSecret: config.clientSecret || config.client_secret || ''
+      };
+
+      // 更新 UI
+      updateKiroTokenUI(normalizedToken);
+
+      if (window.showSuccess) showSuccess('Kiro Token 文件已导入');
+
+    } catch (e) {
+      console.error('解析 Kiro Token 文件失败:', e);
+      if (window.showError) showError('文件解析失败: ' + e.message);
+    }
+  };
+
+  reader.onerror = function() {
+    if (window.showError) showError('文件读取失败');
+  };
+
+  reader.readAsText(file);
+
+  // 清空文件输入，允许重复选择同一文件
+  input.value = '';
+}
+
+/**
+ * 清除 Kiro Token 配置
+ */
+async function clearKiroToken() {
+  const confirmed = await showConfirm({
+    title: '清除配置',
+    message: '确定要清除 Kiro Token 配置吗？清除后需要重新配置。',
+    confirmText: '清除',
+    cancelText: '取消',
+    type: 'danger'
+  });
+  if (confirmed) {
+    document.getElementById('kiroApiKey').value = '';
+    document.getElementById('kiroTokenInput').value = '';
+    updateKiroTokenUI(null);
+  }
 }
