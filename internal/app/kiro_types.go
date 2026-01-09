@@ -57,7 +57,7 @@ type KiroAuthConfig struct {
 // KiroTokenInfo Kiro Token 信息（刷新后获得）
 type KiroTokenInfo struct {
 	AccessToken string `json:"accessToken"` // 访问令牌
-	ExpiresAt   int64  `json:"expiresAt"`   // 过期时间 Unix 时间戳（秒）
+	ExpiresAt   int64  `json:"expiresAt"`   // 过期时间 Unix 时间戳（毫秒）
 }
 
 // ============================================================================

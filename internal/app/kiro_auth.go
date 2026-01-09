@@ -64,7 +64,7 @@ func IsKiroTokenExpiringSoon(expiresAt int64) bool {
 	if expiresAt == 0 {
 		return true // 没有过期时间，需要刷新
 	}
-	return time.Now().Unix()+KiroTokenRefreshBuffer > expiresAt
+	return time.Now().UnixMilli()+KiroTokenRefreshBuffer*1000 > expiresAt
 }
 
 // IsKiroTokenExpired 检查 Kiro Token 是否已过期
@@ -72,7 +72,7 @@ func IsKiroTokenExpired(expiresAt int64) bool {
 	if expiresAt == 0 {
 		return true
 	}
-	return time.Now().Unix() > expiresAt
+	return time.Now().UnixMilli() > expiresAt
 }
 
 // RefreshKiroTokenIfNeeded 检查并刷新 Kiro Token（如果需要）
@@ -179,7 +179,7 @@ func (s *Server) refreshKiroSocialToken(ctx context.Context, config *KiroAuthCon
 
 	return &KiroTokenInfo{
 		AccessToken: result.AccessToken,
-		ExpiresAt:   time.Now().Unix() + result.ExpiresIn,
+		ExpiresAt:   time.Now().UnixMilli() + result.ExpiresIn*1000, // 转为毫秒
 	}, nil
 }
 
@@ -235,7 +235,7 @@ func (s *Server) refreshKiroIdCToken(ctx context.Context, config *KiroAuthConfig
 
 	return &KiroTokenInfo{
 		AccessToken: result.AccessToken,
-		ExpiresAt:   time.Now().Unix() + result.ExpiresIn,
+		ExpiresAt:   time.Now().UnixMilli() + result.ExpiresIn*1000, // 转为毫秒
 	}, nil
 }
 

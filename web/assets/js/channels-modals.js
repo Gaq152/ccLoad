@@ -1,3 +1,22 @@
+/**
+ * 解析过期时间，统一转换为毫秒时间戳
+ * @param {string|number} raw - ISO 日期字符串、秒时间戳或毫秒时间戳
+ * @returns {number} Unix 毫秒时间戳
+ */
+function parseExpiresAt(raw) {
+  if (!raw) return 0;
+  // 字符串：ISO 日期格式
+  if (typeof raw === 'string') {
+    const ts = new Date(raw).getTime();
+    return isNaN(ts) ? 0 : ts; // 返回毫秒
+  }
+  // 数字：判断是秒还是毫秒（秒时间戳 < 10^12，毫秒时间戳 >= 10^12）
+  if (typeof raw === 'number') {
+    return raw < 1e12 ? raw * 1000 : raw; // 秒转毫秒，毫秒保持不变
+  }
+  return 0;
+}
+
 function showAddModal() {
   editingChannelId = null;
   currentChannelKeyCooldowns = [];
@@ -219,12 +238,12 @@ async function editChannel(id) {
     // Kiro 预设：加载 Token 配置
     if (preset === 'kiro' && apiKeys.length > 0) {
       const firstKey = apiKeys[0];
-      // 从数据库字段恢复 Kiro Token
+      // 从数据库字段恢复 Kiro Token（数据库存的是毫秒时间戳）
       if (firstKey?.refresh_token) {
         const kiroToken = {
           refreshToken: firstKey.refresh_token,
           accessToken: firstKey.access_token || '',
-          expiresAt: firstKey.token_expires_at ? new Date(firstKey.token_expires_at * 1000).toISOString() : ''
+          expiresAt: firstKey.token_expires_at || 0 // 直接使用毫秒时间戳
         };
         // 如果有 IdC 认证信息，从 id_token 字段解析
         if (firstKey.id_token && firstKey.id_token.startsWith('{')) {
@@ -317,10 +336,10 @@ async function saveChannel(event) {
       // Kiro Token 使用 camelCase 字段名
       accessToken = token.accessToken || token.access_token || '';
       refreshToken = token.refreshToken || token.refresh_token || '';
-      // Kiro 的 expiresAt 是 ISO 日期字符串，转换为时间戳
-      const expiresAtStr = token.expiresAt || token.expires_at || '';
-      if (expiresAtStr) {
-        tokenExpiresAt = Math.floor(new Date(expiresAtStr).getTime() / 1000);
+      // Kiro 的 expiresAt 支持多种格式，统一转换为毫秒时间戳
+      const expiresAtRaw = token.expiresAt || token.expires_at || '';
+      if (expiresAtRaw) {
+        tokenExpiresAt = parseExpiresAt(expiresAtRaw); // 返回毫秒
       }
       // IdC 认证相关信息存入 id_token 字段（JSON 格式）
       if (token.startUrl) {
@@ -2545,8 +2564,9 @@ function updateKiroTokenUI(token) {
     // 显示过期时间
     const expiresAt = token.expiresAt || token.expires_at;
     if (expiresAt) {
-      // 处理 ISO 字符串或时间戳
-      const expDate = typeof expiresAt === 'string' ? new Date(expiresAt) : new Date(expiresAt * 1000);
+      // 使用统一的解析函数，返回毫秒时间戳
+      const expTimestamp = parseExpiresAt(expiresAt);
+      const expDate = new Date(expTimestamp); // 直接使用毫秒
       const now = new Date();
       if (expDate > now) {
         expiresAtEl.textContent = expDate.toLocaleString();
