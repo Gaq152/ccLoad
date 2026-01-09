@@ -13,6 +13,7 @@ import (
 
 	"ccLoad/internal/cooldown"
 	"ccLoad/internal/model"
+	"ccLoad/internal/storage"
 	"ccLoad/internal/testutil"
 	"ccLoad/internal/util"
 
@@ -482,6 +483,10 @@ func (s *Server) testChannelAPI(cfg *model.Config, apiKey string, testReq *testu
 			}
 			result["error"] = lastErrMsg
 		}
+
+		// 监控捕获测试请求（流式）
+		s.captureTestForMonitor(cfg, testReq.Model, body, []byte(rawBuilder.String()), resp.StatusCode, duration.Seconds(), true, "admin-test")
+
 		return result
 	}
 
@@ -520,5 +525,63 @@ func (s *Server) testChannelAPI(cfg *model.Config, apiKey string, testReq *testu
 		result["error"] = errorMsg
 	}
 
+	// 监控捕获测试请求
+	s.captureTestForMonitor(cfg, testReq.Model, body, respBody, resp.StatusCode, duration.Seconds(), testReq.Stream, "admin-test")
+
 	return result
+}
+
+// captureTestForMonitor 捕获测试请求用于监控
+func (s *Server) captureTestForMonitor(
+	cfg *model.Config,
+	testModel string,
+	requestBody []byte,
+	responseBody []byte,
+	statusCode int,
+	duration float64,
+	isStreaming bool,
+	clientIP string,
+) {
+	// 检查监控服务是否可用且开启
+	if s.monitorService == nil || !s.monitorService.IsEnabled() {
+		return
+	}
+
+	// 构建追踪记录（标记为测试请求）
+	trace := &storage.Trace{
+		Time:        time.Now().UnixMilli(),
+		ChannelID:   int(cfg.ID),
+		ChannelName: cfg.Name,
+		ChannelType: cfg.GetChannelType(),
+		Model:       testModel,
+		RequestPath: fmt.Sprintf("/admin/channels/%d/test", cfg.ID),
+		StatusCode:  statusCode,
+		Duration:    duration,
+		IsStreaming: isStreaming,
+		IsTest:      true, // 标记为测试请求
+		ClientIP:    clientIP,
+		APIKeyUsed:  "[测试]",
+	}
+
+	// 捕获请求体（限制大小）
+	const maxCaptureSize = 64 * 1024 // 64KB
+	if len(requestBody) > 0 {
+		if len(requestBody) <= maxCaptureSize {
+			trace.RequestBody = string(requestBody)
+		} else {
+			trace.RequestBody = string(requestBody[:maxCaptureSize]) + "\n...(truncated)"
+		}
+	}
+
+	// 捕获响应体（限制大小）
+	if len(responseBody) > 0 {
+		if len(responseBody) <= maxCaptureSize {
+			trace.ResponseBody = string(responseBody)
+		} else {
+			trace.ResponseBody = string(responseBody[:maxCaptureSize]) + "\n...(truncated)"
+		}
+	}
+
+	// 异步捕获（不阻塞主流程）
+	s.monitorService.Capture(trace)
 }

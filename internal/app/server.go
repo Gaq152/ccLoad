@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -61,6 +62,8 @@ type Server struct {
 	endpointTester   *EndpointTester        // 后台端点测速服务
 	cooldownService  *CooldownService       // 冷却事件 SSE 广播服务
 	activeReqManager *activeRequestManager  // 活跃请求管理器
+	monitorService   *MonitorService        // 请求监控服务
+	traceStore       *storage.TraceStore    // 追踪数据存储（独立数据库）
 
 	// 优雅关闭机制
 	shutdownCh     chan struct{}  // 关闭信号channel
@@ -220,6 +223,17 @@ func NewServer(store storage.Store) *Server {
 	autoTestInterval := configService.GetInt("auto_test_endpoints_interval", 30)
 	s.endpointTester = NewEndpointTester(s, autoTestInterval)
 	s.endpointTester.Start()
+
+	// 初始化请求监控服务（使用独立数据库）
+	traceDBPath := filepath.Join("data", "debug_traces.db")
+	traceStore, err := storage.NewTraceStore(traceDBPath)
+	if err != nil {
+		log.Printf("[WARN] 请求监控存储初始化失败: %v（监控功能不可用）", err)
+	} else {
+		s.traceStore = traceStore
+		s.monitorService = NewMonitorService(traceStore, s.shutdownCh)
+		log.Print("[INFO] 请求监控服务已初始化")
+	}
 
 	return s
 
@@ -478,6 +492,15 @@ func (s *Server) SetupRoutes(r *gin.Engine) {
 
 		// 冷却事件实时推送（SSE）
 		admin.GET("/cooldown/stream", s.HandleCooldownSSE)
+
+		// 请求监控
+		admin.GET("/monitor/status", s.HandleMonitorStatus)
+		admin.POST("/monitor/toggle", s.HandleMonitorToggle)
+		admin.GET("/monitor/stream", s.HandleMonitorSSE)
+		admin.GET("/monitor/traces", s.HandleMonitorList)
+		admin.GET("/monitor/traces/:id", s.HandleMonitorDetail)
+		admin.DELETE("/monitor/traces", s.HandleMonitorClear)
+		admin.GET("/monitor/stats", s.HandleMonitorStats)
 	}
 
 	// 静态文件服务（安全）：使用框架自带的静态文件路由，自动做路径清理，防止目录遍历
@@ -645,6 +668,14 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	}
 
 	// 无论成功还是超时，都要关闭数据库连接
+	// 先关闭追踪存储（独立数据库）
+	if s.traceStore != nil {
+		if closeErr := s.traceStore.Close(); closeErr != nil {
+			log.Printf("[WARN] 关闭追踪数据库失败: %v", closeErr)
+		}
+	}
+
+	// 再关闭主数据库连接
 	if closer, ok := s.store.(interface{ Close() error }); ok {
 		if closeErr := closer.Close(); closeErr != nil {
 			log.Printf("❌ 关闭数据库连接失败: %v", closeErr)

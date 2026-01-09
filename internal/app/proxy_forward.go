@@ -6,6 +6,7 @@ import (
 	"ccLoad/internal/config"
 	"ccLoad/internal/cooldown"
 	"ccLoad/internal/model"
+	"ccLoad/internal/storage"
 	"ccLoad/internal/util"
 	"context"
 	"errors"
@@ -620,8 +621,20 @@ func (s *Server) forwardAttempt(
 
 	// 转发请求（传递实际的API Key字符串）
 	// [INFO] Codex 渠道额外传递 codexHeaders，Gemini CLI 传递 isGeminiCLI 标志
+	// [INFO] 监控捕获：如果监控开启，使用 ResponseCapture 包装器捕获完整响应（包括流式）
+	var responseCapture *ResponseCapture
+	targetWriter := w
+	if s.monitorService != nil && s.monitorService.IsEnabled() {
+		responseCapture = NewResponseCapture(w, 64*1024) // 64KB 限制
+		targetWriter = responseCapture
+	}
+
 	res, duration, err := s.forwardOnceAsync(ctx, cfg, selectedKey, reqCtx.requestMethod,
-		bodyToSend, reqCtx.header, reqCtx.rawQuery, reqCtx.requestPath, w, reqCtx.codexHeaders, reqCtx.isGeminiCLI, reqCtx.onBytesRead)
+		bodyToSend, reqCtx.header, reqCtx.rawQuery, reqCtx.requestPath, targetWriter, reqCtx.codexHeaders, reqCtx.isGeminiCLI, reqCtx.onBytesRead)
+
+	// 监控捕获（仅在监控开启时执行，异步不阻塞主流程）
+	// 使用 ResponseCapture 捕获的数据（包括流式响应）
+	s.captureForMonitorWithCapture(cfg, actualModel, bodyToSend, res, duration, reqCtx, selectedKey, responseCapture, false)
 
 	// 处理网络错误或异常响应（如空响应）
 	// [INFO] 修复：handleResponse可能返回err即使StatusCode=200（例如Content-Length=0）
@@ -1018,4 +1031,93 @@ func checkSoftError(data []byte, contentType string) bool {
 	}
 
 	return false
+}
+
+// ============================================================================
+// 监控捕获
+// ============================================================================
+
+// captureForMonitorWithCapture 捕获请求/响应用于监控（支持 ResponseCapture 包装器）
+// 设计原则：
+// - 异步执行，不阻塞主请求流程
+// - 大小限制，防止内存爆炸（请求体/响应体各限制 64KB）
+// - 使用 ResponseCapture 包装器捕获流式响应的完整内容
+// isTest: 是否为测试请求（用于区分正式请求和测试请求）
+func (s *Server) captureForMonitorWithCapture(
+	cfg *model.Config,
+	actualModel string,
+	bodyToSend []byte,
+	res *fwResult,
+	duration float64,
+	reqCtx *proxyRequestContext,
+	selectedKey string,
+	capture *ResponseCapture,
+	isTest bool,
+) {
+	// 检查监控服务是否可用且开启
+	if s.monitorService == nil || !s.monitorService.IsEnabled() {
+		return
+	}
+
+	// 构建追踪记录
+	trace := &storage.Trace{
+		Time:        time.Now().UnixMilli(),
+		ChannelID:   int(cfg.ID),
+		ChannelName: cfg.Name,
+		ChannelType: cfg.GetChannelType(),
+		Model:       actualModel,
+		RequestPath: reqCtx.requestPath,
+		Duration:    duration,
+		IsStreaming: reqCtx.isStreaming,
+		IsTest:      isTest,
+		ClientIP:    reqCtx.clientIP,
+		APIKeyUsed:  maskAPIKey(selectedKey),
+	}
+
+	// 提取 token 统计（如果有）
+	if res != nil {
+		trace.InputTokens = res.InputTokens
+		trace.OutputTokens = res.OutputTokens
+	}
+
+	// 捕获请求体（限制大小）
+	const maxCaptureSize = 64 * 1024 // 64KB
+	if len(bodyToSend) > 0 {
+		if len(bodyToSend) <= maxCaptureSize {
+			trace.RequestBody = string(bodyToSend)
+		} else {
+			trace.RequestBody = string(bodyToSend[:maxCaptureSize]) + "\n...(truncated)"
+		}
+	}
+
+	// 捕获响应信息
+	if res != nil {
+		trace.StatusCode = res.Status
+	}
+
+	// 优先使用 ResponseCapture 捕获的数据（包括流式响应）
+	if capture != nil {
+		capturedBody := capture.Body()
+		if len(capturedBody) > 0 {
+			if capture.IsTruncated() {
+				trace.ResponseBody = string(capturedBody) + "\n...(truncated)"
+			} else {
+				trace.ResponseBody = string(capturedBody)
+			}
+		}
+		// 如果 res 没有状态码，使用 capture 的状态码
+		if trace.StatusCode == 0 {
+			trace.StatusCode = capture.StatusCode()
+		}
+	} else if res != nil && len(res.Body) > 0 {
+		// 降级：使用 fwResult 中的响应体
+		if len(res.Body) <= maxCaptureSize {
+			trace.ResponseBody = string(res.Body)
+		} else {
+			trace.ResponseBody = string(res.Body[:maxCaptureSize]) + "\n...(truncated)"
+		}
+	}
+
+	// 异步捕获（不阻塞主流程）
+	s.monitorService.Capture(trace)
 }
