@@ -167,15 +167,17 @@ func (s *Server) handleCreateChannel(c *gin.Context) {
 	now := time.Now()
 
 	// 根据预设类型创建 API Key
-	if req.Preset == "official" {
-		// 官方预设：使用 OAuth Token（单个记录）
-		// [FIX] 官方预设的 OAuth Token 是必需的，创建失败必须回滚渠道并返回错误
+	// [FIX] 支持 Kiro 预设（使用 RefreshToken 认证）
+	isOAuthPreset := req.Preset == "official" || req.Preset == "kiro"
+	if isOAuthPreset {
+		// OAuth 预设（official/kiro）：使用 OAuth Token（单个记录）
+		// [FIX] OAuth 预设的 Token 是必需的，创建失败必须回滚渠道并返回错误
 		apiKey := req.ToAPIKey(created.ID)
 		apiKey.KeyStrategy = keyStrategy
 		apiKey.CreatedAt = model.JSONTime{Time: now}
 		apiKey.UpdatedAt = model.JSONTime{Time: now}
 		if err := s.store.CreateAPIKey(c.Request.Context(), apiKey); err != nil {
-			log.Printf("[ERROR] 创建OAuth Token失败 (channel=%d): %v", created.ID, err)
+			log.Printf("[ERROR] 创建OAuth Token失败 (channel=%d, preset=%s): %v", created.ID, req.Preset, err)
 			// 回滚：删除已创建的渠道
 			if delErr := s.store.DeleteConfig(c.Request.Context(), created.ID); delErr != nil {
 				log.Printf("[ERROR] 回滚删除渠道失败 (channel=%d): %v", created.ID, delErr)
@@ -277,15 +279,29 @@ func (s *Server) handleGetChannel(c *gin.Context, id int64) {
 		response["key_strategy"] = apiKeys[0].KeyStrategy
 
 		// 根据预设类型返回不同的认证信息
-		if cfg.Preset == "official" {
-			// 官方预设：返回 OAuth Token 状态（不返回完整 Token 以保护安全）
-			if apiKeys[0].AccessToken != "" {
-				response["oauth_authorized"] = true
-				response["token_expires_at"] = apiKeys[0].TokenExpiresAt
+		// [FIX] 支持 Kiro 预设（使用 RefreshToken 认证）
+		isOAuthPreset := cfg.Preset == "official" || cfg.Preset == "kiro"
+		if isOAuthPreset {
+			// OAuth 预设（official/kiro）：返回 OAuth Token 状态
+			if cfg.Preset == "kiro" {
+				// Kiro 预设：检查 RefreshToken（AccessToken 是动态刷新的）
+				if apiKeys[0].RefreshToken != "" {
+					response["oauth_authorized"] = true
+					response["refresh_token"] = apiKeys[0].RefreshToken
+					response["token_expires_at"] = apiKeys[0].TokenExpiresAt
+				} else {
+					response["oauth_authorized"] = false
+				}
 			} else {
-				response["oauth_authorized"] = false
+				// 官方预设（Codex/Gemini）：检查 AccessToken
+				if apiKeys[0].AccessToken != "" {
+					response["oauth_authorized"] = true
+					response["token_expires_at"] = apiKeys[0].TokenExpiresAt
+				} else {
+					response["oauth_authorized"] = false
+				}
 			}
-			response["api_key"] = "" // 官方预设不显示 api_key
+			response["api_key"] = "" // OAuth 预设不显示 api_key
 		} else {
 			// 自定义或其他渠道：返回 API Keys（逗号分隔）
 			apiKeyStrs := make([]string, 0, len(apiKeys))
@@ -382,8 +398,10 @@ func (s *Server) handleUpdateChannel(c *gin.Context, id int64) {
 	}
 
 	// 根据预设类型处理 API Key 更新
-	if req.Preset == "official" {
-		// 官方预设：检查 OAuth Token 是否变化
+	// [FIX] 支持 Kiro 预设（使用 RefreshToken 认证）
+	isOAuthPreset := req.Preset == "official" || req.Preset == "kiro"
+	if isOAuthPreset {
+		// OAuth 预设（official/kiro）：检查 OAuth Token 是否变化
 		oauthChanged := false
 		if len(oldKeys) == 0 {
 			oauthChanged = true // 无旧 Key，需要创建
