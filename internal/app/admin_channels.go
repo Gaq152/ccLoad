@@ -169,12 +169,19 @@ func (s *Server) handleCreateChannel(c *gin.Context) {
 	// 根据预设类型创建 API Key
 	if req.Preset == "official" {
 		// 官方预设：使用 OAuth Token（单个记录）
+		// [FIX] 官方预设的 OAuth Token 是必需的，创建失败必须回滚渠道并返回错误
 		apiKey := req.ToAPIKey(created.ID)
 		apiKey.KeyStrategy = keyStrategy
 		apiKey.CreatedAt = model.JSONTime{Time: now}
 		apiKey.UpdatedAt = model.JSONTime{Time: now}
 		if err := s.store.CreateAPIKey(c.Request.Context(), apiKey); err != nil {
-			log.Printf("[WARN] 创建OAuth Token失败 (channel=%d): %v", created.ID, err)
+			log.Printf("[ERROR] 创建OAuth Token失败 (channel=%d): %v", created.ID, err)
+			// 回滚：删除已创建的渠道
+			if delErr := s.store.DeleteConfig(c.Request.Context(), created.ID); delErr != nil {
+				log.Printf("[ERROR] 回滚删除渠道失败 (channel=%d): %v", created.ID, delErr)
+			}
+			RespondErrorMsg(c, http.StatusInternalServerError, "保存OAuth Token失败: "+err.Error())
+			return
 		}
 	} else {
 		// 自定义预设或其他渠道：解析并创建多个 API Keys
@@ -390,16 +397,28 @@ func (s *Server) handleUpdateChannel(c *gin.Context, id int64) {
 		}
 
 		if oauthChanged {
-			// 删除旧 Key 并重建
-			_ = s.store.DeleteAllAPIKeys(c.Request.Context(), id)
-
+			// [FIX] 使用 UpdateAPIKey 而不是删除+创建，避免失败后丢失旧 Token
 			now := time.Now()
 			apiKey := req.ToAPIKey(id)
 			apiKey.KeyStrategy = keyStrategy
-			apiKey.CreatedAt = model.JSONTime{Time: now}
 			apiKey.UpdatedAt = model.JSONTime{Time: now}
-			if err := s.store.CreateAPIKey(c.Request.Context(), apiKey); err != nil {
-				log.Printf("[WARN] 更新OAuth Token失败 (channel=%d): %v", id, err)
+
+			if len(oldKeys) > 0 {
+				// 有旧 Key：更新现有记录（UpdateAPIKey 使用 channel_id + key_index 定位）
+				apiKey.CreatedAt = oldKeys[0].CreatedAt // 保留原始创建时间
+				if err := s.store.UpdateAPIKey(c.Request.Context(), apiKey); err != nil {
+					log.Printf("[ERROR] 更新OAuth Token失败 (channel=%d): %v", id, err)
+					RespondErrorMsg(c, http.StatusInternalServerError, "保存OAuth Token失败: "+err.Error())
+					return
+				}
+			} else {
+				// 无旧 Key：创建新记录
+				apiKey.CreatedAt = model.JSONTime{Time: now}
+				if err := s.store.CreateAPIKey(c.Request.Context(), apiKey); err != nil {
+					log.Printf("[ERROR] 创建OAuth Token失败 (channel=%d): %v", id, err)
+					RespondErrorMsg(c, http.StatusInternalServerError, "保存OAuth Token失败: "+err.Error())
+					return
+				}
 			}
 		}
 	} else {
