@@ -1929,7 +1929,9 @@ async function exchangeCodeForToken(code) {
     });
 
     if (result.success && result.data) {
-      let tokenData = typeof result.data === 'string' ? JSON.parse(result.data) : result.data;
+      // [FIX] 后端返回结构是 { data: "token_json_string", status_code: 200 }
+      const tokenStr = result.data.data || result.data;
+      let tokenData = typeof tokenStr === 'string' ? JSON.parse(tokenStr) : tokenStr;
 
       // 补充信息
       tokenData.type = 'oauth';
@@ -1996,7 +1998,9 @@ async function refreshCodexToken() {
     });
 
     if (result.success && result.data) {
-      let newTokenData = typeof result.data === 'string' ? JSON.parse(result.data) : result.data;
+      // [FIX] 后端返回结构是 { data: "token_json_string", status_code: 200 }
+      const tokenStr = result.data.data || result.data;
+      let newTokenData = typeof tokenStr === 'string' ? JSON.parse(tokenStr) : tokenStr;
 
       // 合并新旧数据（保留 refresh_token 如果新的没返回）
       const updatedToken = {
@@ -2334,7 +2338,9 @@ async function exchangeGeminiCodeForToken(code) {
     });
 
     if (result.success && result.data) {
-      let tokenData = typeof result.data === 'string' ? JSON.parse(result.data) : result.data;
+      // [FIX] 后端返回结构是 { data: "token_json_string", status_code: 200 }
+      const tokenStr = result.data.data || result.data;
+      let tokenData = typeof tokenStr === 'string' ? JSON.parse(tokenStr) : tokenStr;
 
       // 补充信息
       tokenData.type = 'oauth';
@@ -2401,7 +2407,9 @@ async function refreshGeminiToken() {
     });
 
     if (result.success && result.data) {
-      let newTokenData = typeof result.data === 'string' ? JSON.parse(result.data) : result.data;
+      // [FIX] 后端返回结构是 { data: "token_json_string", status_code: 200 }
+      const tokenStr = result.data.data || result.data;
+      let newTokenData = typeof tokenStr === 'string' ? JSON.parse(tokenStr) : tokenStr;
 
       // 合并新旧数据（保留 refresh_token 如果新的没返回）
       const updatedToken = {
