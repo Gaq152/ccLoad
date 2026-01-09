@@ -136,13 +136,21 @@ func (cr *ChannelRequest) Validate() error {
 			cr.TokenExpiresAt = 0
 		}
 	} else if cr.ChannelType == "anthropic" {
-		// Anthropic 渠道：支持 antigravity 预设（Google 反代兼容）
-		if strings.TrimSpace(cr.APIKey) == "" {
-			return fmt.Errorf("api_key cannot be empty")
+		// Anthropic 渠道：支持 antigravity 和 kiro 预设
+		if cr.Preset == "kiro" {
+			// Kiro 预设：使用 OAuth Token 认证，不需要 API Key
+			if strings.TrimSpace(cr.RefreshToken) == "" {
+				return fmt.Errorf("kiro预设必须提供 refresh_token")
+			}
+		} else {
+			// 其他预设（custom/antigravity）：需要 API Key
+			if strings.TrimSpace(cr.APIKey) == "" {
+				return fmt.Errorf("api_key cannot be empty")
+			}
 		}
-		// 只允许 antigravity 或空/custom 预设
-		if cr.Preset != "" && cr.Preset != "custom" && cr.Preset != "antigravity" {
-			return fmt.Errorf("anthropic渠道只支持 custom 或 antigravity 预设")
+		// 只允许 antigravity、kiro 或空/custom 预设
+		if cr.Preset != "" && cr.Preset != "custom" && cr.Preset != "antigravity" && cr.Preset != "kiro" {
+			return fmt.Errorf("anthropic渠道只支持 custom、antigravity 或 kiro 预设")
 		}
 	} else {
 		// 其他非 OAuth 渠道：必须有 API Key，不使用预设
