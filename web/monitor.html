@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" type="image/x-icon" href="/web/favicon.ico">
+  <link rel="apple-touch-icon" href="/web/apple-touch-icon.png">
+  <link rel="manifest" href="/web/manifest.json">
+  <meta name="theme-color" content="#3b82f6">
+  <title>请求监控 - AI Proxy</title>
+  <link rel="stylesheet" href="/web/assets/css/theme.css">
+  <link rel="stylesheet" href="/web/assets/css/styles.css">
+  <script src="/web/assets/js/theme.js"></script>
+  <link href="/web/assets/css/inter.css" rel="stylesheet">
+  <link rel="stylesheet" href="/web/assets/css/monitor.css">
+</head>
+<body class="dashboard-theme">
+  <div class="app-container">
+    <!-- 主内容区域 -->
+    <main class="main-content">
+      <div class="content-area">
+        <!-- 页面标题和控制栏 -->
+        <header class="monitor-header">
+          <div class="header-left">
+            <h1 class="page-title">请求监控</h1>
+          </div>
+          <div class="monitor-controls">
+            <!-- 监控按钮 -->
+            <button id="monitorBtn" class="btn btn-primary btn-sm" onclick="toggleMonitor()">
+              开始监控
+            </button>
+
+            <!-- 清空按钮 -->
+            <button id="clearBtn" class="btn btn-secondary btn-sm" onclick="clearTraces()">
+              清空记录
+            </button>
+          </div>
+        </header>
+
+        <!-- 统计面板 -->
+        <section class="stats-panel">
+          <div class="stat-card clickable" id="filterAll" onclick="setFilter('all')">
+            <div class="stat-value" id="statTotal">0</div>
+            <div class="stat-label">总请求</div>
+          </div>
+          <div class="stat-card stat-success clickable" id="filterSuccess" onclick="setFilter('success')">
+            <div class="stat-value" id="statSuccess">0</div>
+            <div class="stat-label">成功</div>
+          </div>
+          <div class="stat-card stat-error clickable" id="filterError" onclick="setFilter('error')">
+            <div class="stat-value" id="statError">0</div>
+            <div class="stat-label">错误</div>
+          </div>
+        </section>
+
+        <!-- 追踪记录列表 -->
+        <section class="glass-card">
+          <div class="table-container">
+            <table class="modern-table monitor-table">
+              <thead>
+                <tr>
+                  <th style="width: 140px;">时间</th>
+                  <th style="width: 100px;">客户端IP</th>
+                  <th style="width: 140px;">端点</th>
+                  <th style="width: 150px;">模型</th>
+                  <th style="width: 130px;">渠道</th>
+                  <th style="width: 60px;">状态</th>
+                  <th style="width: 70px;">耗时</th>
+                  <th style="width: 100px;">Tokens</th>
+                  <th style="width: 60px;">操作</th>
+                </tr>
+              </thead>
+              <tbody id="tbody">
+                <tr>
+                  <td colspan="9" class="empty-state">开启监控后将实时显示请求记录</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <!-- 确认弹窗 -->
+  <div id="confirmModal" class="modal">
+    <div class="modal-content confirm-modal-content">
+      <div class="confirm-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="12" y1="8" x2="12" y2="12"></line>
+          <line x1="12" y1="16" x2="12.01" y2="16"></line>
+        </svg>
+      </div>
+      <h3 class="confirm-title">确认清空</h3>
+      <p class="confirm-message">确定要清空所有监控记录吗？此操作不可撤销。</p>
+      <div class="confirm-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeConfirmModal()">取消</button>
+        <button type="button" class="btn btn-danger" onclick="confirmClearTraces()">确认清空</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 详情弹窗 -->
+  <div id="traceDetailModal" class="modal">
+    <div class="modal-content trace-detail-content">
+      <div class="modal-header">
+        <h2 class="modal-title">请求详情</h2>
+        <button class="close-btn" onclick="closeDetailModal()">&times;</button>
+      </div>
+
+      <div class="trace-detail-body">
+        <!-- 基本信息 -->
+        <div class="detail-section">
+          <h3>基本信息</h3>
+          <div class="detail-grid">
+            <div class="detail-item">
+              <label>渠道:</label>
+              <span id="detailChannel">-</span>
+            </div>
+            <div class="detail-item">
+              <label>渠道ID:</label>
+              <span id="detailChannelID">-</span>
+            </div>
+            <div class="detail-item">
+              <label>模型:</label>
+              <span id="detailModel">-</span>
+            </div>
+            <div class="detail-item">
+              <label>端点:</label>
+              <span id="detailRequestPath">-</span>
+            </div>
+            <div class="detail-item">
+              <label>状态码:</label>
+              <span id="detailStatus">-</span>
+            </div>
+            <div class="detail-item">
+              <label>耗时:</label>
+              <span id="detailDuration">-</span>
+            </div>
+            <div class="detail-item">
+              <label>流式:</label>
+              <span id="detailStreaming">-</span>
+            </div>
+            <div class="detail-item">
+              <label>输入Tokens:</label>
+              <span id="detailInputTokens">-</span>
+            </div>
+            <div class="detail-item">
+              <label>输出Tokens:</label>
+              <span id="detailOutputTokens">-</span>
+            </div>
+            <div class="detail-item">
+              <label>客户端IP:</label>
+              <span id="detailClientIP">-</span>
+            </div>
+            <div class="detail-item">
+              <label>API Key:</label>
+              <span id="detailAPIKey">-</span>
+            </div>
+            <div class="detail-item">
+              <label>测试请求:</label>
+              <span id="detailIsTest">-</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 请求体（可折叠） -->
+        <div class="detail-section">
+          <h3 class="section-header collapsible-header">
+            <span onclick="toggleRequestBody()">请求体 <span class="collapse-icon" id="requestBodyIcon">▼</span></span>
+            <button class="copy-btn" onclick="copyContent('detailRequestBody')" title="复制">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+              </svg>
+              <span class="copy-text">复制</span>
+            </button>
+          </h3>
+          <div id="requestBodyContainer" class="collapsible-content collapsed">
+            <pre id="detailRequestBody" class="code-block">-</pre>
+          </div>
+        </div>
+
+        <!-- 解析后的响应（默认展示） -->
+        <div class="detail-section" id="parsedResponseSection">
+          <h3>模型响应</h3>
+          <div id="parsedResponseContent" class="parsed-response">
+            <div class="parsed-block parsed-thinking" id="parsedThinking" style="display:none;">
+              <div class="parsed-label">
+                <span class="label-icon">💭</span> 思考过程
+              </div>
+              <pre class="parsed-code-block thinking-block" id="parsedThinkingText"></pre>
+            </div>
+            <div class="parsed-block parsed-reply" id="parsedReply" style="display:none;">
+              <div class="parsed-label">
+                <span class="label-icon">💬</span> 回复内容
+              </div>
+              <pre class="parsed-code-block reply-block" id="parsedReplyText"></pre>
+            </div>
+            <div class="parsed-empty" id="parsedEmpty">无法解析响应内容</div>
+          </div>
+        </div>
+
+        <!-- 完整响应体（可折叠） -->
+        <div class="detail-section">
+          <h3 class="section-header collapsible-header">
+            <span onclick="toggleRawResponse()">完整响应体 <span class="collapse-icon" id="rawResponseIcon">▼</span></span>
+            <button class="copy-btn" onclick="copyContent('detailResponseBody')" title="复制">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+              </svg>
+              <span class="copy-text">复制</span>
+            </button>
+          </h3>
+          <div id="rawResponseContainer" class="collapsible-content collapsed">
+            <pre id="detailResponseBody" class="code-block">-</pre>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeDetailModal()">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/web/assets/js/template-engine.js"></script>
+  <script src="/web/assets/js/ui.js"></script>
+  <script src="/web/assets/js/topbar.js"></script>
+  <script src="/web/assets/js/monitor.js"></script>
+</body>
+</html>
