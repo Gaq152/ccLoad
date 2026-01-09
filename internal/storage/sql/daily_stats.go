@@ -258,7 +258,7 @@ func (s *SQLStore) GetLatestDailyStatsDate(ctx context.Context) (time.Time, erro
 		return time.Time{}, nil // 没有统计数据
 	}
 
-	date, err := time.Parse("2006-01-02", dateStr.String)
+	date, err := time.ParseInLocation("2006-01-02", dateStr.String, time.Local)
 	if err != nil {
 		return time.Time{}, fmt.Errorf("parse date: %w", err)
 	}
