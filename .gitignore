@@ -14,7 +14,6 @@ data/
 
 # Build artifacts
 ccLoad
-ccload
 /tmp/ccload*
 *.exe
 *.dll
@@ -54,3 +53,6 @@ com.ccload.service.plist
 AGENTS.md
 dist
 *.bak
+
+*.json
+*.txt
