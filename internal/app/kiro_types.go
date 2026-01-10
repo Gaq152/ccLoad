@@ -94,10 +94,13 @@ type KiroUserInputMessage struct {
 	UserInputMessageContext KiroUserInputMessageContext `json:"userInputMessageContext,omitempty"`
 }
 
-// KiroImage 图片数据
+// KiroImage 图片数据 (CodeWhisperer 格式)
+// 参考: https://github.com/nineyuanz/kiro2api/blob/main/types/codewhisperer.go
 type KiroImage struct {
-	Data   string `json:"data"`             // base64 编码的图片数据
-	Format string `json:"format,omitempty"` // 图片格式
+	Format string `json:"format"` // 图片格式: "jpeg", "png", "gif", "webp"
+	Source struct {
+		Bytes string `json:"bytes"` // base64 编码的图片数据
+	} `json:"source"`
 }
 
 // KiroUserInputMessageContext 用户输入消息上下文
