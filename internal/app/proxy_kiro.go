@@ -64,7 +64,12 @@ func (s *Server) forwardKiroRequest(
 	// 处理响应
 	contentType := resp.Header.Get("Content-Type")
 
-	if strings.Contains(contentType, "text/event-stream") {
+	// [DEBUG] 记录 Kiro 响应的 Content-Type
+	log.Printf("[DEBUG] [Kiro] 响应 Content-Type: %s", contentType)
+
+	// Kiro 返回 AWS Event Stream 二进制格式
+	// Content-Type 可能是: application/vnd.amazon.eventstream 或 text/event-stream
+	if strings.Contains(contentType, "event-stream") || strings.Contains(contentType, "amazon") {
 		// 流式响应
 		parser, err := StreamCopyKiroSSE(ctx, resp.Body, w)
 		if err != nil && err != io.EOF {
