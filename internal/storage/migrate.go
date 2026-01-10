@@ -114,9 +114,15 @@ func migrate(ctx context.Context, db *sql.DB, dialect Dialect) error {
 				if err := ensureAPIKeysOAuthFields(ctx, db); err != nil {
 					return fmt.Errorf("migrate api_keys oauth fields: %w", err)
 				}
+				if err := ensureAPIKeysDeviceFingerprint(ctx, db); err != nil {
+					return fmt.Errorf("migrate api_keys.device_fingerprint: %w", err)
+				}
 			} else {
 				if err := ensureAPIKeysOAuthFieldsSQLite(ctx, db); err != nil {
 					return fmt.Errorf("migrate api_keys oauth fields: %w", err)
+				}
+				if err := ensureAPIKeysDeviceFingerprintSQLite(ctx, db); err != nil {
+					return fmt.Errorf("migrate api_keys.device_fingerprint: %w", err)
 				}
 			}
 		}
@@ -1020,6 +1026,67 @@ func ensureAPIKeysOAuthFieldsSQLite(ctx context.Context, db *sql.DB) error {
 		if err != nil {
 			return fmt.Errorf("add token_expires_at column: %w", err)
 		}
+	}
+
+	return nil
+}
+
+// ensureAPIKeysDeviceFingerprint 确保api_keys表有device_fingerprint字段(MySQL增量迁移)
+func ensureAPIKeysDeviceFingerprint(ctx context.Context, db *sql.DB) error {
+	var count int
+	err := db.QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='api_keys' AND COLUMN_NAME='device_fingerprint'",
+	).Scan(&count)
+	if err != nil {
+		return fmt.Errorf("check device_fingerprint existence: %w", err)
+	}
+
+	if count > 0 {
+		return nil
+	}
+
+	_, err = db.ExecContext(ctx,
+		"ALTER TABLE api_keys ADD COLUMN device_fingerprint VARCHAR(128) DEFAULT NULL COMMENT 'Kiro设备指纹(64位hex字符串)'",
+	)
+	if err != nil {
+		return fmt.Errorf("add device_fingerprint column: %w", err)
+	}
+
+	return nil
+}
+
+// ensureAPIKeysDeviceFingerprintSQLite 确保api_keys表有device_fingerprint字段(SQLite增量迁移)
+func ensureAPIKeysDeviceFingerprintSQLite(ctx context.Context, db *sql.DB) error {
+	rows, err := db.QueryContext(ctx, "PRAGMA table_info(api_keys)")
+	if err != nil {
+		return fmt.Errorf("check table info: %w", err)
+	}
+	defer rows.Close()
+
+	hasColumn := false
+	for rows.Next() {
+		var cid int
+		var name, typ string
+		var notNull, pk int
+		var dfltValue any
+		if err := rows.Scan(&cid, &name, &typ, &notNull, &dfltValue, &pk); err != nil {
+			return fmt.Errorf("scan column info: %w", err)
+		}
+		if name == "device_fingerprint" {
+			hasColumn = true
+			break
+		}
+	}
+
+	if hasColumn {
+		return nil
+	}
+
+	_, err = db.ExecContext(ctx,
+		"ALTER TABLE api_keys ADD COLUMN device_fingerprint TEXT DEFAULT NULL",
+	)
+	if err != nil {
+		return fmt.Errorf("add device_fingerprint column: %w", err)
 	}
 
 	return nil
