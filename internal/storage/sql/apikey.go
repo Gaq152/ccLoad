@@ -20,7 +20,7 @@ func (s *SQLStore) GetAPIKeys(ctx context.Context, channelID int64) ([]*model.AP
 		SELECT id, channel_id, key_index, api_key, key_strategy,
 		       cooldown_until, cooldown_duration_ms,
 		       access_token, id_token, refresh_token, token_expires_at,
-		       created_at, updated_at
+		       device_fingerprint, created_at, updated_at
 		FROM api_keys
 		WHERE channel_id = ?
 		ORDER BY key_index ASC
@@ -35,7 +35,7 @@ func (s *SQLStore) GetAPIKeys(ctx context.Context, channelID int64) ([]*model.AP
 	for rows.Next() {
 		key := &model.APIKey{}
 		var createdAt, updatedAt int64
-		var accessToken, idToken, refreshToken sql.NullString
+		var accessToken, idToken, refreshToken, deviceFingerprint sql.NullString
 		var tokenExpiresAt int64
 
 		err := rows.Scan(
@@ -50,6 +50,7 @@ func (s *SQLStore) GetAPIKeys(ctx context.Context, channelID int64) ([]*model.AP
 			&idToken,
 			&refreshToken,
 			&tokenExpiresAt,
+			&deviceFingerprint,
 			&createdAt,
 			&updatedAt,
 		)
@@ -68,6 +69,9 @@ func (s *SQLStore) GetAPIKeys(ctx context.Context, channelID int64) ([]*model.AP
 			key.RefreshToken = refreshToken.String
 		}
 		key.TokenExpiresAt = tokenExpiresAt
+		if deviceFingerprint.Valid {
+			key.DeviceFingerprint = deviceFingerprint.String
+		}
 
 		key.CreatedAt = model.JSONTime{Time: unixToTime(createdAt)}
 		key.UpdatedAt = model.JSONTime{Time: unixToTime(updatedAt)}
@@ -87,7 +91,7 @@ func (s *SQLStore) GetAPIKey(ctx context.Context, channelID int64, keyIndex int)
 		SELECT id, channel_id, key_index, api_key, key_strategy,
 		       cooldown_until, cooldown_duration_ms,
 		       access_token, id_token, refresh_token, token_expires_at,
-		       created_at, updated_at
+		       device_fingerprint, created_at, updated_at
 		FROM api_keys
 		WHERE channel_id = ? AND key_index = ?
 	`
@@ -95,7 +99,7 @@ func (s *SQLStore) GetAPIKey(ctx context.Context, channelID int64, keyIndex int)
 
 	key := &model.APIKey{}
 	var createdAt, updatedAt int64
-	var accessToken, idToken, refreshToken sql.NullString
+	var accessToken, idToken, refreshToken, deviceFingerprint sql.NullString
 	var tokenExpiresAt int64
 
 	err := row.Scan(
@@ -110,6 +114,7 @@ func (s *SQLStore) GetAPIKey(ctx context.Context, channelID int64, keyIndex int)
 		&idToken,
 		&refreshToken,
 		&tokenExpiresAt,
+		&deviceFingerprint,
 		&createdAt,
 		&updatedAt,
 	)
@@ -131,6 +136,9 @@ func (s *SQLStore) GetAPIKey(ctx context.Context, channelID int64, keyIndex int)
 		key.RefreshToken = refreshToken.String
 	}
 	key.TokenExpiresAt = tokenExpiresAt
+	if deviceFingerprint.Valid {
+		key.DeviceFingerprint = deviceFingerprint.String
+	}
 
 	key.CreatedAt = model.JSONTime{Time: unixToTime(createdAt)}
 	key.UpdatedAt = model.JSONTime{Time: unixToTime(updatedAt)}
@@ -152,7 +160,7 @@ func (s *SQLStore) CreateAPIKey(ctx context.Context, key *model.APIKey) error {
 	}
 
 	// 处理 OAuth 字段（可空）
-	var accessToken, idToken, refreshToken *string
+	var accessToken, idToken, refreshToken, deviceFingerprint *string
 	if key.AccessToken != "" {
 		accessToken = &key.AccessToken
 	}
@@ -162,17 +170,20 @@ func (s *SQLStore) CreateAPIKey(ctx context.Context, key *model.APIKey) error {
 	if key.RefreshToken != "" {
 		refreshToken = &key.RefreshToken
 	}
+	if key.DeviceFingerprint != "" {
+		deviceFingerprint = &key.DeviceFingerprint
+	}
 
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO api_keys (channel_id, key_index, api_key, key_strategy,
 		                      cooldown_until, cooldown_duration_ms,
 		                      access_token, id_token, refresh_token, token_expires_at,
-		                      created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		                      device_fingerprint, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, key.ChannelID, key.KeyIndex, key.APIKey, key.KeyStrategy,
 		key.CooldownUntil, key.CooldownDurationMs,
 		accessToken, idToken, refreshToken, key.TokenExpiresAt,
-		nowUnix, nowUnix)
+		deviceFingerprint, nowUnix, nowUnix)
 
 	if err != nil {
 		return fmt.Errorf("insert api key: %w", err)
@@ -198,7 +209,7 @@ func (s *SQLStore) UpdateAPIKey(ctx context.Context, key *model.APIKey) error {
 	}
 
 	// 处理 OAuth 字段（可空）
-	var accessToken, idToken, refreshToken *string
+	var accessToken, idToken, refreshToken, deviceFingerprint *string
 	if key.AccessToken != "" {
 		accessToken = &key.AccessToken
 	}
@@ -208,18 +219,21 @@ func (s *SQLStore) UpdateAPIKey(ctx context.Context, key *model.APIKey) error {
 	if key.RefreshToken != "" {
 		refreshToken = &key.RefreshToken
 	}
+	if key.DeviceFingerprint != "" {
+		deviceFingerprint = &key.DeviceFingerprint
+	}
 
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE api_keys
 		SET api_key = ?, key_strategy = ?,
 		    cooldown_until = ?, cooldown_duration_ms = ?,
 		    access_token = ?, id_token = ?, refresh_token = ?, token_expires_at = ?,
-		    updated_at = ?
+		    device_fingerprint = ?, updated_at = ?
 		WHERE channel_id = ? AND key_index = ?
 	`, key.APIKey, key.KeyStrategy,
 		key.CooldownUntil, key.CooldownDurationMs,
 		accessToken, idToken, refreshToken, key.TokenExpiresAt,
-		updatedAtUnix, key.ChannelID, key.KeyIndex)
+		deviceFingerprint, updatedAtUnix, key.ChannelID, key.KeyIndex)
 
 	if err != nil {
 		return fmt.Errorf("update api key: %w", err)
@@ -351,8 +365,10 @@ func (s *SQLStore) ImportChannelBatch(ctx context.Context, channels []*model.Cha
 		// 预编译API Key插入语句
 		keyStmt, err := tx.PrepareContext(ctx, `
 			INSERT INTO api_keys (channel_id, key_index, api_key, key_strategy,
-			                      cooldown_until, cooldown_duration_ms, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			                      cooldown_until, cooldown_duration_ms,
+			                      access_token, id_token, refresh_token, token_expires_at, device_fingerprint,
+			                      created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`)
 		if err != nil {
 			return fmt.Errorf("prepare api key statement: %w", err)
@@ -412,9 +428,30 @@ func (s *SQLStore) ImportChannelBatch(ctx context.Context, channels []*model.Cha
 
 			// 批量插入API Keys（使用预编译语句）
 			for _, key := range cwk.APIKeys {
+				// 处理可空字段
+				var accessToken, idToken, refreshToken, deviceFingerprint any
+				var tokenExpiresAt any
+				if key.AccessToken != "" {
+					accessToken = key.AccessToken
+				}
+				if key.IDToken != "" {
+					idToken = key.IDToken
+				}
+				if key.RefreshToken != "" {
+					refreshToken = key.RefreshToken
+				}
+				if key.TokenExpiresAt != 0 {
+					tokenExpiresAt = key.TokenExpiresAt
+				}
+				if key.DeviceFingerprint != "" {
+					deviceFingerprint = key.DeviceFingerprint
+				}
+
 				_, err := keyStmt.ExecContext(ctx,
 					channelID, key.KeyIndex, key.APIKey, key.KeyStrategy,
-					key.CooldownUntil, key.CooldownDurationMs, nowUnix, nowUnix)
+					key.CooldownUntil, key.CooldownDurationMs,
+					accessToken, idToken, refreshToken, tokenExpiresAt, deviceFingerprint,
+					nowUnix, nowUnix)
 				if err != nil {
 					return fmt.Errorf("insert api key %d for channel %d: %w", key.KeyIndex, channelID, err)
 				}
@@ -450,7 +487,7 @@ func (s *SQLStore) GetAllAPIKeys(ctx context.Context) (map[int64][]*model.APIKey
 		SELECT id, channel_id, key_index, api_key, key_strategy,
 		       cooldown_until, cooldown_duration_ms,
 		       access_token, id_token, refresh_token, token_expires_at,
-		       created_at, updated_at
+		       device_fingerprint, created_at, updated_at
 		FROM api_keys
 		ORDER BY channel_id ASC, key_index ASC
 	`
@@ -464,7 +501,7 @@ func (s *SQLStore) GetAllAPIKeys(ctx context.Context) (map[int64][]*model.APIKey
 	for rows.Next() {
 		key := &model.APIKey{}
 		var createdAt, updatedAt int64
-		var accessToken, idToken, refreshToken sql.NullString
+		var accessToken, idToken, refreshToken, deviceFingerprint sql.NullString
 		var tokenExpiresAt int64
 
 		err := rows.Scan(
@@ -479,6 +516,7 @@ func (s *SQLStore) GetAllAPIKeys(ctx context.Context) (map[int64][]*model.APIKey
 			&idToken,
 			&refreshToken,
 			&tokenExpiresAt,
+			&deviceFingerprint,
 			&createdAt,
 			&updatedAt,
 		)
@@ -497,6 +535,9 @@ func (s *SQLStore) GetAllAPIKeys(ctx context.Context) (map[int64][]*model.APIKey
 			key.RefreshToken = refreshToken.String
 		}
 		key.TokenExpiresAt = tokenExpiresAt
+		if deviceFingerprint.Valid {
+			key.DeviceFingerprint = deviceFingerprint.String
+		}
 
 		key.CreatedAt = model.JSONTime{Time: unixToTime(createdAt)}
 		key.UpdatedAt = model.JSONTime{Time: unixToTime(updatedAt)}

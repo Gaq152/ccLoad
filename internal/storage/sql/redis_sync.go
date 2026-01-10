@@ -86,10 +86,16 @@ func (s *SQLStore) LoadChannelsFromRedis(ctx context.Context) error {
 					for _, key := range cwk.APIKeys {
 						_, err := tx.ExecContext(ctx, `
 						INSERT INTO api_keys (channel_id, key_index, api_key, key_strategy,
-						                      cooldown_until, cooldown_duration_ms, created_at, updated_at)
-						VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+						                      cooldown_until, cooldown_duration_ms,
+						                      access_token, id_token, refresh_token, token_expires_at, device_fingerprint,
+						                      created_at, updated_at)
+						VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 					`, channelID, key.KeyIndex, key.APIKey, key.KeyStrategy,
-							key.CooldownUntil, key.CooldownDurationMs, nowUnix, nowUnix)
+							key.CooldownUntil, key.CooldownDurationMs,
+							nullableString(key.AccessToken), nullableString(key.IDToken),
+							nullableString(key.RefreshToken), nullableInt64(key.TokenExpiresAt),
+							nullableString(key.DeviceFingerprint),
+							nowUnix, nowUnix)
 
 						if err != nil {
 							log.Printf("Warning: failed to restore API key %d for channel %d: %v", key.KeyIndex, channelID, err)
@@ -434,4 +440,22 @@ func (s *SQLStore) CheckAuthTokensEmpty(ctx context.Context) (bool, error) {
 		return false, fmt.Errorf("check auth_tokens count: %w", err)
 	}
 	return count == 0, nil
+}
+
+// nullableString 将空字符串转换为 nil，非空字符串保持原值
+// 用于 SQL 插入时将空字符串存为 NULL
+func nullableString(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
+}
+
+// nullableInt64 将 0 值转换为 nil，非零值保持原值
+// 用于 SQL 插入时将 0 存为 NULL
+func nullableInt64(v int64) any {
+	if v == 0 {
+		return nil
+	}
+	return v
 }
