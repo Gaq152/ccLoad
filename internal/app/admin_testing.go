@@ -64,6 +64,7 @@ func (s *Server) HandleChannelTest(c *gin.Context) {
 
 	// [FIX] Codex/Gemini/Kiro 预设使用 AccessToken 字段，并检查是否需要刷新
 	var selectedKey string
+	var kiroDeviceFingerprint string // Kiro 设备指纹
 	channelType := cfg.GetChannelType()
 	isOAuthPreset := cfg.Preset == "official" && (channelType == util.ChannelTypeCodex || channelType == util.ChannelTypeGemini)
 	isKiroPreset := cfg.Preset == "kiro" && channelType == util.ChannelTypeAnthropic
@@ -81,6 +82,9 @@ func (s *Server) HandleChannelTest(c *gin.Context) {
 			})
 			return
 		}
+
+		// 保存设备指纹
+		kiroDeviceFingerprint = apiKeyData.DeviceFingerprint
 
 		// 构建 Kiro 认证配置（从独立字段读取）
 		kiroConfig := &KiroAuthConfig{
@@ -224,7 +228,7 @@ func (s *Server) HandleChannelTest(c *gin.Context) {
 	}
 
 	// 执行测试（传递实际的API Key字符串）
-	testResult := s.testChannelAPI(cfg, selectedKey, &testReq)
+	testResult := s.testChannelAPI(cfg, selectedKey, &testReq, kiroDeviceFingerprint)
 	// 添加测试的 Key 索引信息到结果中
 	testResult["tested_key_index"] = keyIndex
 	testResult["total_keys"] = len(apiKeys)
@@ -312,7 +316,7 @@ func (s *Server) HandleChannelTest(c *gin.Context) {
 }
 
 // 测试渠道API连通性
-func (s *Server) testChannelAPI(cfg *model.Config, apiKey string, testReq *testutil.TestChannelRequest) map[string]any {
+func (s *Server) testChannelAPI(cfg *model.Config, apiKey string, testReq *testutil.TestChannelRequest, deviceFingerprint string) map[string]any {
 	// 设置默认测试内容（从配置读取）
 	if strings.TrimSpace(testReq.Content) == "" {
 		testReq.Content = s.configService.GetString("channel_test_content", "sonnet 4.0的发布日期是什么")
@@ -341,7 +345,7 @@ func (s *Server) testChannelAPI(cfg *model.Config, apiKey string, testReq *testu
 
 	// Kiro 预设特殊处理：使用 CodeWhisperer API 格式
 	if cfg.Preset == "kiro" && channelType == "anthropic" {
-		return s.testKiroChannel(cfg, apiKey, testReq)
+		return s.testKiroChannel(cfg, apiKey, testReq, deviceFingerprint)
 	}
 
 	var tester testutil.ChannelTester
@@ -625,7 +629,7 @@ func (s *Server) captureTestForMonitor(
 	}
 
 	// 捕获请求体（限制大小）
-	const maxCaptureSize = 64 * 1024 // 64KB
+	const maxCaptureSize = 1024 * 1024 // 1MB
 	if len(requestBody) > 0 {
 		if len(requestBody) <= maxCaptureSize {
 			trace.RequestBody = string(requestBody)
@@ -649,7 +653,7 @@ func (s *Server) captureTestForMonitor(
 
 // testKiroChannel Kiro 预设专用测试函数
 // 使用 CodeWhisperer API 格式发送请求
-func (s *Server) testKiroChannel(cfg *model.Config, accessToken string, testReq *testutil.TestChannelRequest) map[string]any {
+func (s *Server) testKiroChannel(cfg *model.Config, accessToken string, testReq *testutil.TestChannelRequest, deviceFingerprint string) map[string]any {
 	// 构建 Anthropic 格式的请求体（用于转换）
 	anthropicReq := map[string]any{
 		"model": testReq.Model,
@@ -674,8 +678,8 @@ func (s *Server) testKiroChannel(cfg *model.Config, accessToken string, testReq 
 		return map[string]any{"success": false, "error": "转换 Kiro 请求失败: " + err.Error()}
 	}
 
-	// 构建请求头
-	headers := BuildKiroRequestHeaders(accessToken, true)
+	// 构建请求头（使用配置的设备指纹）
+	headers := BuildKiroRequestHeaders(accessToken, true, deviceFingerprint)
 
 	// 创建 HTTP 请求
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)

@@ -624,7 +624,7 @@ func (s *Server) forwardAttempt(
 	var responseCapture *ResponseCapture
 	targetWriter := w
 	if s.monitorService != nil && s.monitorService.IsEnabled() {
-		responseCapture = NewResponseCapture(w, 64*1024) // 64KB 限制
+		responseCapture = NewResponseCapture(w, 1024*1024) // 1MB 限制
 		targetWriter = responseCapture
 	}
 
@@ -967,8 +967,9 @@ keyLoop:
 				continue
 			}
 
-			// 更新上下文中的 Token
+			// 更新上下文中的 Token 和设备指纹
 			reqCtx.kiroAccessToken = accessToken
+			reqCtx.kiroDeviceFingerprint = foundKey.DeviceFingerprint
 			// 更新数据库中的过期时间（如果刷新了）
 			if expiresAt != foundKey.TokenExpiresAt {
 				foundKey.AccessToken = accessToken
@@ -1163,7 +1164,7 @@ func (s *Server) captureForMonitorWithCapture(
 	}
 
 	// 捕获请求体（限制大小）
-	const maxCaptureSize = 64 * 1024 // 64KB
+	const maxCaptureSize = 1024 * 1024 // 1MB
 	if len(bodyToSend) > 0 {
 		if len(bodyToSend) <= maxCaptureSize {
 			trace.RequestBody = string(bodyToSend)
