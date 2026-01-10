@@ -67,13 +67,26 @@ func (s *Server) forwardKiroRequest(
 	// [DEBUG] 记录 Kiro 响应的 Content-Type
 	log.Printf("[DEBUG] [Kiro] 响应 Content-Type: %s", contentType)
 
-	// Kiro 返回 AWS Event Stream 二进制格式
-	// Content-Type 可能是: application/vnd.amazon.eventstream 或 text/event-stream
-	if strings.Contains(contentType, "event-stream") || strings.Contains(contentType, "amazon") {
-		// 流式响应
-		parser, err := StreamCopyKiroSSE(ctx, resp.Body, w)
+	// 读取完整响应体
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, duration, fmt.Errorf("read response body: %w", err)
+	}
+
+	// 检测是否是 AWS Event Stream 二进制格式
+	// 方法1: Content-Type 包含 event-stream 或 amazon
+	// 方法2: 响应体包含 AWS Event Stream 二进制特征（:event-type 头部）
+	isAWSEventStream := strings.Contains(contentType, "event-stream") ||
+		strings.Contains(contentType, "amazon") ||
+		isAWSEventStreamBinary(body)
+
+	if isAWSEventStream {
+		log.Printf("[DEBUG] [Kiro] 检测到 AWS Event Stream 格式，进行转换")
+		// 解析 AWS Event Stream 并转换为 Anthropic SSE 格式
+		// 使用请求中的模型名称
+		parser, err := ProcessKiroAWSEventStream(ctx, body, w, reqCtx.originalModel)
 		if err != nil && err != io.EOF {
-			log.Printf("[WARN] [Kiro] SSE 流处理错误: %v", err)
+			log.Printf("[WARN] [Kiro] AWS Event Stream 处理错误: %v", err)
 		}
 
 		inputTokens, outputTokens := parser.GetUsage()
@@ -85,11 +98,8 @@ func (s *Server) forwardKiroRequest(
 		}, duration, nil
 	}
 
-	// 非流式响应
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, duration, fmt.Errorf("read response body: %w", err)
-	}
+	// 非 AWS Event Stream 响应（纯 JSON）
+	log.Printf("[DEBUG] [Kiro] 非 AWS Event Stream 格式，直接透传")
 
 	// 处理 JSON 响应
 	processedBody, err := ProcessKiroJSONResponse(body)
@@ -112,6 +122,15 @@ func (s *Server) forwardKiroRequest(
 		Header: resp.Header.Clone(),
 		Body:   processedBody,
 	}, duration, nil
+}
+
+// isAWSEventStreamBinary 检测响应体是否是 AWS Event Stream 二进制格式
+// AWS Event Stream 帧包含 :event-type, :content-type, :message-type 等头部
+func isAWSEventStreamBinary(data []byte) bool {
+	// 检查是否包含 AWS Event Stream 的特征字符串
+	// 这些是二进制头部中的字符串标记
+	return bytes.Contains(data, []byte(":event-type")) ||
+		bytes.Contains(data, []byte(":message-type"))
 }
 
 // ForwardKiroRequest 转发请求到 Kiro API
@@ -144,6 +163,93 @@ func (s *Server) ForwardKiroRequest(
 	}
 
 	return resp, nil
+}
+
+// ProcessKiroAWSEventStream 处理已读取的 AWS Event Stream 响应并转换为 Anthropic SSE 格式
+// 与 StreamCopyKiroSSE 不同，此函数接收已读取的字节数组而非流
+// requestedModel: 请求的模型名称，用于响应中的 model 字段
+func ProcessKiroAWSEventStream(ctx context.Context, data []byte, w http.ResponseWriter, requestedModel string) (*kiroSSEParser, error) {
+	parser := newKiroSSEParser()
+	if requestedModel != "" {
+		parser.requestedModel = requestedModel
+	}
+
+	// 设置 SSE 响应头
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		return parser, fmt.Errorf("response writer does not support flushing")
+	}
+
+	// 解析所有帧
+	buf := data
+	for len(buf) >= 16 {
+		select {
+		case <-ctx.Done():
+			return parser, ctx.Err()
+		default:
+		}
+
+		frameLen, frame, remaining := parseAWSEventStreamFrame(buf)
+		if frameLen == 0 {
+			break
+		}
+
+		// 处理帧
+		processAWSEventStreamFrame(w, flusher, frame, parser)
+		buf = remaining
+	}
+
+	// 如果有内容输出但没有收到 completionEvent，手动发送结束事件
+	// Kiro 可能不发送 completionEvent，需要在流结束时补充
+	if parser.messageStarted {
+		sendKiroStreamEndEvents(w, flusher, parser)
+	}
+
+	return parser, nil
+}
+
+// sendKiroStreamEndEvents 发送流结束事件
+func sendKiroStreamEndEvents(w http.ResponseWriter, flusher http.Flusher, parser *kiroSSEParser) {
+	// 只有当有未关闭的内容块时才发送 content_block_stop
+	// 思考块、文本块或工具调用块如果已发送 start 但未发送 stop，需要关闭
+	// 工具调用块在 handleKiroToolUseEvent 中已经处理，不需要在这里关闭
+	if (parser.thinkingBlockSent && !parser.thinkingBlockStopped) ||
+		(parser.textBlockSent && !parser.textBlockStopped) {
+		blockStop := map[string]any{
+			"type":  "content_block_stop",
+			"index": parser.currentBlockIndex,
+		}
+		blockStopData, _ := sonic.Marshal(blockStop)
+		writeSSEEvent(w, flusher, "content_block_stop", blockStopData)
+	}
+
+	// 发送 message_delta
+	stopReason := "end_turn"
+	if parser.hasToolUse {
+		stopReason = "tool_use"
+	}
+	msgDelta := map[string]any{
+		"type": "message_delta",
+		"delta": map[string]any{
+			"stop_reason":   stopReason,
+			"stop_sequence": nil,
+		},
+		"usage": map[string]any{
+			"output_tokens": parser.outputTokens,
+		},
+	}
+	msgDeltaData, _ := sonic.Marshal(msgDelta)
+	writeSSEEvent(w, flusher, "message_delta", msgDeltaData)
+
+	// 发送 message_stop
+	msgStop := map[string]any{"type": "message_stop"}
+	msgStopData, _ := sonic.Marshal(msgStop)
+	writeSSEEvent(w, flusher, "message_stop", msgStopData)
 }
 
 // StreamCopyKiroSSE 流式复制 Kiro 响应并转换为 Anthropic SSE 格式
@@ -318,7 +424,6 @@ func parseAWSEventStreamHeaders(data []byte) map[string]string {
 		default:
 			// 其他类型暂不处理，跳过
 			// 大多数情况下 Kiro 只使用 String 类型
-			break
 		}
 	}
 
@@ -381,13 +486,14 @@ func processAWSEventStreamFrame(w http.ResponseWriter, flusher http.Flusher, fra
 
 // handleKiroAssistantResponseEvent 处理 Kiro assistantResponseEvent
 // 转换为 Anthropic 的 content_block_delta 格式
+// 支持 <thinking>...</thinking> 标签转换为独立的 thinking content block
 func handleKiroAssistantResponseEvent(w http.ResponseWriter, flusher http.Flusher, payloadMap map[string]any, parser *kiroSSEParser) {
 	content, ok := payloadMap["content"].(string)
 	if !ok || content == "" {
 		return
 	}
 
-	// 如果是第一个内容块，先发送 message_start 和 content_block_start
+	// 如果是第一个内容块，先发送 message_start
 	if !parser.messageStarted {
 		parser.messageStarted = true
 
@@ -395,12 +501,12 @@ func handleKiroAssistantResponseEvent(w http.ResponseWriter, flusher http.Flushe
 		msgStart := map[string]any{
 			"type": "message_start",
 			"message": map[string]any{
-				"id":           "msg_kiro_" + fmt.Sprintf("%d", time.Now().UnixNano()),
-				"type":         "message",
-				"role":         "assistant",
-				"content":      []any{},
-				"model":        "claude-sonnet-4-20250514", // Kiro 使用的模型
-				"stop_reason":  nil,
+				"id":            "msg_kiro_" + fmt.Sprintf("%d", time.Now().UnixNano()),
+				"type":          "message",
+				"role":          "assistant",
+				"content":       []any{},
+				"model":         parser.requestedModel,
+				"stop_reason":   nil,
 				"stop_sequence": nil,
 				"usage": map[string]any{
 					"input_tokens":  0,
@@ -410,11 +516,105 @@ func handleKiroAssistantResponseEvent(w http.ResponseWriter, flusher http.Flushe
 		}
 		msgStartData, _ := sonic.Marshal(msgStart)
 		writeSSEEvent(w, flusher, "message_start", msgStartData)
+	}
 
-		// 发送 content_block_start
+	// 处理 thinking 标签
+	// 检测 <thinking> 开始标签
+	if strings.Contains(content, "<thinking>") {
+		parser.inThinkingBlock = true
+		// 移除 <thinking> 标签
+		content = strings.Replace(content, "<thinking>", "", 1)
+		// 如果移除后为空或只有换行，跳过
+		if strings.TrimSpace(content) == "" {
+			return
+		}
+	}
+
+	// 检测 </thinking> 结束标签
+	if strings.Contains(content, "</thinking>") {
+		// 分割内容：</thinking> 之前是思考，之后是正常文本
+		parts := strings.SplitN(content, "</thinking>", 2)
+
+		// 发送 thinking 部分（如果有）
+		thinkingContent := strings.TrimSpace(parts[0])
+		if thinkingContent != "" && parser.inThinkingBlock {
+			sendKiroThinkingDelta(w, flusher, thinkingContent, parser)
+		}
+
+		// 结束 thinking block
+		if parser.thinkingBlockSent && !parser.thinkingBlockStopped {
+			// 发送 thinking block stop
+			blockStop := map[string]any{
+				"type":  "content_block_stop",
+				"index": parser.currentBlockIndex,
+			}
+			blockStopData, _ := sonic.Marshal(blockStop)
+			writeSSEEvent(w, flusher, "content_block_stop", blockStopData)
+			parser.thinkingBlockStopped = true
+			parser.currentBlockIndex++
+		}
+
+		parser.inThinkingBlock = false
+
+		// 发送 </thinking> 之后的文本部分（如果有）
+		if len(parts) > 1 {
+			textContent := strings.TrimLeft(parts[1], "\n\r")
+			if textContent != "" {
+				sendKiroTextDelta(w, flusher, textContent, parser)
+			}
+		}
+		return
+	}
+
+	// 根据当前状态发送对应类型的 delta
+	if parser.inThinkingBlock {
+		sendKiroThinkingDelta(w, flusher, content, parser)
+	} else {
+		sendKiroTextDelta(w, flusher, content, parser)
+	}
+
+	// 累计输出 token（粗略估计）
+	parser.outputTokens += len(content) / 4
+}
+
+// sendKiroThinkingDelta 发送 thinking 类型的 content_block_delta
+func sendKiroThinkingDelta(w http.ResponseWriter, flusher http.Flusher, content string, parser *kiroSSEParser) {
+	// 如果还没发送 thinking block start，先发送
+	if !parser.thinkingBlockSent {
+		parser.thinkingBlockSent = true
 		blockStart := map[string]any{
 			"type":  "content_block_start",
-			"index": 0,
+			"index": parser.currentBlockIndex,
+			"content_block": map[string]any{
+				"type":     "thinking",
+				"thinking": "",
+			},
+		}
+		blockStartData, _ := sonic.Marshal(blockStart)
+		writeSSEEvent(w, flusher, "content_block_start", blockStartData)
+	}
+
+	// 发送 thinking_delta
+	delta := map[string]any{
+		"type":  "content_block_delta",
+		"index": parser.currentBlockIndex,
+		"delta": map[string]any{
+			"type":     "thinking_delta",
+			"thinking": content,
+		},
+	}
+	deltaData, _ := sonic.Marshal(delta)
+	writeSSEEvent(w, flusher, "content_block_delta", deltaData)
+}
+
+// sendKiroTextDelta 发送 text 类型的 content_block_delta
+func sendKiroTextDelta(w http.ResponseWriter, flusher http.Flusher, content string, parser *kiroSSEParser) {
+	// 如果还没发送 text block start，先发送
+	if !parser.textBlockSent {
+		parser.textBlockSent = true
+		blockStart := map[string]any{
+			"type":  "content_block_start",
+			"index": parser.currentBlockIndex,
 			"content_block": map[string]any{
 				"type": "text",
 				"text": "",
@@ -424,10 +624,10 @@ func handleKiroAssistantResponseEvent(w http.ResponseWriter, flusher http.Flushe
 		writeSSEEvent(w, flusher, "content_block_start", blockStartData)
 	}
 
-	// 发送 content_block_delta
+	// 发送 text_delta
 	delta := map[string]any{
 		"type":  "content_block_delta",
-		"index": 0,
+		"index": parser.currentBlockIndex,
 		"delta": map[string]any{
 			"type": "text_delta",
 			"text": content,
@@ -435,9 +635,6 @@ func handleKiroAssistantResponseEvent(w http.ResponseWriter, flusher http.Flushe
 	}
 	deltaData, _ := sonic.Marshal(delta)
 	writeSSEEvent(w, flusher, "content_block_delta", deltaData)
-
-	// 累计输出 token（粗略估计）
-	parser.outputTokens += len(content) / 4
 }
 
 // handleKiroMeteringEvent 处理 Kiro meteringEvent
@@ -450,23 +647,169 @@ func handleKiroMeteringEvent(payloadMap map[string]any, parser *kiroSSEParser) {
 }
 
 // handleKiroToolUseEvent 处理 Kiro toolUseEvent
+// Kiro 的工具调用是流式发送的：
+// 1. 第一个事件：只有 name 和 toolUseId
+// 2. 后续事件：input 字段分片发送
+// 3. 最后一个事件：带有 stop:true 标记
 func handleKiroToolUseEvent(w http.ResponseWriter, flusher http.Flusher, payloadMap map[string]any, parser *kiroSSEParser) {
-	// 工具调用事件，转换为 Anthropic 格式
-	// 暂时简单处理，后续可以完善
 	parser.hasToolUse = true
+
+	// 提取工具调用信息
+	toolUseId, _ := payloadMap["toolUseId"].(string)
+	toolName, _ := payloadMap["name"].(string)
+	inputDelta, hasInput := payloadMap["input"].(string)
+	isStop, _ := payloadMap["stop"].(bool)
+
+	// 如果没有工具 ID，忽略
+	if toolUseId == "" {
+		return
+	}
+
+	// 将 Kiro 的 tooluse_ 前缀转换为 Anthropic 的 toolu_ 前缀
+	// Kiro 使用 "tooluse_xxx" 格式，Anthropic 使用 "toolu_xxx" 格式
+	// Claude Code 客户端需要 toolu_ 前缀才能正确识别 tool_use
+	if strings.HasPrefix(toolUseId, "tooluse_") {
+		toolUseId = "toolu_" + strings.TrimPrefix(toolUseId, "tooluse_")
+	}
+
+	// 检查是否是新的工具调用
+	if parser.activeToolUseId != toolUseId {
+		// 如果有之前未完成的工具调用，先关闭它
+		if parser.toolUseBlockSent {
+			blockStop := map[string]any{
+				"type":  "content_block_stop",
+				"index": parser.activeToolUseIndex,
+			}
+			blockStopData, _ := sonic.Marshal(blockStop)
+			writeSSEEvent(w, flusher, "content_block_stop", blockStopData)
+			parser.currentBlockIndex++
+		}
+
+		// 开始新的工具调用
+		parser.activeToolUseId = toolUseId
+		parser.activeToolUseName = toolName
+		parser.toolUseBlockSent = false
+	}
+
+	// 如果还没有发送 message_start，先发送
+	if !parser.messageStarted {
+		parser.messageStarted = true
+		msgStart := map[string]any{
+			"type": "message_start",
+			"message": map[string]any{
+				"id":            "msg_kiro_" + toolUseId,
+				"type":          "message",
+				"role":          "assistant",
+				"content":       []any{},
+				"model":         parser.requestedModel,
+				"stop_reason":   nil,
+				"stop_sequence": nil,
+				"usage": map[string]any{
+					"input_tokens":  parser.inputTokens,
+					"output_tokens": 1,
+				},
+			},
+		}
+		msgStartData, _ := sonic.Marshal(msgStart)
+		writeSSEEvent(w, flusher, "message_start", msgStartData)
+	}
+
+	// 如果是停止事件
+	if isStop {
+		if parser.toolUseBlockSent {
+			// 发送 content_block_stop
+			blockStop := map[string]any{
+				"type":  "content_block_stop",
+				"index": parser.activeToolUseIndex,
+			}
+			blockStopData, _ := sonic.Marshal(blockStop)
+			writeSSEEvent(w, flusher, "content_block_stop", blockStopData)
+			parser.currentBlockIndex++
+		}
+
+		// 标记已完成
+		if parser.completedToolUseIds == nil {
+			parser.completedToolUseIds = make(map[string]bool)
+		}
+		parser.completedToolUseIds[toolUseId] = true
+
+		// 重置工具调用状态
+		parser.activeToolUseId = ""
+		parser.activeToolUseName = ""
+		parser.toolUseBlockSent = false
+		return
+	}
+
+	// 如果还没发送 content_block_start，现在发送
+	if !parser.toolUseBlockSent && toolName != "" {
+		// 关闭之前的思考块（如果有）
+		if parser.inThinkingBlock && parser.thinkingBlockSent && !parser.thinkingBlockStopped {
+			blockStop := map[string]any{
+				"type":  "content_block_stop",
+				"index": parser.currentBlockIndex,
+			}
+			blockStopData, _ := sonic.Marshal(blockStop)
+			writeSSEEvent(w, flusher, "content_block_stop", blockStopData)
+			parser.thinkingBlockStopped = true
+			parser.currentBlockIndex++
+			parser.inThinkingBlock = false
+		}
+
+		// 关闭之前的文本块（如果有）
+		if parser.textBlockSent && !parser.textBlockStopped {
+			blockStop := map[string]any{
+				"type":  "content_block_stop",
+				"index": parser.currentBlockIndex,
+			}
+			blockStopData, _ := sonic.Marshal(blockStop)
+			writeSSEEvent(w, flusher, "content_block_stop", blockStopData)
+			parser.textBlockStopped = true
+			parser.currentBlockIndex++
+		}
+
+		// 记录工具调用索引
+		parser.activeToolUseIndex = parser.currentBlockIndex
+		if parser.toolUseIdByBlockIndex == nil {
+			parser.toolUseIdByBlockIndex = make(map[int]string)
+		}
+		parser.toolUseIdByBlockIndex[parser.activeToolUseIndex] = toolUseId
+
+		// 发送 content_block_start（tool_use 类型）
+		blockStart := map[string]any{
+			"type":  "content_block_start",
+			"index": parser.activeToolUseIndex,
+			"content_block": map[string]any{
+				"type":  "tool_use",
+				"id":    toolUseId,
+				"name":  toolName,
+				"input": map[string]any{},
+			},
+		}
+		blockStartData, _ := sonic.Marshal(blockStart)
+		writeSSEEvent(w, flusher, "content_block_start", blockStartData)
+		parser.toolUseBlockSent = true
+	}
+
+	// 如果有 input 增量，发送 content_block_delta
+	if hasInput && inputDelta != "" {
+		blockDelta := map[string]any{
+			"type":  "content_block_delta",
+			"index": parser.activeToolUseIndex,
+			"delta": map[string]any{
+				"type":         "input_json_delta",
+				"partial_json": inputDelta,
+			},
+		}
+		blockDeltaData, _ := sonic.Marshal(blockDelta)
+		writeSSEEvent(w, flusher, "content_block_delta", blockDeltaData)
+	}
 }
 
 // handleKiroCompletionEvent 处理 Kiro completionEvent
+// 注意：所有 content_block 应该在各自的处理函数中关闭（thinking、text、tool_use）
+// 这里只负责发送 message_delta 和 message_stop
 func handleKiroCompletionEvent(w http.ResponseWriter, flusher http.Flusher, payloadMap map[string]any, parser *kiroSSEParser) {
-	// 发送 content_block_stop
 	if parser.messageStarted {
-		blockStop := map[string]any{
-			"type":  "content_block_stop",
-			"index": 0,
-		}
-		blockStopData, _ := sonic.Marshal(blockStop)
-		writeSSEEvent(w, flusher, "content_block_stop", blockStopData)
-
 		// 发送 message_delta
 		stopReason := "end_turn"
 		if parser.hasToolUse {
@@ -509,10 +852,27 @@ type kiroSSEParser struct {
 	// 消息状态
 	messageStarted bool
 
+	// 思考块状态
+	inThinkingBlock     bool // 当前是否在 thinking 块内
+	thinkingBlockSent   bool // 是否已发送 thinking block start
+	thinkingBlockStopped bool // 是否已发送 thinking block stop
+	textBlockSent       bool // 是否已发送 text block start
+	textBlockStopped    bool // 是否已发送 text block stop
+	currentBlockIndex   int  // 当前 block 索引
+
+	// 请求的模型名称
+	requestedModel string
+
 	// 工具调用跟踪
 	hasToolUse            bool
 	toolUseIdByBlockIndex map[int]string
 	completedToolUseIds   map[string]bool
+
+	// 当前活跃的工具调用（流式累积）
+	activeToolUseId    string // 当前正在处理的工具调用 ID
+	activeToolUseName  string // 当前工具名称
+	activeToolUseIndex int    // 当前工具调用的 block 索引
+	toolUseBlockSent   bool   // 是否已发送 tool_use block start
 
 	// 统计信息
 	outputTokens int
@@ -523,6 +883,7 @@ func newKiroSSEParser() *kiroSSEParser {
 	return &kiroSSEParser{
 		toolUseIdByBlockIndex: make(map[int]string),
 		completedToolUseIds:   make(map[string]bool),
+		requestedModel:        "claude-sonnet-4-20250514", // 默认模型
 	}
 }
 
