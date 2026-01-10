@@ -512,7 +512,7 @@ function parseJSONResponse(obj) {
   return { thinking, reply };
 }
 
-// 解析 SSE 流式响应（OpenAI/Claude/Gemini）
+// 解析 SSE 流式响应（OpenAI/Claude/Gemini/Codex）
 function parseSSEResponse(responseBody) {
   let thinking = '';
   let reply = '';
@@ -576,6 +576,11 @@ function parseSSEResponse(responseBody) {
           }
         }
       }
+
+      // Codex SSE: event: response.output_text.delta, data: {"delta":"内容",...}
+      if (obj.type === 'response.output_text.delta' && obj.delta) {
+        reply += obj.delta;
+      }
     } catch {
       // 忽略单行解析错误
     }
@@ -584,8 +589,39 @@ function parseSSEResponse(responseBody) {
   return { thinking, reply };
 }
 
+// 解析错误响应（Anthropic/OpenAI/Gemini 错误格式）
+function parseErrorResponse(obj) {
+  // Anthropic 错误格式: {"type":"error","error":{"type":"...","message":"..."}}
+  if (obj.type === 'error' && obj.error) {
+    const errType = obj.error.type || '';
+    const errMsg = obj.error.message || '';
+    return errType ? `[${errType}] ${errMsg}` : errMsg;
+  }
+
+  // OpenAI 错误格式: {"error":{"message":"...","type":"...","code":"..."}}
+  if (obj.error && obj.error.message) {
+    const errType = obj.error.type || obj.error.code || '';
+    const errMsg = obj.error.message || '';
+    return errType ? `[${errType}] ${errMsg}` : errMsg;
+  }
+
+  // Gemini 错误格式: {"error":{"message":"...","status":"..."}}
+  if (obj.error && typeof obj.error === 'object') {
+    const status = obj.error.status || '';
+    const errMsg = obj.error.message || JSON.stringify(obj.error);
+    return status ? `[${status}] ${errMsg}` : errMsg;
+  }
+
+  // 通用错误字段
+  if (obj.message) {
+    return obj.message;
+  }
+
+  return '';
+}
+
 // 解析并展示模型响应（思考内容和回复内容）
-// 支持格式：OpenAI、Claude、Gemini（流式和非流式）
+// 支持格式：OpenAI、Claude、Gemini、Codex（流式和非流式）+ 错误响应
 function parseAndDisplayResponse(responseBody) {
   const thinkingEl = document.getElementById('parsedThinking');
   const thinkingTextEl = document.getElementById('parsedThinkingText');
@@ -615,9 +651,17 @@ function parseAndDisplayResponse(responseBody) {
     // 解析 JSON 非流式响应
     try {
       const obj = JSON.parse(responseBody);
-      const result = parseJSONResponse(obj);
-      thinking = result.thinking;
-      reply = result.reply;
+
+      // 首先尝试解析错误响应
+      const errorMsg = parseErrorResponse(obj);
+      if (errorMsg) {
+        reply = errorMsg;
+      } else {
+        // 正常响应解析
+        const result = parseJSONResponse(obj);
+        thinking = result.thinking;
+        reply = result.reply;
+      }
     } catch {
       // 非有效 JSON，跳过
     }
