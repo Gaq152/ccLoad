@@ -52,6 +52,9 @@ function showAddModal() {
   updateCodexTokenUI(null);
   updateGeminiTokenUI(null);
   updateKiroTokenUI(null);
+  // 清空设备指纹输入框
+  const deviceFingerprintInput = document.getElementById('kiroDeviceFingerprint');
+  if (deviceFingerprintInput) deviceFingerprintInput.value = '';
   initChannelTypeEventListener();
   // [FIX] 移除 toggleCodexAuthMode('oauth') 调用
   // handleChannelTypeChange → handlePresetChange 已经正确设置了 UI 状态
@@ -258,6 +261,11 @@ async function editChannel(id) {
           }
         }
         updateKiroTokenUI(kiroToken);
+        // 加载设备指纹
+        const deviceFingerprintInput = document.getElementById('kiroDeviceFingerprint');
+        if (deviceFingerprintInput && firstKey.device_fingerprint) {
+          deviceFingerprintInput.value = firstKey.device_fingerprint;
+        }
       } else {
         updateKiroTokenUI(null);
       }
@@ -449,7 +457,9 @@ async function saveChannel(event) {
     refresh_token: refreshToken,
     token_expires_at: tokenExpiresAt,
     // OpenAI 兼容模式
-    openai_compat: openaiCompat
+    openai_compat: openaiCompat,
+    // Kiro 设备指纹
+    device_fingerprint: isKiroPreset ? (document.getElementById('kiroDeviceFingerprint')?.value?.trim() || '') : ''
   };
 
   // 验证必填字段（OAuth 渠道官方预设和 Kiro 预设使用 Token，不需要 api_key）
@@ -677,6 +687,9 @@ async function copyChannel(id, name) {
   } else if (channelType === 'anthropic' && sourcePreset === 'kiro') {
     // Kiro 预设：清空 Token，需要重新配置
     updateKiroTokenUI(null);
+    // 清空设备指纹，防止状态残留
+    const deviceFingerprintInput = document.getElementById('kiroDeviceFingerprint');
+    if (deviceFingerprintInput) deviceFingerprintInput.value = '';
     updateCodexTokenUI(null);
     updateGeminiTokenUI(null);
     if (window.showWarning) {
@@ -2751,6 +2764,9 @@ async function clearKiroToken() {
     document.getElementById('kiroApiKey').value = '';
     const tokenInput = document.getElementById('kiroTokenInput');
     if (tokenInput) tokenInput.value = '';
+    // 清除设备指纹
+    const deviceFingerprintInput = document.getElementById('kiroDeviceFingerprint');
+    if (deviceFingerprintInput) deviceFingerprintInput.value = '';
     updateKiroTokenUI(null);
   }
 }
