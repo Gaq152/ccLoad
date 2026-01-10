@@ -105,6 +105,9 @@ type APIKey struct {
 	RefreshToken   string `json:"refresh_token,omitempty"`
 	TokenExpiresAt int64  `json:"token_expires_at,omitempty"` // Unix时间戳
 
+	// Kiro 设备指纹（用于 AWS CodeWhisperer 认证）
+	DeviceFingerprint string `json:"device_fingerprint,omitempty"`
+
 	CreatedAt JSONTime `json:"created_at"`
 	UpdatedAt JSONTime `json:"updated_at"`
 }

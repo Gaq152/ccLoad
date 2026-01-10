@@ -41,6 +41,7 @@ func DefineAPIKeysTable() *TableBuilder {
 		Column("id_token TEXT DEFAULT NULL").                      // OAuth id_token（官方预设使用）
 		Column("refresh_token TEXT DEFAULT NULL").                 // OAuth refresh_token（官方预设使用）
 		Column("token_expires_at BIGINT NOT NULL DEFAULT 0").      // Token过期时间戳（官方预设使用）
+		Column("device_fingerprint VARCHAR(128) DEFAULT NULL").    // Kiro 设备指纹
 		Column("created_at BIGINT NOT NULL").
 		Column("updated_at BIGINT NOT NULL").
 		Column("UNIQUE KEY uk_channel_key (channel_id, key_index)").
