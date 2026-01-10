@@ -197,13 +197,26 @@ func processKiroMessageContent(content any) (string, []KiroImage, []KiroToolResu
 				}
 
 			case "image":
-				// 处理图片
+				// 处理 Anthropic 格式的图片
 				if source, ok := block["source"].(map[string]any); ok {
 					if data, ok := source["data"].(string); ok {
-						images = append(images, KiroImage{
-							Data:   data,
-							Format: getStringOrDefault(source, "media_type", ""),
-						})
+						mediaType := getStringOrDefault(source, "media_type", "")
+						format := convertMediaTypeToFormat(mediaType)
+						if format != "" {
+							img := KiroImage{Format: format}
+							img.Source.Bytes = data
+							images = append(images, img)
+						}
+					}
+				}
+
+			case "image_url":
+				// 处理 OpenAI 格式的 image_url (data URL)
+				if imageURL, ok := block["image_url"].(map[string]any); ok {
+					if url, ok := imageURL["url"].(string); ok {
+						if img := parseDataURLToKiroImage(url); img != nil {
+							images = append(images, *img)
+						}
 					}
 				}
 
@@ -521,4 +534,60 @@ func getStringOrDefault(m map[string]any, key, defaultVal string) string {
 		return v
 	}
 	return defaultVal
+}
+
+// ============================================================================
+// 图片处理辅助函数
+// 参考: https://github.com/nineyuanz/kiro2api/blob/main/utils/image.go
+// ============================================================================
+
+// convertMediaTypeToFormat 将 MIME 类型转换为 CodeWhisperer 图片格式
+func convertMediaTypeToFormat(mediaType string) string {
+	switch mediaType {
+	case "image/jpeg":
+		return "jpeg"
+	case "image/png":
+		return "png"
+	case "image/gif":
+		return "gif"
+	case "image/webp":
+		return "webp"
+	case "image/bmp":
+		return "bmp"
+	default:
+		return ""
+	}
+}
+
+// parseDataURLToKiroImage 解析 data URL 并转换为 KiroImage
+// data URL 格式: data:[<mediatype>][;base64],<data>
+func parseDataURLToKiroImage(dataURL string) *KiroImage {
+	if !strings.HasPrefix(dataURL, "data:") {
+		return nil
+	}
+
+	// 查找 base64 标记和数据分隔符
+	commaIdx := strings.Index(dataURL, ",")
+	if commaIdx == -1 {
+		return nil
+	}
+
+	header := dataURL[5:commaIdx] // 跳过 "data:"
+	data := dataURL[commaIdx+1:]
+
+	// 检查是否是 base64 编码
+	if !strings.Contains(header, ";base64") {
+		return nil
+	}
+
+	// 提取 media type
+	mediaType := strings.Split(header, ";")[0]
+	format := convertMediaTypeToFormat(mediaType)
+	if format == "" {
+		return nil
+	}
+
+	img := &KiroImage{Format: format}
+	img.Source.Bytes = data
+	return img
 }
