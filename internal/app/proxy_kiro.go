@@ -26,7 +26,7 @@ import (
 // 这是 Kiro 预设的专用转发函数，替代通用的 forwardOnceAsync
 func (s *Server) forwardKiroRequest(
 	ctx context.Context,
-	cfg *model.Config,
+	_ *model.Config, // cfg 保留用于接口一致性，当前未使用
 	reqCtx *proxyRequestContext,
 	kiroBody []byte,
 	w http.ResponseWriter,
@@ -38,8 +38,8 @@ func (s *Server) forwardKiroRequest(
 		return nil, 0, fmt.Errorf("kiro access token is empty")
 	}
 
-	// 发送请求到 Kiro API
-	resp, err := s.ForwardKiroRequest(ctx, kiroBody, reqCtx.kiroAccessToken, reqCtx.isStreaming)
+	// 发送请求到 Kiro API（使用配置的设备指纹）
+	resp, err := s.ForwardKiroRequest(ctx, kiroBody, reqCtx.kiroAccessToken, reqCtx.isStreaming, reqCtx.kiroDeviceFingerprint)
 	if err != nil {
 		duration := time.Since(startTime).Seconds()
 		return nil, duration, fmt.Errorf("forward kiro request: %w", err)
@@ -116,6 +116,7 @@ func (s *Server) ForwardKiroRequest(
 	kiroBody []byte,
 	accessToken string,
 	isStreaming bool,
+	deviceFingerprint string,
 ) (*http.Response, error) {
 	// 创建请求
 	req, err := http.NewRequestWithContext(ctx, "POST", KiroAPIEndpoint, bytes.NewReader(kiroBody))
@@ -123,8 +124,8 @@ func (s *Server) ForwardKiroRequest(
 		return nil, fmt.Errorf("create request: %w", err)
 	}
 
-	// 设置请求头
-	headers := BuildKiroRequestHeaders(accessToken, isStreaming)
+	// 设置请求头（使用配置的设备指纹）
+	headers := BuildKiroRequestHeaders(accessToken, isStreaming, deviceFingerprint)
 	for key, values := range headers {
 		for _, value := range values {
 			req.Header.Add(key, value)
