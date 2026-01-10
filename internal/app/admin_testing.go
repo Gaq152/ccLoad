@@ -62,12 +62,46 @@ func (s *Server) HandleChannelTest(c *gin.Context) {
 		keyIndex = 0 // 默认使用第一个 Key
 	}
 
-	// [FIX] Codex/Gemini 官方预设使用 AccessToken 字段，并检查是否需要刷新
+	// [FIX] Codex/Gemini/Kiro 预设使用 AccessToken 字段，并检查是否需要刷新
 	var selectedKey string
 	channelType := cfg.GetChannelType()
 	isOAuthPreset := cfg.Preset == "official" && (channelType == util.ChannelTypeCodex || channelType == util.ChannelTypeGemini)
+	isKiroPreset := cfg.Preset == "kiro" && channelType == util.ChannelTypeAnthropic
 
-	if isOAuthPreset {
+	if isKiroPreset {
+		// Kiro 预设：使用 RefreshToken 刷新获取 AccessToken
+		apiKeyData := apiKeys[keyIndex]
+
+		// 解析 Kiro 认证配置
+		config := ParseKiroAuthConfig(apiKeyData.APIKey)
+		if config == nil {
+			RespondJSON(c, http.StatusOK, gin.H{
+				"success": false,
+				"error":   "Kiro 预设未配置有效的认证信息，请先配置 JSON 格式的 Token",
+			})
+			return
+		}
+
+		// 刷新 Token
+		accessToken, _, err := s.RefreshKiroTokenIfNeeded(
+			c.Request.Context(),
+			id,
+			keyIndex,
+			config,
+			apiKeyData.AccessToken,
+			apiKeyData.TokenExpiresAt,
+		)
+		if err != nil {
+			log.Printf("[ERROR] Kiro Token 刷新失败 (channel=%d, key=%d): %v", id, keyIndex, err)
+			RespondJSON(c, http.StatusOK, gin.H{
+				"success": false,
+				"error":   "Kiro Token 刷新失败: " + err.Error(),
+			})
+			return
+		}
+		selectedKey = accessToken
+
+	} else if isOAuthPreset {
 		apiKeyData := apiKeys[keyIndex]
 
 		// 根据渠道类型调用对应的刷新逻辑
@@ -220,7 +254,7 @@ func (s *Server) HandleChannelTest(c *gin.Context) {
 		)
 		if err != nil {
 			log.Printf("[WARN] 应用冷却策略失败 (channel=%d, key=%d, status=%d): %v", id, keyIndex, statusCode, err)
-			// 失败时降级尝试渠道级冷却，避免误报“已冷却”但实际未生效
+			// 失败时降级尝试渠道级冷却，避免误报"已冷却"但实际未生效
 			if action == cooldown.ActionRetryKey {
 				if _, chErr := s.store.BumpChannelCooldown(c.Request.Context(), id, time.Now(), statusCode); chErr != nil {
 					log.Printf("[WARN] 渠道级降级冷却失败 (channel=%d): %v", id, chErr)
@@ -283,6 +317,12 @@ func (s *Server) testChannelAPI(cfg *model.Config, apiKey string, testReq *testu
 
 	// 选择并规范化渠道类型
 	channelType := util.NormalizeChannelType(testReq.ChannelType)
+
+	// Kiro 预设特殊处理：使用 CodeWhisperer API 格式
+	if cfg.Preset == "kiro" && channelType == "anthropic" {
+		return s.testKiroChannel(cfg, apiKey, testReq)
+	}
+
 	var tester testutil.ChannelTester
 	switch channelType {
 	case "codex":
@@ -584,4 +624,156 @@ func (s *Server) captureTestForMonitor(
 
 	// 异步捕获（不阻塞主流程）
 	s.monitorService.Capture(trace)
+}
+
+// testKiroChannel Kiro 预设专用测试函数
+// 使用 CodeWhisperer API 格式发送请求
+func (s *Server) testKiroChannel(cfg *model.Config, accessToken string, testReq *testutil.TestChannelRequest) map[string]any {
+	// 构建 Anthropic 格式的请求体（用于转换）
+	anthropicReq := map[string]any{
+		"model": testReq.Model,
+		"messages": []map[string]any{
+			{
+				"role":    "user",
+				"content": testReq.Content,
+			},
+		},
+		"max_tokens": testReq.MaxTokens,
+		"stream":     true,
+	}
+
+	anthropicBody, err := sonic.Marshal(anthropicReq)
+	if err != nil {
+		return map[string]any{"success": false, "error": "构造请求体失败: " + err.Error()}
+	}
+
+	// 转换为 Kiro (CodeWhisperer) 格式
+	kiroBody, err := TransformToKiroRequest(anthropicBody)
+	if err != nil {
+		return map[string]any{"success": false, "error": "转换 Kiro 请求失败: " + err.Error()}
+	}
+
+	// 构建请求头
+	headers := BuildKiroRequestHeaders(accessToken, true)
+
+	// 创建 HTTP 请求
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "POST", KiroAPIEndpoint, bytes.NewReader(kiroBody))
+	if err != nil {
+		return map[string]any{"success": false, "error": "创建 HTTP 请求失败: " + err.Error()}
+	}
+
+	// 设置请求头
+	for k, vs := range headers {
+		for _, v := range vs {
+			req.Header.Add(k, v)
+		}
+	}
+
+	// 发送请求
+	start := time.Now()
+	resp, err := s.client.Do(req)
+	duration := time.Since(start)
+	if err != nil {
+		return map[string]any{"success": false, "error": "网络请求失败: " + err.Error(), "duration_ms": duration.Milliseconds()}
+	}
+	defer resp.Body.Close()
+
+	// 通用结果初始化
+	result := map[string]any{
+		"success":     resp.StatusCode >= 200 && resp.StatusCode < 300,
+		"status_code": resp.StatusCode,
+		"duration_ms": duration.Milliseconds(),
+	}
+
+	// 附带响应头
+	if len(resp.Header) > 0 {
+		hdr := make(map[string]string, len(resp.Header))
+		for k, vs := range resp.Header {
+			if len(vs) == 1 {
+				hdr[k] = vs[0]
+			} else if len(vs) > 1 {
+				hdr[k] = strings.Join(vs, "; ")
+			}
+		}
+		result["response_headers"] = hdr
+	}
+
+	contentType := resp.Header.Get("Content-Type")
+	if contentType != "" {
+		result["content_type"] = contentType
+	}
+
+	// Kiro 响应是 SSE 格式，解析响应
+	var rawBuilder strings.Builder
+	var textBuilder strings.Builder
+	var lastErrMsg string
+
+	scanner := bufio.NewScanner(resp.Body)
+	buf := make([]byte, 0, 1024*1024)
+	scanner.Buffer(buf, 16*1024*1024)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		rawBuilder.WriteString(line)
+		rawBuilder.WriteString("\n")
+
+		if !strings.HasPrefix(line, "data:") {
+			continue
+		}
+		data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		if data == "" {
+			continue
+		}
+
+		var obj map[string]any
+		if err := sonic.Unmarshal([]byte(data), &obj); err != nil {
+			continue
+		}
+
+		// Kiro SSE: assistantResponseEvent.content 或 text
+		if event, ok := obj["assistantResponseEvent"].(map[string]any); ok {
+			if content, ok := event["content"].(string); ok && content != "" {
+				textBuilder.WriteString(content)
+			}
+		}
+
+		// 错误处理
+		if errObj, ok := obj["error"].(map[string]any); ok {
+			if msg, ok := errObj["message"].(string); ok {
+				lastErrMsg = msg
+			}
+			result["api_error"] = obj
+		}
+		if msg, ok := obj["message"].(string); ok && msg != "" {
+			lastErrMsg = msg
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		result["error"] = "读取流式响应失败: " + err.Error()
+		result["raw_response"] = rawBuilder.String()
+		return result
+	}
+
+	if textBuilder.Len() > 0 {
+		result["response_text"] = textBuilder.String()
+	}
+	result["raw_response"] = rawBuilder.String()
+
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		result["message"] = "API测试成功（Kiro）"
+	} else {
+		if lastErrMsg == "" {
+			lastErrMsg = "API返回错误状态: " + resp.Status
+		}
+		result["error"] = lastErrMsg
+	}
+
+	// 监控捕获
+	s.captureTestForMonitor(cfg, testReq.Model, kiroBody, []byte(rawBuilder.String()), resp.StatusCode, duration.Seconds(), true, "admin-test")
+
+	return result
 }
