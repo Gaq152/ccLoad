@@ -1476,6 +1476,63 @@ const QUOTA_TEMPLATES = {
   }
   return { isValid: false, error: data.message || "查询失败" };
 }`
+  },
+
+  // Kiro 官方预设模板（使用 OAuth Token）
+  kiro: {
+    name: 'Kiro 官方',
+    absoluteUrl: 'https://codewhisperer.us-east-1.amazonaws.com/getUsageLimits?isEmailRequired=true&origin=AI_EDITOR&resourceType=AGENTIC_REQUEST',
+    method: 'GET',
+    // headers 动态生成（从 Kiro Token 获取）
+    headers: [],
+    extractor: `function(response) {
+  const data = typeof response === 'string' ? JSON.parse(response) : response;
+
+  // 检查 usageBreakdownList 结构
+  if (!data.usageBreakdownList || !Array.isArray(data.usageBreakdownList)) {
+    return { isValid: false, error: "响应格式错误：缺少 usageBreakdownList" };
+  }
+
+  // 查找 CREDIT 资源类型
+  const creditBreakdown = data.usageBreakdownList.find(b => b.resourceType === 'CREDIT');
+  if (!creditBreakdown) {
+    return { isValid: false, error: "未找到 CREDIT 资源类型" };
+  }
+
+  // 计算可用额度
+  let totalAvailable = 0;
+
+  // 基础额度
+  const baseAvailable = (creditBreakdown.usageLimitWithPrecision || 0) - (creditBreakdown.currentUsageWithPrecision || 0);
+  totalAvailable += baseAvailable;
+
+  // 免费试用额度（如果存在且处于 ACTIVE 状态）
+  if (creditBreakdown.freeTrialInfo && creditBreakdown.freeTrialInfo.freeTrialStatus === 'ACTIVE') {
+    const freeTrialAvailable = (creditBreakdown.freeTrialInfo.usageLimitWithPrecision || 0) -
+                               (creditBreakdown.freeTrialInfo.currentUsageWithPrecision || 0);
+    totalAvailable += freeTrialAvailable;
+  }
+
+  // 确保不为负数
+  if (totalAvailable < 0) totalAvailable = 0;
+
+  // 提取用户邮箱信息
+  const userEmail = data.userInfo && data.userInfo.email ? data.userInfo.email : '';
+  const detail = userEmail ? '账号: ' + userEmail : '';
+
+  // 计算重置时间
+  let resetInfo = '';
+  if (data.daysUntilReset !== undefined) {
+    resetInfo = detail ? (detail + ', ' + data.daysUntilReset + '天后重置') : (data.daysUntilReset + '天后重置');
+  }
+
+  return {
+    isValid: true,
+    remaining: totalAvailable.toFixed(2),
+    unit: 'Credits',
+    detail: resetInfo || detail
+  };
+}`
   }
 };
 
@@ -1493,6 +1550,12 @@ function applyQuotaTemplate(templateKey) {
   // Codex 官方模板特殊处理
   if (templateKey === 'codex') {
     applyCodexQuotaTemplate(template);
+    return;
+  }
+
+  // Kiro 官方模板特殊处理
+  if (templateKey === 'kiro') {
+    applyKiroQuotaTemplate(template);
     return;
   }
 
@@ -1615,6 +1678,69 @@ function applyCodexQuotaTemplate(template) {
   }
 }
 
+/**
+ * 应用 Kiro 官方用量监控模板
+ * 从 Kiro Token 动态生成 headers
+ * @param {Object} template - 模板对象
+ */
+function applyKiroQuotaTemplate(template) {
+  // 检查是否为 Kiro 预设
+  const channelType = document.querySelector('input[name="channelType"]:checked')?.value;
+  const preset = document.querySelector('input[name="channelPreset"]:checked')?.value;
+
+  if (channelType !== 'anthropic' || preset !== 'kiro') {
+    if (window.showError) {
+      showError('Kiro 官方模板仅适用于 Kiro 预设渠道');
+    }
+    return;
+  }
+
+  // 从 Kiro Token 获取认证信息（Kiro 使用 kiroApiKey 隐藏字段）
+  const tokenJson = document.getElementById('kiroApiKey')?.value;
+  if (!tokenJson || !tokenJson.startsWith('{')) {
+    if (window.showError) {
+      showError('请先配置 Kiro Token');
+    }
+    return;
+  }
+
+  let token;
+  try {
+    token = JSON.parse(tokenJson);
+  } catch (e) {
+    if (window.showError) {
+      showError('Kiro Token 格式错误');
+    }
+    return;
+  }
+
+  // Kiro Token 需要 accessToken 字段
+  if (!token.accessToken) {
+    if (window.showError) {
+      showError('Kiro Token 缺少 accessToken，请先刷新 Token');
+    }
+    return;
+  }
+
+  // 填充 URL（使用绝对 URL）
+  document.getElementById('quotaUrl').value = template.absoluteUrl;
+  document.getElementById('quotaMethod').value = template.method;
+
+  // 动态生成请求头（Kiro 使用 Authorization: Bearer 格式）
+  quotaHeadersData = [
+    { key: 'Authorization', value: `Bearer ${token.accessToken}` },
+    { key: 'Content-Type', value: 'application/json' }
+  ];
+  renderQuotaHeaders();
+
+  // 填充提取器脚本
+  document.getElementById('quotaExtractor').value = template.extractor;
+
+  if (window.showSuccess) {
+    showSuccess('已应用 Kiro 官方模板，认证信息已自动填充');
+  }
+}
+
 // ==================== Codex OAuth 授权 ====================
 
 /**
@@ -1729,6 +1855,7 @@ function handlePresetChange(preset) {
   const geminiOAuthSection = document.getElementById('geminiOAuthSection');
   const kiroOAuthSection = document.getElementById('kiroOAuthSection');
   const codexQuotaTemplateBtn = document.getElementById('codexQuotaTemplateBtn');
+  const kiroQuotaTemplateBtn = document.getElementById('kiroQuotaTemplateBtn');
   const quotaTemplateHint = document.getElementById('quotaTemplateHint');
   const openaiCompatContainer = document.getElementById('openaiCompatContainer');
 
@@ -1757,7 +1884,8 @@ function handlePresetChange(preset) {
     if (geminiOAuthSection) geminiOAuthSection.style.display = 'none';
     if (kiroOAuthSection) kiroOAuthSection.style.display = 'block';
     if (codexQuotaTemplateBtn) codexQuotaTemplateBtn.style.display = 'none';
-    if (quotaTemplateHint) quotaTemplateHint.textContent = '选择后请替换占位符';
+    if (kiroQuotaTemplateBtn) kiroQuotaTemplateBtn.style.display = 'inline-flex';
+    if (quotaTemplateHint) quotaTemplateHint.textContent = 'Kiro 官方自动填充认证信息';
     return;
   }
 
@@ -1777,6 +1905,7 @@ function handlePresetChange(preset) {
       if (codexOAuthSection) codexOAuthSection.style.display = 'block';
       if (geminiOAuthSection) geminiOAuthSection.style.display = 'none';
       if (codexQuotaTemplateBtn) codexQuotaTemplateBtn.style.display = 'inline-flex';
+      if (kiroQuotaTemplateBtn) kiroQuotaTemplateBtn.style.display = 'none';
       if (quotaTemplateHint) quotaTemplateHint.textContent = 'Codex 官方自动填充认证信息';
     }
     // Gemini 官方预设：显示 Gemini OAuth 区块
@@ -1785,6 +1914,7 @@ function handlePresetChange(preset) {
       if (codexOAuthSection) codexOAuthSection.style.display = 'none';
       if (geminiOAuthSection) geminiOAuthSection.style.display = 'block';
       if (codexQuotaTemplateBtn) codexQuotaTemplateBtn.style.display = 'none';
+      if (kiroQuotaTemplateBtn) kiroQuotaTemplateBtn.style.display = 'none';
       if (quotaTemplateHint) quotaTemplateHint.textContent = '选择后请替换占位符';
     } else {
       // 其他渠道官方预设：目前仍使用 API Key（OAuth 暂不支持）
@@ -1792,6 +1922,7 @@ function handlePresetChange(preset) {
       if (codexOAuthSection) codexOAuthSection.style.display = 'none';
       if (geminiOAuthSection) geminiOAuthSection.style.display = 'none';
       if (codexQuotaTemplateBtn) codexQuotaTemplateBtn.style.display = 'none';
+      if (kiroQuotaTemplateBtn) kiroQuotaTemplateBtn.style.display = 'none';
       if (quotaTemplateHint) quotaTemplateHint.textContent = '选择后请替换占位符';
     }
   } else {
@@ -1809,8 +1940,9 @@ function handlePresetChange(preset) {
     if (codexOAuthSection) codexOAuthSection.style.display = 'none';
     if (geminiOAuthSection) geminiOAuthSection.style.display = 'none';
 
-    // 3. 隐藏 Codex 官方用量模板按钮
+    // 3. 隐藏 Codex/Kiro 官方用量模板按钮
     if (codexQuotaTemplateBtn) codexQuotaTemplateBtn.style.display = 'none';
+    if (kiroQuotaTemplateBtn) kiroQuotaTemplateBtn.style.display = 'none';
     if (quotaTemplateHint) quotaTemplateHint.textContent = '选择后请替换占位符';
   }
 }
