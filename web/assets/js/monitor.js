@@ -433,13 +433,23 @@ function formatJSON(str) {
 // 格式化 JSON 并添加语法高亮
 function formatJSONWithHighlight(str) {
   if (!str) return '<span class="json-null">-</span>';
+
+  // 检测是否为 AWS Event Stream 二进制格式（Kiro 响应）
+  // 特征：包含 :event-type 和 :message-type 等二进制头标记
+  const isAWSEventStream = str.includes(':event-type') && str.includes(':message-type');
+  if (isAWSEventStream) {
+    // AWS Event Stream 是二进制格式，不是 JSON，直接显示原始内容
+    // 过滤掉不可打印字符，只保留可见的 JSON 片段
+    const cleanStr = str.replace(/[\x00-\x1F\x7F-\x9F]/g, ' ').replace(/\s+/g, ' ');
+    return '<span class="json-string">[AWS Event Stream 二进制格式]</span><br>' + escapeHtml(cleanStr);
+  }
+
   try {
     const obj = JSON.parse(str);
     const formatted = JSON.stringify(obj, null, 2);
     return syntaxHighlight(formatted);
   } catch (e) {
-    console.warn('[Monitor] JSON解析失败，原始显示:', e.message);
-    // 非 JSON，尝试手动格式化（可能是被截断的 JSON）
+    // 非 JSON，直接显示原始内容
     return escapeHtml(str);
   }
 }
@@ -620,6 +630,34 @@ function parseErrorResponse(obj) {
   return '';
 }
 
+// 解析 AWS Event Stream 二进制格式（Kiro 响应）
+// 从二进制数据中提取 JSON payload 并拼接 content
+function parseAWSEventStreamResponse(responseBody) {
+  let reply = '';
+
+  // AWS Event Stream 的 JSON payload 格式: {"content":"文本"}
+  // 使用正则提取所有 {"content":"..."} 格式的 JSON
+  const contentRegex = /\{"content":"([^"]*(?:\\.[^"]*)*)"\}/g;
+  let match;
+
+  while ((match = contentRegex.exec(responseBody)) !== null) {
+    try {
+      // 解析转义字符
+      const content = match[1]
+        .replace(/\\n/g, '\n')
+        .replace(/\\r/g, '\r')
+        .replace(/\\t/g, '\t')
+        .replace(/\\"/g, '"')
+        .replace(/\\\\/g, '\\');
+      reply += content;
+    } catch {
+      // 忽略解析错误
+    }
+  }
+
+  return reply;
+}
+
 // 解析并展示模型响应（思考内容和回复内容）
 // 支持格式：OpenAI、Claude、Gemini、Codex（流式和非流式）+ 错误响应
 function parseAndDisplayResponse(responseBody) {
@@ -639,10 +677,17 @@ function parseAndDisplayResponse(responseBody) {
   let thinking = '';
   let reply = '';
 
-  // 检测是否为 SSE 格式（包含 data: 前缀）
-  const isSSE = responseBody.includes('data:');
+  // 检测是否为 AWS Event Stream 二进制格式（Kiro 响应）
+  // 特征：包含 :event-type 和 :message-type 等二进制头标记
+  const isAWSEventStream = responseBody.includes(':event-type') && responseBody.includes(':message-type');
 
-  if (isSSE) {
+  // 检测是否为 SSE 格式（包含 data: 前缀）
+  const isSSE = responseBody.includes('data:') && !isAWSEventStream;
+
+  if (isAWSEventStream) {
+    // 解析 AWS Event Stream 二进制格式（Kiro）
+    reply = parseAWSEventStreamResponse(responseBody);
+  } else if (isSSE) {
     // 解析 SSE 流式响应
     const result = parseSSEResponse(responseBody);
     thinking = result.thinking;

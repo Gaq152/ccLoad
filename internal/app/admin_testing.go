@@ -731,62 +731,75 @@ func (s *Server) testKiroChannel(cfg *model.Config, accessToken string, testReq 
 		result["content_type"] = contentType
 	}
 
-	// Kiro 响应是 SSE 格式，解析响应
-	var rawBuilder strings.Builder
+	// [DEBUG] 记录 Kiro 响应的 Content-Type
+	log.Printf("[DEBUG] [Kiro Test] 响应 Content-Type: %s", contentType)
+
+	// Kiro 响应是 AWS Event Stream 二进制格式，需要解析二进制帧
+	// 读取完整响应体
+	bodyData, err := io.ReadAll(resp.Body)
+	if err != nil {
+		result["error"] = "读取响应失败: " + err.Error()
+		return result
+	}
+
+	// 保存原始响应（用于调试）
+	result["raw_response"] = string(bodyData)
+
+	// 解析 AWS Event Stream 二进制帧
 	var textBuilder strings.Builder
 	var lastErrMsg string
+	buf := bodyData
 
-	scanner := bufio.NewScanner(resp.Body)
-	buf := make([]byte, 0, 1024*1024)
-	scanner.Buffer(buf, 16*1024*1024)
-
-	for scanner.Scan() {
-		line := scanner.Text()
-		rawBuilder.WriteString(line)
-		rawBuilder.WriteString("\n")
-
-		if !strings.HasPrefix(line, "data:") {
-			continue
+	for len(buf) >= 16 {
+		frameLen, frame, remaining := parseAWSEventStreamFrame(buf)
+		if frameLen == 0 {
+			break
 		}
-		data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
-		if data == "" {
+		buf = remaining
+
+		if frame == nil || len(frame.Payload) == 0 {
 			continue
 		}
 
-		var obj map[string]any
-		if err := sonic.Unmarshal([]byte(data), &obj); err != nil {
+		// 解析 payload JSON
+		var payloadMap map[string]any
+		if err := sonic.Unmarshal(frame.Payload, &payloadMap); err != nil {
 			continue
 		}
 
-		// Kiro SSE: assistantResponseEvent.content 或 text
-		if event, ok := obj["assistantResponseEvent"].(map[string]any); ok {
-			if content, ok := event["content"].(string); ok && content != "" {
+		eventType := frame.Headers[":event-type"]
+
+		// 处理不同事件类型
+		switch eventType {
+		case "assistantResponseEvent":
+			// 提取文本内容
+			if content, ok := payloadMap["content"].(string); ok && content != "" {
+				textBuilder.WriteString(content)
+			}
+		case "meteringEvent", "contextUsageEvent":
+			// 计量事件，忽略
+		default:
+			// 其他事件，尝试提取 content
+			if content, ok := payloadMap["content"].(string); ok && content != "" {
 				textBuilder.WriteString(content)
 			}
 		}
 
 		// 错误处理
-		if errObj, ok := obj["error"].(map[string]any); ok {
+		if errObj, ok := payloadMap["error"].(map[string]any); ok {
 			if msg, ok := errObj["message"].(string); ok {
 				lastErrMsg = msg
 			}
-			result["api_error"] = obj
+			result["api_error"] = payloadMap
 		}
-		if msg, ok := obj["message"].(string); ok && msg != "" {
+		if msg, ok := payloadMap["message"].(string); ok && msg != "" {
 			lastErrMsg = msg
 		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		result["error"] = "读取流式响应失败: " + err.Error()
-		result["raw_response"] = rawBuilder.String()
-		return result
 	}
 
 	if textBuilder.Len() > 0 {
 		result["response_text"] = textBuilder.String()
 	}
-	result["raw_response"] = rawBuilder.String()
 
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		result["message"] = "API测试成功（Kiro）"
@@ -797,8 +810,8 @@ func (s *Server) testKiroChannel(cfg *model.Config, accessToken string, testReq 
 		result["error"] = lastErrMsg
 	}
 
-	// 监控捕获
-	s.captureTestForMonitor(cfg, testReq.Model, kiroBody, []byte(rawBuilder.String()), resp.StatusCode, duration.Seconds(), true, "admin-test")
+	// 监控捕获：保存原始响应数据
+	s.captureTestForMonitor(cfg, testReq.Model, kiroBody, bodyData, resp.StatusCode, duration.Seconds(), true, "admin-test")
 
 	return result
 }
