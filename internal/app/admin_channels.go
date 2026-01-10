@@ -289,6 +289,7 @@ func (s *Server) handleGetChannel(c *gin.Context, id int64) {
 					response["oauth_authorized"] = true
 					response["refresh_token"] = apiKeys[0].RefreshToken
 					response["token_expires_at"] = apiKeys[0].TokenExpiresAt
+					response["device_fingerprint"] = apiKeys[0].DeviceFingerprint
 				} else {
 					response["oauth_authorized"] = false
 				}
@@ -406,12 +407,13 @@ func (s *Server) handleUpdateChannel(c *gin.Context, id int64) {
 		if len(oldKeys) == 0 {
 			oauthChanged = true // 无旧 Key，需要创建
 		} else if len(oldKeys) > 0 {
-			// 检查 Token 是否变化
+			// 检查 Token 是否变化（包括设备指纹）
 			oldKey := oldKeys[0]
 			oauthChanged = oldKey.AccessToken != req.AccessToken ||
 				oldKey.IDToken != req.IDToken ||
 				oldKey.RefreshToken != req.RefreshToken ||
-				oldKey.TokenExpiresAt != req.TokenExpiresAt
+				oldKey.TokenExpiresAt != req.TokenExpiresAt ||
+				oldKey.DeviceFingerprint != req.DeviceFingerprint
 		}
 
 		if oauthChanged {

@@ -35,6 +35,9 @@ type ChannelRequest struct {
 	IDToken        string `json:"id_token,omitempty"`
 	RefreshToken   string `json:"refresh_token,omitempty"`
 	TokenExpiresAt int64  `json:"token_expires_at,omitempty"` // Unix时间戳
+
+	// Kiro 专用字段
+	DeviceFingerprint string `json:"device_fingerprint,omitempty"` // Kiro 设备指纹
 }
 
 func validateChannelBaseURL(raw string) (string, error) {
@@ -180,6 +183,14 @@ func (cr *ChannelRequest) Validate() error {
 		}
 	}
 
+	// Kiro 设备指纹验证（可选字段，但如果填写必须是 64 位 hex 字符串）
+	cr.DeviceFingerprint = strings.TrimSpace(cr.DeviceFingerprint)
+	if cr.DeviceFingerprint != "" {
+		if !isValidDeviceFingerprint(cr.DeviceFingerprint) {
+			return fmt.Errorf("invalid device_fingerprint: 必须是64位十六进制字符串")
+		}
+	}
+
 	return nil
 }
 
@@ -232,6 +243,19 @@ func validateQuotaConfig(qc *model.QuotaConfig) error {
 	return nil
 }
 
+// isValidDeviceFingerprint 验证设备指纹格式（64位十六进制字符串）
+func isValidDeviceFingerprint(fp string) bool {
+	if len(fp) != 64 {
+		return false
+	}
+	for _, c := range fp {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return false
+		}
+	}
+	return true
+}
+
 // ToConfig 转换为Config结构(不包含API Key,API Key单独处理)
 func (cr *ChannelRequest) ToConfig() *model.Config {
 	return &model.Config{
@@ -251,14 +275,15 @@ func (cr *ChannelRequest) ToConfig() *model.Config {
 // ToAPIKey 转换为APIKey结构（支持OAuth Token）
 func (cr *ChannelRequest) ToAPIKey(channelID int64) *model.APIKey {
 	return &model.APIKey{
-		ChannelID:      channelID,
-		KeyIndex:       0,
-		APIKey:         strings.TrimSpace(cr.APIKey),
-		KeyStrategy:    cr.KeyStrategy,
-		AccessToken:    strings.TrimSpace(cr.AccessToken),
-		IDToken:        strings.TrimSpace(cr.IDToken),
-		RefreshToken:   strings.TrimSpace(cr.RefreshToken),
-		TokenExpiresAt: cr.TokenExpiresAt,
+		ChannelID:         channelID,
+		KeyIndex:          0,
+		APIKey:            strings.TrimSpace(cr.APIKey),
+		KeyStrategy:       cr.KeyStrategy,
+		AccessToken:       strings.TrimSpace(cr.AccessToken),
+		IDToken:           strings.TrimSpace(cr.IDToken),
+		RefreshToken:      strings.TrimSpace(cr.RefreshToken),
+		TokenExpiresAt:    cr.TokenExpiresAt,
+		DeviceFingerprint: strings.TrimSpace(cr.DeviceFingerprint),
 	}
 }
 
