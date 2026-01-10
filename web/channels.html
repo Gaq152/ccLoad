@@ -443,6 +443,19 @@
                     </div>
                   </div>
 
+                  <!-- 设备指纹输入 -->
+                  <div id="kiroDeviceFingerprintSection" style="margin-bottom: 12px;">
+                    <div style="font-size: 12px; color: var(--neutral-500); margin-bottom: 6px;">
+                      设备指纹 <span style="color: var(--neutral-400);">(可选，用于绕过风控)</span>
+                    </div>
+                    <input type="text" id="kiroDeviceFingerprint" class="form-input"
+                      placeholder="从 Kiro IDE 抓包获取的 64 位 hex 字符串"
+                      style="font-size: 12px; font-family: monospace;">
+                    <div style="font-size: 11px; color: var(--neutral-400); margin-top: 4px;">
+                      如遇到账户被封，请填写你自己的设备指纹（从 User-Agent 中的 KiroIDE-0.8.0-xxx 提取）
+                    </div>
+                  </div>
+
                   <!-- 文件路径输入（主要方式） -->
                   <div id="kiroFilePathSection" style="margin-bottom: 12px;">
                     <div style="font-size: 12px; color: var(--neutral-500); margin-bottom: 6px;">
