@@ -69,25 +69,46 @@ func (s *Server) HandleChannelTest(c *gin.Context) {
 	isKiroPreset := cfg.Preset == "kiro" && channelType == util.ChannelTypeAnthropic
 
 	if isKiroPreset {
-		// Kiro 预设：使用 RefreshToken 刷新获取 AccessToken
+		// Kiro 预设：检查 AccessToken，需要时刷新
+		// [FIX] 与 Codex/Gemini 逻辑一致：优先检查 AccessToken 是否存在
 		apiKeyData := apiKeys[keyIndex]
 
-		// 解析 Kiro 认证配置
-		config := ParseKiroAuthConfig(apiKeyData.APIKey)
-		if config == nil {
+		// 检查 AccessToken 是否存在（与 Codex/Gemini 一致）
+		if apiKeyData.AccessToken == "" && apiKeyData.RefreshToken == "" {
 			RespondJSON(c, http.StatusOK, gin.H{
 				"success": false,
-				"error":   "Kiro 预设未配置有效的认证信息，请先配置 JSON 格式的 Token",
+				"error":   "Kiro 预设未配置有效的 Token，请先配置",
 			})
 			return
 		}
 
-		// 刷新 Token
+		// 构建 Kiro 认证配置（从独立字段读取）
+		kiroConfig := &KiroAuthConfig{
+			AuthType:     KiroAuthMethodSocial, // 默认 Social 方式
+			RefreshToken: apiKeyData.RefreshToken,
+		}
+
+		// 检查是否是 IdC 方式（id_token 字段存储了 IdC 配置 JSON）
+		if apiKeyData.IDToken != "" && strings.HasPrefix(apiKeyData.IDToken, "{") {
+			var idcInfo struct {
+				StartUrl     string `json:"startUrl"`
+				Region       string `json:"region"`
+				ClientID     string `json:"clientId"`
+				ClientSecret string `json:"clientSecret"`
+			}
+			if err := sonic.Unmarshal([]byte(apiKeyData.IDToken), &idcInfo); err == nil && idcInfo.StartUrl != "" {
+				kiroConfig.AuthType = KiroAuthMethodIdC
+				kiroConfig.ClientID = idcInfo.ClientID
+				kiroConfig.ClientSecret = idcInfo.ClientSecret
+			}
+		}
+
+		// 检查并刷新 Token（内部判断是否过期，未过期直接返回现有 AccessToken）
 		accessToken, _, err := s.RefreshKiroTokenIfNeeded(
 			c.Request.Context(),
 			id,
 			keyIndex,
-			config,
+			kiroConfig,
 			apiKeyData.AccessToken,
 			apiKeyData.TokenExpiresAt,
 		)
