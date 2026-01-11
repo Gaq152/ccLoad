@@ -350,12 +350,17 @@ async function saveChannel(event) {
         tokenExpiresAt = parseExpiresAt(expiresAtRaw); // 返回毫秒
       }
       // IdC 认证相关信息存入 id_token 字段（JSON 格式）
-      if (token.startUrl) {
+      // 支持两种判断方式：1. 显式 authMethod 字段  2. 存在 startUrl/clientId
+      const authMethod = token.authMethod || token.auth_method || '';
+      const isIdC = authMethod === 'IdC' || authMethod === 'idc' ||
+                    !!(token.startUrl && token.clientId);
+      if (isIdC || token.startUrl || token.clientId || token.clientSecret) {
         idToken = JSON.stringify({
-          startUrl: token.startUrl,
+          authMethod: isIdC ? 'IdC' : 'Social',
+          startUrl: token.startUrl || token.start_url || '',
           region: token.region || 'us-east-1',
-          clientId: token.clientId || '',
-          clientSecret: token.clientSecret || ''
+          clientId: token.clientId || token.client_id || '',
+          clientSecret: token.clientSecret || token.client_secret || ''
         });
       }
     } catch (e) {
@@ -2704,8 +2709,7 @@ function updateKiroTokenUI(token) {
   const authTypeEl = document.getElementById('kiroAuthType');
   const expiresAtEl = document.getElementById('kiroExpiresAt');
 
-  const filePathSection = document.getElementById('kiroFilePathSection');
-  const manualSection = document.getElementById('kiroManualSection');
+  const tokenInputSection = document.getElementById('kiroTokenInputSection');
   const refreshBtn = document.getElementById('refreshKiroTokenBtn');
   const clearBtn = document.getElementById('clearKiroTokenBtn');
 
@@ -2718,8 +2722,10 @@ function updateKiroTokenUI(token) {
 
     tokenInfo.style.display = 'block';
 
-    // 判断认证类型
-    const authType = token.startUrl ? 'IdC (SSO)' : 'Social (Builder ID)';
+    // 判断认证类型（优先使用 authMethod 字段，兼容 startUrl 判断）
+    const authMethod = token.authMethod || token.auth_method || '';
+    const isIdC = authMethod === 'IdC' || authMethod === 'idc' || !!token.startUrl;
+    const authType = isIdC ? 'IdC (Builder ID)' : 'Social (GitHub/Google)';
     authTypeEl.textContent = authType;
 
     // 显示过期时间
@@ -2742,8 +2748,7 @@ function updateKiroTokenUI(token) {
     }
 
     // 隐藏输入区域，显示操作按钮
-    if (filePathSection) filePathSection.style.display = 'none';
-    if (manualSection) manualSection.style.display = 'none';
+    if (tokenInputSection) tokenInputSection.style.display = 'none';
     if (refreshBtn) refreshBtn.style.display = 'inline-flex';
     if (clearBtn) clearBtn.style.display = 'inline-flex';
 
@@ -2759,8 +2764,7 @@ function updateKiroTokenUI(token) {
     tokenInfo.style.display = 'none';
 
     // 显示输入区域，隐藏操作按钮
-    if (filePathSection) filePathSection.style.display = 'block';
-    if (manualSection) manualSection.style.display = 'block';
+    if (tokenInputSection) tokenInputSection.style.display = 'block';
     if (refreshBtn) refreshBtn.style.display = 'none';
     if (clearBtn) clearBtn.style.display = 'none';
 
@@ -2770,11 +2774,86 @@ function updateKiroTokenUI(token) {
 }
 
 /**
+ * 解析多个 JSON 对象（支持用换行或 }{ 分隔）
+ * 用于合并 Kiro Token 文件和凭证文件
+ * @param {string} input - 原始输入字符串
+ * @returns {Array<Object>} 解析后的 JSON 对象数组
+ */
+function parseMultipleJsonObjects(input) {
+  const results = [];
+  const trimmed = input.trim();
+
+  if (!trimmed) return results;
+
+  // 尝试直接解析单个 JSON
+  try {
+    const parsed = JSON.parse(trimmed);
+    results.push(parsed);
+    return results;
+  } catch (e) {
+    // 解析失败，尝试分割多个 JSON
+  }
+
+  // 方法1: 按 }\n{ 或 }\r\n{ 分割
+  // 正则匹配: } 后跟空白字符和换行，然后是 {
+  const parts = trimmed.split(/\}\s*[\r\n]+\s*\{/);
+
+  if (parts.length > 1) {
+    // 恢复被分割的括号
+    for (let i = 0; i < parts.length; i++) {
+      let part = parts[i].trim();
+      // 第一个片段需要补 }，最后一个需要补 {，中间的两边都补
+      if (i === 0) {
+        part = part + '}';
+      } else if (i === parts.length - 1) {
+        part = '{' + part;
+      } else {
+        part = '{' + part + '}';
+      }
+
+      try {
+        const parsed = JSON.parse(part);
+        results.push(parsed);
+      } catch (e) {
+        console.warn('[Kiro] 解析 JSON 片段失败:', part.substring(0, 100), e);
+      }
+    }
+  }
+
+  // 方法2: 如果方法1没有结果，尝试按 }{ 分割（无换行情况）
+  if (results.length === 0) {
+    const parts2 = trimmed.split(/\}\s*\{/);
+    if (parts2.length > 1) {
+      for (let i = 0; i < parts2.length; i++) {
+        let part = parts2[i].trim();
+        if (i === 0) {
+          part = part + '}';
+        } else if (i === parts2.length - 1) {
+          part = '{' + part;
+        } else {
+          part = '{' + part + '}';
+        }
+
+        try {
+          const parsed = JSON.parse(part);
+          results.push(parsed);
+        } catch (e) {
+          console.warn('[Kiro] 解析 JSON 片段失败:', part.substring(0, 100), e);
+        }
+      }
+    }
+  }
+
+  return results;
+}
+
+/**
  * 应用粘贴的 Kiro Token 配置
- * 支持三种格式：
+ * 支持多种格式：
  * 1. 完整 JSON 配置文件内容
  * 2. 仅包含 refreshToken 的简化 JSON
  * 3. 直接粘贴 refreshToken 字符串
+ * 4. 两个 JSON 用换行分隔（Token 文件 + 凭证文件），自动合并
  */
 function applyKiroToken() {
   const textarea = document.getElementById('kiroTokenInput');
@@ -2788,36 +2867,68 @@ function applyKiroToken() {
   try {
     let normalizedToken;
 
-    // 尝试解析为 JSON
+    // 尝试解析为 JSON（可能是一个或多个）
     if (rawInput.startsWith('{')) {
-      const config = JSON.parse(rawInput);
+      // 尝试解析多个 JSON（用换行或 }{ 分隔）
+      const jsonObjects = parseMultipleJsonObjects(rawInput);
+
+      if (jsonObjects.length === 0) {
+        throw new Error('无法解析 JSON');
+      }
+
+      // 合并所有 JSON 对象
+      const mergedConfig = {};
+      for (const obj of jsonObjects) {
+        Object.assign(mergedConfig, obj);
+      }
 
       // 验证必要字段
-      if (!config.refreshToken && !config.refresh_token) {
+      if (!mergedConfig.refreshToken && !mergedConfig.refresh_token) {
         throw new Error('缺少 refreshToken 字段');
       }
 
       // 标准化字段名（支持 camelCase 和 snake_case）
       normalizedToken = {
-        refreshToken: config.refreshToken || config.refresh_token,
-        accessToken: config.accessToken || config.access_token || '',
-        expiresAt: config.expiresAt || config.expires_at || '',
+        refreshToken: mergedConfig.refreshToken || mergedConfig.refresh_token,
+        accessToken: mergedConfig.accessToken || mergedConfig.access_token || '',
+        expiresAt: mergedConfig.expiresAt || mergedConfig.expires_at || '',
+        // 认证方式（支持 authMethod 和 auth_method 字段）
+        authMethod: mergedConfig.authMethod || mergedConfig.auth_method || '',
         // IdC 认证相关字段
-        startUrl: config.startUrl || config.start_url || '',
-        region: config.region || 'us-east-1',
-        clientId: config.clientId || config.client_id || '',
-        clientSecret: config.clientSecret || config.client_secret || ''
+        startUrl: mergedConfig.startUrl || mergedConfig.start_url || '',
+        region: mergedConfig.region || 'us-east-1',
+        clientId: mergedConfig.clientId || mergedConfig.client_id || '',
+        clientSecret: mergedConfig.clientSecret || mergedConfig.client_secret || '',
+        clientIdHash: mergedConfig.clientIdHash || ''
       };
+
+      // IdC 认证验证：必须有 clientId 和 clientSecret
+      const isIdC = normalizedToken.authMethod === 'IdC' || normalizedToken.authMethod === 'idc';
+      if (isIdC && (!normalizedToken.clientId || !normalizedToken.clientSecret)) {
+        throw new Error(
+          'IdC 认证需要同时粘贴凭证文件。\n\n' +
+          '请同时粘贴两个文件内容（用换行分隔）：\n' +
+          '1. kiro-auth-token.json（包含 refreshToken）\n' +
+          '2. {clientIdHash}.json（包含 clientId 和 clientSecret）'
+        );
+      }
+
+      // 如果有多个 JSON，显示提示
+      if (jsonObjects.length > 1) {
+        console.log('[Kiro] 已合并 ' + jsonObjects.length + ' 个 JSON 配置');
+      }
     } else {
       // 直接作为 refreshToken 字符串处理
       normalizedToken = {
         refreshToken: rawInput,
         accessToken: '',
         expiresAt: '',
+        authMethod: '',
         startUrl: '',
         region: 'us-east-1',
         clientId: '',
-        clientSecret: ''
+        clientSecret: '',
+        clientIdHash: ''
       };
     }
 
@@ -2827,74 +2938,12 @@ function applyKiroToken() {
     // 清空输入框
     textarea.value = '';
 
-    // 折叠手动输入区域
-    const manualSection = document.getElementById('kiroManualSection');
-    if (manualSection) manualSection.open = false;
-
     if (window.showSuccess) showSuccess('Kiro Token 配置已应用');
 
   } catch (e) {
     console.error('解析 Kiro Token 失败:', e);
     if (window.showError) showError('Token 格式错误: ' + e.message);
   }
-}
-
-/**
- * 处理 Kiro Token 文件上传
- * @param {HTMLInputElement} input - 文件输入元素
- */
-function uploadKiroTokenFile(input) {
-  const file = input?.files?.[0];
-  if (!file) return;
-
-  // 检查文件类型
-  if (!file.name.endsWith('.json')) {
-    if (window.showError) showError('请上传 JSON 文件');
-    input.value = '';
-    return;
-  }
-
-  const reader = new FileReader();
-  reader.onload = function(e) {
-    try {
-      const content = e.target.result;
-      const config = JSON.parse(content);
-
-      // 验证必要字段
-      if (!config.refreshToken && !config.refresh_token) {
-        throw new Error('缺少 refreshToken 字段');
-      }
-
-      // 标准化字段名
-      const normalizedToken = {
-        refreshToken: config.refreshToken || config.refresh_token,
-        accessToken: config.accessToken || config.access_token || '',
-        expiresAt: config.expiresAt || config.expires_at || '',
-        startUrl: config.startUrl || config.start_url || '',
-        region: config.region || 'us-east-1',
-        clientId: config.clientId || config.client_id || '',
-        clientSecret: config.clientSecret || config.client_secret || ''
-      };
-
-      // 更新 UI
-      updateKiroTokenUI(normalizedToken);
-
-      if (window.showSuccess) showSuccess('Kiro Token 文件已导入');
-
-    } catch (e) {
-      console.error('解析 Kiro Token 文件失败:', e);
-      if (window.showError) showError('文件解析失败: ' + e.message);
-    }
-  };
-
-  reader.onerror = function() {
-    if (window.showError) showError('文件读取失败');
-  };
-
-  reader.readAsText(file);
-
-  // 清空文件输入，允许重复选择同一文件
-  input.value = '';
 }
 
 /**
@@ -2952,7 +3001,10 @@ async function refreshKiroToken() {
   try {
     // 构建刷新请求
     const refreshToken = token.refreshToken || token.refresh_token;
-    const isIdC = !!(token.startUrl && token.clientId && token.clientSecret);
+    // 判断 IdC 方式：1. 显式 authMethod 字段  2. 存在完整的 clientId/clientSecret
+    const authMethod = token.authMethod || token.auth_method || '';
+    const isIdC = authMethod === 'IdC' || authMethod === 'idc' ||
+                  !!(token.startUrl && token.clientId && token.clientSecret);
 
     const reqBody = {
       refresh_token: refreshToken,
@@ -2960,8 +3012,8 @@ async function refreshKiroToken() {
     };
 
     if (isIdC) {
-      reqBody.client_id = token.clientId;
-      reqBody.client_secret = token.clientSecret;
+      reqBody.client_id = token.clientId || token.client_id || '';
+      reqBody.client_secret = token.clientSecret || token.client_secret || '';
     }
 
     const result = await fetchAPIWithAuth('/admin/kiro/refresh', {

@@ -456,43 +456,23 @@
                     </div>
                   </div>
 
-                  <!-- 文件路径输入（主要方式） -->
-                  <div id="kiroFilePathSection" style="margin-bottom: 12px;">
+                  <!-- Token 配置输入 -->
+                  <div id="kiroTokenInputSection" style="margin-bottom: 12px;">
                     <div style="font-size: 12px; color: var(--neutral-500); margin-bottom: 6px;">
-                      Token 文件路径
+                      Token 配置 <span style="color: var(--neutral-400);">(支持 Social 和 IdC 两种认证方式)</span>
                     </div>
-                    <div style="display: flex; gap: 8px;">
-                      <input type="text" id="kiroFilePath" class="form-input"
-                        value="~/.aws/sso/cache/kiro-auth-token.json"
-                        placeholder="~/.aws/sso/cache/kiro-auth-token.json"
-                        style="flex: 1; font-size: 12px; font-family: monospace;">
-                      <label class="btn btn-primary btn-sm" style="padding: 6px 12px; cursor: pointer; white-space: nowrap;">
-                        📂 读取文件
-                        <input type="file" accept=".json" onchange="uploadKiroTokenFile(this)" style="display: none;">
-                      </label>
-                    </div>
-                    <div style="font-size: 11px; color: var(--neutral-400); margin-top: 4px;">
-                      点击"读取文件"选择本地 Token 文件，或修改路径后手动选择
-                    </div>
-                  </div>
-
-                  <!-- 手动输入（折叠） -->
-                  <details id="kiroManualSection" style="margin-top: 8px;">
-                    <summary style="font-size: 12px; color: var(--primary-600); cursor: pointer; user-select: none; padding: 4px 0;">
-                      ▶ 手动输入 Token
-                    </summary>
-                    <div style="margin-top: 10px; padding: 12px; background: var(--neutral-50); border-radius: 6px;">
-                      <div style="font-size: 12px; color: var(--neutral-500); margin-bottom: 8px;">
-                        粘贴 JSON 内容或仅 refreshToken 值
-                      </div>
-                      <textarea id="kiroTokenInput" class="form-input"
-                        placeholder='{"refreshToken":"arn:aws:sso:..."}&#10;或直接粘贴 refreshToken 值'
-                        style="font-size: 12px; font-family: monospace; min-height: 60px; resize: vertical; margin-bottom: 8px;"></textarea>
+                    <textarea id="kiroTokenInput" class="form-input"
+                      placeholder='粘贴 ~/.aws/sso/cache/kiro-auth-token.json 文件内容&#10;&#10;IdC 认证需同时粘贴凭证文件（用换行分隔）：&#10;{"accessToken":"...","refreshToken":"...","authMethod":"IdC",...}&#10;{"clientId":"...","clientSecret":"..."}'
+                      style="font-size: 12px; font-family: monospace; min-height: 100px; resize: vertical; margin-bottom: 8px;"></textarea>
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
                       <button type="button" id="applyKiroTokenBtn" class="btn btn-primary btn-sm" onclick="applyKiroToken()" style="padding: 6px 12px; font-size: 12px;">
                         ✓ 应用配置
                       </button>
+                      <div style="font-size: 11px; color: var(--neutral-400);">
+                        文件路径: <code style="background: var(--neutral-100); padding: 1px 4px; border-radius: 3px;">~/.aws/sso/cache/</code>
+                      </div>
                     </div>
-                  </details>
+                  </div>
                 </div>
               </div>
             </div>
