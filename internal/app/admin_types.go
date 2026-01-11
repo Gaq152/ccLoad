@@ -8,6 +8,8 @@ import (
 
 	"ccLoad/internal/model"
 	"ccLoad/internal/util"
+
+	"github.com/bytedance/sonic"
 )
 
 // ==================== 共享数据结构 ====================
@@ -183,11 +185,13 @@ func (cr *ChannelRequest) Validate() error {
 		}
 	}
 
-	// Kiro 设备指纹验证（可选字段，但如果填写必须是 64 位 hex 字符串）
+	// Kiro 设备指纹验证（可选字段，支持两种格式）
+	// 格式1: 64位hex字符串（旧格式，向后兼容）
+	// 格式2: JSON对象（新格式，包含完整设备信息）
 	cr.DeviceFingerprint = strings.TrimSpace(cr.DeviceFingerprint)
 	if cr.DeviceFingerprint != "" {
 		if !isValidDeviceFingerprint(cr.DeviceFingerprint) {
-			return fmt.Errorf("invalid device_fingerprint: 必须是64位十六进制字符串")
+			return fmt.Errorf("invalid device_fingerprint: 必须是64位十六进制字符串或完整的JSON配置")
 		}
 	}
 
@@ -243,17 +247,36 @@ func validateQuotaConfig(qc *model.QuotaConfig) error {
 	return nil
 }
 
-// isValidDeviceFingerprint 验证设备指纹格式（64位十六进制字符串）
+// isValidDeviceFingerprint 验证设备指纹格式
+// 支持两种格式：
+// 1. 64位十六进制字符串（旧格式，向后兼容）
+// 2. JSON对象（新格式，包含完整设备信息）
 func isValidDeviceFingerprint(fp string) bool {
-	if len(fp) != 64 {
-		return false
+	// 格式1: 64位hex字符串
+	if len(fp) == 64 {
+		for _, c := range fp {
+			if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+				return false
+			}
+		}
+		return true
 	}
-	for _, c := range fp {
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+
+	// 格式2: JSON对象（以 { 开头）
+	if strings.HasPrefix(fp, "{") {
+		// 简单验证：检查是否是有效的JSON
+		var obj map[string]any
+		if err := sonic.Unmarshal([]byte(fp), &obj); err != nil {
 			return false
 		}
+		// 验证必须包含 kiroHash 字段（核心标识）
+		if hash, ok := obj["kiroHash"].(string); !ok || len(hash) != 64 {
+			return false
+		}
+		return true
 	}
-	return true
+
+	return false
 }
 
 // ToConfig 转换为Config结构(不包含API Key,API Key单独处理)
