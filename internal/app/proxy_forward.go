@@ -814,8 +814,10 @@ func (s *Server) tryChannelWithKeys(ctx context.Context, cfg *model.Config, reqC
 	// [INFO] Kiro 预设预处理：转换请求体格式（Anthropic → CodeWhisperer）
 	// Kiro 是 AWS CodeWhisperer 的 Claude 接口，需要特殊的请求格式
 	isKiroPreset := cfg.ChannelType == util.ChannelTypeAnthropic && cfg.Preset == "kiro"
+	// 每次渠道尝试必须重置 isKiro 标志，避免上一个渠道的状态影响后续渠道
+	reqCtx.isKiro = isKiroPreset
+	reqCtx.kiroAccessToken = "" // 同时重置 Token
 	if isKiroPreset {
-		reqCtx.isKiro = true
 		kiroBody, err := TransformToKiroRequest(bodyToSend)
 		if err != nil {
 			log.Printf("[ERROR] [Kiro] 请求体转换失败: %v", err)
