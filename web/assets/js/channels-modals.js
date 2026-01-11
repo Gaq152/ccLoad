@@ -3219,3 +3219,46 @@ function updateKiroFingerprintStatus(fingerprint) {
     badge.style.color = 'var(--success-700)';
   }
 }
+
+/**
+ * 重新生成 Kiro 设备指纹
+ */
+async function regenerateKiroFingerprint() {
+  const input = document.getElementById('kiroDeviceFingerprint');
+  if (!input) return;
+
+  // 显示加载状态
+  const originalPlaceholder = input.placeholder;
+  input.placeholder = '正在生成...';
+  input.disabled = true;
+
+  try {
+    const res = await fetchAPIWithAuth('/admin/kiro/fingerprint/generate');
+
+    if (!res.success) {
+      throw new Error(res.error || '生成失败');
+    }
+
+    // 填充到输入框
+    input.value = res.data.fingerprint;
+
+    // 更新状态徽章
+    updateKiroFingerprintStatus(res.data.fingerprint);
+
+    // 显示成功提示
+    if (window.showSuccess) {
+      showSuccess(`已生成新指纹: ${res.data.summary}`);
+    }
+
+    console.log('[Kiro Fingerprint] 生成成功:', res.data.summary);
+  } catch (e) {
+    console.error('[Kiro Fingerprint] 生成失败:', e);
+    if (window.showError) {
+      showError('生成设备指纹失败: ' + e.message);
+    }
+  } finally {
+    // 恢复状态
+    input.placeholder = originalPlaceholder;
+    input.disabled = false;
+  }
+}
