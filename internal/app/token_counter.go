@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"ccLoad/internal/storage"
+
 	"github.com/bytedance/sonic"
 	"github.com/gin-gonic/gin"
 )
@@ -47,6 +49,8 @@ type CountTokensResponse struct {
 // 2. 上游失败或无 beta 时使用 tiktoken 本地计算（~5% 误差）
 // 3. tiktoken 失败时降级使用纯算法估算（~16% 误差）
 func (s *Server) handleCountTokens(c *gin.Context) {
+	startTime := time.Now()
+
 	// 读取请求体（需要保留用于可能的上游转发）
 	bodyBytes, err := io.ReadAll(c.Request.Body)
 	if err != nil {
@@ -87,13 +91,17 @@ func (s *Server) handleCountTokens(c *gin.Context) {
 		strings.Contains(c.GetHeader("anthropic-beta"), "token-counting")
 
 	var tokenCount int
+	var source string // 记录计算来源
 
 	if useBeta {
 		// 第一层：尝试转发到上游渠道
 		tokenCount = s.tryCountTokensViaUpstream(c, bodyBytes)
 		if tokenCount > 0 {
-			// 上游成功，直接返回
-			c.JSON(http.StatusOK, CountTokensResponse{InputTokens: tokenCount})
+			source = "upstream"
+			// 上游成功，返回并捕获监控
+			resp := CountTokensResponse{InputTokens: tokenCount}
+			c.JSON(http.StatusOK, resp)
+			s.captureCountTokensForMonitor(c, bodyBytes, resp, http.StatusOK, startTime, source, req.Model)
 			return
 		}
 		// 上游失败，降级到本地计算
@@ -103,13 +111,62 @@ func (s *Server) handleCountTokens(c *gin.Context) {
 	// 第二层：使用 tiktoken 本地计算
 	tokenCount = countTokensWithTiktokenFromRequest(&req)
 	if tokenCount > 0 {
-		c.JSON(http.StatusOK, CountTokensResponse{InputTokens: tokenCount})
+		source = "tiktoken"
+		resp := CountTokensResponse{InputTokens: tokenCount}
+		c.JSON(http.StatusOK, resp)
+		s.captureCountTokensForMonitor(c, bodyBytes, resp, http.StatusOK, startTime, source, req.Model)
 		return
 	}
 
 	// 第三层：降级到纯算法估算
+	source = "estimate"
 	tokenCount = estimateTokens(&req)
-	c.JSON(http.StatusOK, CountTokensResponse{InputTokens: tokenCount})
+	resp := CountTokensResponse{InputTokens: tokenCount}
+	c.JSON(http.StatusOK, resp)
+	s.captureCountTokensForMonitor(c, bodyBytes, resp, http.StatusOK, startTime, source, req.Model)
+}
+
+// captureCountTokensForMonitor 捕获 count_tokens 请求到监控
+func (s *Server) captureCountTokensForMonitor(c *gin.Context, requestBody []byte, resp CountTokensResponse, statusCode int, startTime time.Time, source string, model string) {
+	if s.monitorService == nil || !s.monitorService.IsEnabled() {
+		return
+	}
+
+	duration := time.Since(startTime).Seconds()
+
+	// 构建响应体
+	respBytes, _ := sonic.Marshal(resp)
+
+	// 构建 trace
+	trace := &storage.Trace{
+		Time:         time.Now().UnixMilli(),
+		ChannelID:    0,                                  // count_tokens 不关联特定渠道
+		ChannelName:  fmt.Sprintf("local(%s)", source),   // 标记计算来源
+		ChannelType:  "count_tokens",
+		Model:        model,
+		RequestPath:  "/v1/messages/count_tokens",
+		StatusCode:   statusCode,
+		Duration:     duration,
+		IsStreaming:  false,
+		IsTest:       false,
+		InputTokens:  resp.InputTokens,
+		OutputTokens: 0,
+		ClientIP:     c.ClientIP(),
+		APIKeyUsed:   "",
+	}
+
+	// 限制请求体大小
+	const maxCaptureSize = 64 * 1024
+	if len(requestBody) <= maxCaptureSize {
+		trace.RequestBody = string(requestBody)
+	} else {
+		trace.RequestBody = string(requestBody[:maxCaptureSize]) + "\n...(truncated)"
+	}
+
+	trace.ResponseBody = string(respBytes)
+
+	// 异步捕获
+	s.monitorService.Capture(trace)
 }
 
 // tryCountTokensViaUpstream 尝试通过上游渠道计算 token
