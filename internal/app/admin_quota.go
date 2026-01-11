@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -66,6 +67,111 @@ func (s *Server) handleQuotaFetch(c *gin.Context) {
 			return
 		}
 		qc = config.QuotaConfig
+
+		// [FIX] 官方预设：检查并刷新过期的 Token
+		switch config.Preset {
+		case "kiro":
+			// Kiro 预设：刷新 Token
+			apiKeys, err := s.getAPIKeys(c.Request.Context(), channelID)
+			if err == nil && len(apiKeys) > 0 {
+				firstKey := apiKeys[0]
+
+				// 检查 Token 是否需要刷新
+				if IsKiroTokenExpiringSoon(firstKey.TokenExpiresAt) {
+					// 构建认证配置
+					var kiroConfig *KiroAuthConfig
+
+					// 尝试从 IDToken 解析 IdC 认证信息
+					if firstKey.IDToken != "" {
+						kiroConfig = ParseKiroAuthConfig(firstKey.IDToken)
+					}
+
+					// 如果 IDToken 解析失败，使用 Social 方式
+					if kiroConfig == nil && firstKey.RefreshToken != "" {
+						kiroConfig = &KiroAuthConfig{
+							AuthType:     KiroAuthMethodSocial,
+							RefreshToken: firstKey.RefreshToken,
+						}
+					}
+
+					if kiroConfig != nil {
+						// 尝试刷新 Token
+						newAccessToken, newExpiresAt, err := s.RefreshKiroTokenIfNeeded(
+							c.Request.Context(),
+							channelID,
+							0, // keyIndex
+							kiroConfig,
+							firstKey.AccessToken,
+							firstKey.TokenExpiresAt,
+						)
+						if err == nil && newAccessToken != "" {
+							// 刷新成功，更新 RequestHeaders 中的 Authorization
+							if qc.RequestHeaders == nil {
+								qc.RequestHeaders = make(map[string]string)
+							}
+							qc.RequestHeaders["Authorization"] = "Bearer " + newAccessToken
+							log.Printf("[INFO] [Kiro Quota] Token 已自动刷新 (channel=%d, expiresAt=%d)", channelID, newExpiresAt)
+						} else {
+							log.Printf("[WARN] [Kiro Quota] Token 刷新失败 (channel=%d): %v", channelID, err)
+						}
+					}
+				}
+			}
+
+		case "official":
+			// Codex/Gemini 预设：刷新 Token
+			apiKeys, err := s.getAPIKeys(c.Request.Context(), channelID)
+			if err == nil && len(apiKeys) > 0 {
+				firstKey := apiKeys[0]
+				channelType := config.GetChannelType()
+
+				// Codex 预设
+				if channelType == "codex" {
+					_, oauthToken, isOAuth := ParseAPIKeyOrOAuth(firstKey.IDToken)
+					if isOAuth && oauthToken != nil && oauthToken.IsTokenExpiringSoon() {
+						newAccessToken, _, err := s.RefreshCodexTokenIfNeeded(
+							c.Request.Context(),
+							channelID,
+							0, // keyIndex
+							oauthToken,
+						)
+						if err == nil && newAccessToken != "" {
+							// 刷新成功，更新 RequestHeaders 中的 Authorization
+							if qc.RequestHeaders == nil {
+								qc.RequestHeaders = make(map[string]string)
+							}
+							qc.RequestHeaders["Authorization"] = "Bearer " + newAccessToken
+							log.Printf("[INFO] [Codex Quota] Token 已自动刷新 (channel=%d)", channelID)
+						} else {
+							log.Printf("[WARN] [Codex Quota] Token 刷新失败 (channel=%d): %v", channelID, err)
+						}
+					}
+				}
+
+				// Gemini 预设
+				if channelType == "gemini" {
+					_, oauthToken, isOAuth := ParseGeminiAPIKeyOrOAuth(firstKey.IDToken)
+					if isOAuth && oauthToken != nil && oauthToken.IsTokenExpiringSoon() {
+						newAccessToken, _, err := s.RefreshGeminiTokenIfNeeded(
+							c.Request.Context(),
+							channelID,
+							0, // keyIndex
+							oauthToken,
+						)
+						if err == nil && newAccessToken != "" {
+							// 刷新成功，更新 RequestHeaders 中的 Authorization
+							if qc.RequestHeaders == nil {
+								qc.RequestHeaders = make(map[string]string)
+							}
+							qc.RequestHeaders["Authorization"] = "Bearer " + newAccessToken
+							log.Printf("[INFO] [Gemini Quota] Token 已自动刷新 (channel=%d)", channelID)
+						} else {
+							log.Printf("[WARN] [Gemini Quota] Token 刷新失败 (channel=%d): %v", channelID, err)
+						}
+					}
+				}
+			}
+		}
 	} else {
 		// channelID=0 且无请求体配置
 		RespondErrorMsg(c, http.StatusBadRequest, "quota_config is required for test mode")
