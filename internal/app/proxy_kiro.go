@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"ccLoad/internal/model"
+	"ccLoad/internal/util"
 
 	"github.com/bytedance/sonic"
 )
@@ -52,10 +53,19 @@ func (s *Server) forwardKiroRequest(
 	if resp.StatusCode != http.StatusOK {
 		// 读取错误响应体
 		errorBody, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
-		log.Printf("[ERROR] [Kiro] 上游返回错误: status=%d, body=%s", resp.StatusCode, string(errorBody))
+
+		// 检测 AWS 账户暂停错误（TEMPORARILY_SUSPENDED）
+		// 需要应用 24 小时冷却（参考 kiro2api 实现）
+		actualStatus := resp.StatusCode
+		if IsKiroTemporarilySuspended(errorBody) {
+			actualStatus = util.StatusTemporarilySuspended
+			log.Printf("[WARN] [Kiro] 检测到 AWS 账户暂停错误，将应用 24 小时冷却: %s", string(errorBody))
+		} else {
+			log.Printf("[ERROR] [Kiro] 上游返回错误: status=%d, body=%s", resp.StatusCode, string(errorBody))
+		}
 
 		return &fwResult{
-			Status: resp.StatusCode,
+			Status: actualStatus,
 			Header: resp.Header.Clone(),
 			Body:   errorBody,
 		}, duration, nil
@@ -961,4 +971,27 @@ func extractKiroIndex(dataMap map[string]any) int {
 func ProcessKiroJSONResponse(body []byte) ([]byte, error) {
 	// 直接透传，CodeWhisperer 响应格式与 Anthropic 兼容
 	return body, nil
+}
+
+// ============================================================================
+// Kiro 错误检测
+// ============================================================================
+
+// IsKiroTemporarilySuspended 检测是否是 AWS 账户暂停错误
+// AWS CodeWhisperer 在账户暂停时会返回特定的错误消息
+// 参考 kiro2api: 需要对这类错误实施 24 小时冷却
+func IsKiroTemporarilySuspended(errorBody []byte) bool {
+	if len(errorBody) == 0 {
+		return false
+	}
+
+	errorStr := strings.ToLower(string(errorBody))
+
+	// 检测 AWS 账户暂停的特征字符串
+	// 1. "TEMPORARILY_SUSPENDED" - AWS 官方错误码
+	// 2. "temporarily is suspended" - 错误消息文本
+	// 3. "account suspended" - 通用暂停提示
+	return strings.Contains(errorStr, "temporarily_suspended") ||
+		strings.Contains(errorStr, "temporarily is suspended") ||
+		strings.Contains(errorStr, "account suspended")
 }

@@ -976,6 +976,32 @@ keyLoop:
 				continue
 			}
 
+			// 检查并生成设备指纹（每个 Kiro 渠道独立指纹）
+			if foundKey.DeviceFingerprint == "" {
+				fm := GetFingerprintManager()
+				fp, err := fm.GenerateFingerprint()
+				if err != nil {
+					log.Printf("[ERROR] [Kiro] 生成设备指纹失败: %v", err)
+				} else {
+					fpJSON, err := fp.ToJSON()
+					if err != nil {
+						log.Printf("[ERROR] [Kiro] 序列化设备指纹失败: %v", err)
+					} else {
+						foundKey.DeviceFingerprint = fpJSON
+						// 异步保存到数据库
+						go func(channelID int64, keyIndex int, fingerprint string) {
+							updateCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+							defer cancel()
+							if err := s.store.SetDeviceFingerprint(updateCtx, channelID, keyIndex, fingerprint); err != nil {
+								log.Printf("[ERROR] [Kiro] 保存设备指纹失败 (channel=%d, key=%d): %v", channelID, keyIndex, err)
+							} else {
+								log.Printf("[INFO] [Kiro] 已为渠道 #%d Key #%d 生成并保存设备指纹: %s", channelID, keyIndex, fp.GetSummary())
+							}
+						}(cfg.ID, keyIndex, fpJSON)
+					}
+				}
+			}
+
 			// 更新上下文中的 Token 和设备指纹
 			reqCtx.kiroAccessToken = accessToken
 			reqCtx.kiroDeviceFingerprint = foundKey.DeviceFingerprint
