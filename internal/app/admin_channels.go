@@ -176,6 +176,24 @@ func (s *Server) handleCreateChannel(c *gin.Context) {
 		apiKey.KeyStrategy = keyStrategy
 		apiKey.CreatedAt = model.JSONTime{Time: now}
 		apiKey.UpdatedAt = model.JSONTime{Time: now}
+
+		// [FIX] Kiro 预设：如果没有设备指纹，自动生成
+		if req.Preset == "kiro" && apiKey.DeviceFingerprint == "" {
+			fm := GetFingerprintManager()
+			fp, err := fm.GenerateFingerprint()
+			if err != nil {
+				log.Printf("[WARN] [Kiro] 创建渠道时生成设备指纹失败: %v", err)
+			} else {
+				fpJSON, err := fp.ToJSON()
+				if err != nil {
+					log.Printf("[WARN] [Kiro] 序列化设备指纹失败: %v", err)
+				} else {
+					apiKey.DeviceFingerprint = fpJSON
+					log.Printf("[INFO] [Kiro] 为新渠道 #%d 生成设备指纹: %s", created.ID, fp.GetSummary())
+				}
+			}
+		}
+
 		if err := s.store.CreateAPIKey(c.Request.Context(), apiKey); err != nil {
 			log.Printf("[ERROR] 创建OAuth Token失败 (channel=%d, preset=%s): %v", created.ID, req.Preset, err)
 			// 回滚：删除已创建的渠道
@@ -422,6 +440,23 @@ func (s *Server) handleUpdateChannel(c *gin.Context, id int64) {
 			apiKey := req.ToAPIKey(id)
 			apiKey.KeyStrategy = keyStrategy
 			apiKey.UpdatedAt = model.JSONTime{Time: now}
+
+			// [FIX] Kiro 预设：如果没有设备指纹，自动生成
+			if req.Preset == "kiro" && apiKey.DeviceFingerprint == "" {
+				fm := GetFingerprintManager()
+				fp, err := fm.GenerateFingerprint()
+				if err != nil {
+					log.Printf("[WARN] [Kiro] 更新渠道时生成设备指纹失败: %v", err)
+				} else {
+					fpJSON, err := fp.ToJSON()
+					if err != nil {
+						log.Printf("[WARN] [Kiro] 序列化设备指纹失败: %v", err)
+					} else {
+						apiKey.DeviceFingerprint = fpJSON
+						log.Printf("[INFO] [Kiro] 为渠道 #%d 生成设备指纹: %s", id, fp.GetSummary())
+					}
+				}
+			}
 
 			if len(oldKeys) > 0 {
 				// 有旧 Key：更新现有记录（UpdateAPIKey 使用 channel_id + key_index 定位）
