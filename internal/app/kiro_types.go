@@ -48,6 +48,7 @@ var KiroModelMap = map[string]string{
 // KiroAuthConfig Kiro 认证配置（用户粘贴的 JSON 格式）
 type KiroAuthConfig struct {
 	AuthType     string `json:"auth"`                    // "Social" 或 "IdC"
+	AuthMethod   string `json:"authMethod"`              // 兼容字段，同 AuthType
 	RefreshToken string `json:"refreshToken"`            // 刷新令牌
 	ClientID     string `json:"clientId,omitempty"`      // IdC 方式需要
 	ClientSecret string `json:"clientSecret,omitempty"`  // IdC 方式需要
@@ -58,6 +59,14 @@ type KiroAuthConfig struct {
 type KiroTokenInfo struct {
 	AccessToken string `json:"accessToken"` // 访问令牌
 	ExpiresAt   int64  `json:"expiresAt"`   // 过期时间 Unix 时间戳（毫秒）
+}
+
+// KiroIdCRefreshRequest IdC 认证刷新请求（JSON 格式，使用 camelCase）
+type KiroIdCRefreshRequest struct {
+	ClientId     string `json:"clientId"`     // 客户端 ID
+	ClientSecret string `json:"clientSecret"` // 客户端密钥
+	GrantType    string `json:"grantType"`    // 固定 "refresh_token"
+	RefreshToken string `json:"refreshToken"` // 刷新令牌
 }
 
 // ============================================================================
@@ -196,8 +205,8 @@ type KiroSocialRefreshResponse struct {
 
 // KiroIdCRefreshResponse IdC 方式刷新响应
 type KiroIdCRefreshResponse struct {
-	AccessToken  string `json:"access_token"`
-	RefreshToken string `json:"refresh_token,omitempty"`
-	ExpiresIn    int64  `json:"expires_in"` // 秒
-	TokenType    string `json:"token_type"`
+	AccessToken  string `json:"accessToken"`           // 访问令牌
+	RefreshToken string `json:"refreshToken,omitempty"` // 刷新令牌（可选）
+	ExpiresIn    int64  `json:"expiresIn"`             // 秒
+	TokenType    string `json:"tokenType"`             // Bearer
 }

@@ -64,9 +64,6 @@ func (s *Server) forwardKiroRequest(
 	// 处理响应
 	contentType := resp.Header.Get("Content-Type")
 
-	// [DEBUG] 记录 Kiro 响应的 Content-Type
-	log.Printf("[DEBUG] [Kiro] 响应 Content-Type: %s", contentType)
-
 	// 读取完整响应体
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -81,7 +78,6 @@ func (s *Server) forwardKiroRequest(
 		isAWSEventStreamBinary(body)
 
 	if isAWSEventStream {
-		log.Printf("[DEBUG] [Kiro] 检测到 AWS Event Stream 格式，进行转换")
 		// 解析 AWS Event Stream 并转换为 Anthropic SSE 格式
 		// 使用请求中的模型名称
 		parser, err := ProcessKiroAWSEventStream(ctx, body, w, reqCtx.originalModel)
@@ -99,8 +95,6 @@ func (s *Server) forwardKiroRequest(
 	}
 
 	// 非 AWS Event Stream 响应（纯 JSON）
-	log.Printf("[DEBUG] [Kiro] 非 AWS Event Stream 格式，直接透传")
-
 	// 处理 JSON 响应
 	processedBody, err := ProcessKiroJSONResponse(body)
 	if err != nil {
@@ -464,8 +458,7 @@ func processAWSEventStreamFrame(w http.ResponseWriter, flusher http.Flusher, fra
 		handleKiroMeteringEvent(payloadMap, parser)
 
 	case "contextUsageEvent":
-		// 上下文使用事件，可忽略或记录
-		// log.Printf("[DEBUG] [Kiro] contextUsage: %v", payloadMap)
+		// 上下文使用事件，可忽略
 
 	case "toolUseEvent":
 		// 工具调用事件
@@ -808,7 +801,7 @@ func handleKiroToolUseEvent(w http.ResponseWriter, flusher http.Flusher, payload
 // handleKiroCompletionEvent 处理 Kiro completionEvent
 // 注意：所有 content_block 应该在各自的处理函数中关闭（thinking、text、tool_use）
 // 这里只负责发送 message_delta 和 message_stop
-func handleKiroCompletionEvent(w http.ResponseWriter, flusher http.Flusher, payloadMap map[string]any, parser *kiroSSEParser) {
+func handleKiroCompletionEvent(w http.ResponseWriter, flusher http.Flusher, _ map[string]any, parser *kiroSSEParser) {
 	if parser.messageStarted {
 		// 发送 message_delta
 		stopReason := "end_turn"

@@ -2,7 +2,6 @@ package app
 
 import (
 	"fmt"
-	"log"
 	"strings"
 
 	"github.com/bytedance/sonic"
@@ -26,28 +25,6 @@ func TransformToKiroRequest(anthropicBody []byte) ([]byte, error) {
 	var anthropicReq map[string]any
 	if err := sonic.Unmarshal(anthropicBody, &anthropicReq); err != nil {
 		return nil, fmt.Errorf("parse anthropic request: %w", err)
-	}
-
-	// 调试：记录原始请求的 messages
-	if messages, ok := anthropicReq["messages"].([]any); ok {
-		log.Printf("[DEBUG] [Kiro Transform] 消息数量: %d", len(messages))
-		for i, msg := range messages {
-			if m, ok := msg.(map[string]any); ok {
-				role, _ := m["role"].(string)
-				content := m["content"]
-				// 检查是否包含 tool_result
-				if contentArr, ok := content.([]any); ok {
-					for _, item := range contentArr {
-						if block, ok := item.(map[string]any); ok {
-							if blockType, _ := block["type"].(string); blockType == "tool_result" {
-								toolUseId, _ := block["tool_use_id"].(string)
-								log.Printf("[DEBUG] [Kiro Transform] 消息[%d] role=%s 包含 tool_result, tool_use_id=%s", i, role, toolUseId)
-							}
-						}
-					}
-				}
-			}
-		}
 	}
 
 	// 提取模型并映射
@@ -83,14 +60,6 @@ func TransformToKiroRequest(anthropicBody []byte) ([]byte, error) {
 
 	// 提取当前消息内容和图片
 	textContent, images, toolResults := processKiroMessageContent(lastMessage["content"])
-
-	// 调试：记录提取的工具结果
-	if len(toolResults) > 0 {
-		log.Printf("[DEBUG] [Kiro Transform] 从最后一条消息提取到 %d 个工具结果", len(toolResults))
-		for i, tr := range toolResults {
-			log.Printf("[DEBUG] [Kiro Transform] 工具结果[%d]: toolUseId=%s, status=%s", i, tr.ToolUseId, tr.Status)
-		}
-	}
 
 	// 设置当前消息
 	kiroReq.ConversationState.CurrentMessage.UserInputMessage.Content = textContent

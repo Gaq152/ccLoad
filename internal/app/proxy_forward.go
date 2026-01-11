@@ -949,15 +949,22 @@ keyLoop:
 			// 检查是否是 IdC 方式（id_token 字段存储了 IdC 配置 JSON）
 			if foundKey.IDToken != "" && strings.HasPrefix(foundKey.IDToken, "{") {
 				var idcInfo struct {
+					AuthMethod   string `json:"authMethod"`
 					StartUrl     string `json:"startUrl"`
 					Region       string `json:"region"`
 					ClientID     string `json:"clientId"`
 					ClientSecret string `json:"clientSecret"`
 				}
-				if err := sonic.Unmarshal([]byte(foundKey.IDToken), &idcInfo); err == nil && idcInfo.StartUrl != "" {
-					kiroConfig.AuthType = KiroAuthMethodIdC
-					kiroConfig.ClientID = idcInfo.ClientID
-					kiroConfig.ClientSecret = idcInfo.ClientSecret
+				if err := sonic.Unmarshal([]byte(foundKey.IDToken), &idcInfo); err == nil {
+					// 判断 IdC 方式：1. 显式 authMethod 字段  2. 存在 startUrl（兼容旧数据）
+					isIdC := idcInfo.AuthMethod == KiroAuthMethodIdC ||
+						strings.EqualFold(idcInfo.AuthMethod, "idc") ||
+						idcInfo.StartUrl != ""
+					if isIdC {
+						kiroConfig.AuthType = KiroAuthMethodIdC
+						kiroConfig.ClientID = idcInfo.ClientID
+						kiroConfig.ClientSecret = idcInfo.ClientSecret
+					}
 				}
 			}
 

@@ -731,9 +731,6 @@ func (s *Server) testKiroChannel(cfg *model.Config, accessToken string, testReq 
 		result["content_type"] = contentType
 	}
 
-	// [DEBUG] 记录 Kiro 响应的 Content-Type
-	log.Printf("[DEBUG] [Kiro Test] 响应 Content-Type: %s", contentType)
-
 	// Kiro 响应是 AWS Event Stream 二进制格式，需要解析二进制帧
 	// 读取完整响应体
 	bodyData, err := io.ReadAll(resp.Body)

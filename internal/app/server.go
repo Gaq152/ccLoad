@@ -462,6 +462,8 @@ func (s *Server) SetupRoutes(r *gin.Engine) {
 
 		// Kiro Token 刷新
 		admin.POST("/kiro/refresh", s.HandleKiroRefresh)
+		// Kiro 获取邮箱
+		admin.POST("/kiro/email", s.HandleKiroGetEmail)
 
 		// 统计分析
 		admin.GET("/logs", s.HandleErrors)

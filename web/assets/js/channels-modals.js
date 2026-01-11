@@ -252,6 +252,7 @@ async function editChannel(id) {
         if (firstKey.id_token && firstKey.id_token.startsWith('{')) {
           try {
             const idcInfo = JSON.parse(firstKey.id_token);
+            kiroToken.authMethod = idcInfo.authMethod || '';  // 解析认证类型
             kiroToken.startUrl = idcInfo.startUrl || '';
             kiroToken.region = idcInfo.region || 'us-east-1';
             kiroToken.clientId = idcInfo.clientId || '';
@@ -261,6 +262,12 @@ async function editChannel(id) {
           }
         }
         updateKiroTokenUI(kiroToken);
+        // 如果有 accessToken，自动获取邮箱
+        if (kiroToken.accessToken) {
+          fetchKiroEmail(kiroToken.accessToken).then(email => {
+            updateKiroTokenEmail(kiroToken, email);
+          });
+        }
         // 加载设备指纹
         const deviceFingerprintInput = document.getElementById('kiroDeviceFingerprint');
         if (deviceFingerprintInput && firstKey.device_fingerprint) {
@@ -350,10 +357,12 @@ async function saveChannel(event) {
         tokenExpiresAt = parseExpiresAt(expiresAtRaw); // 返回毫秒
       }
       // IdC 认证相关信息存入 id_token 字段（JSON 格式）
-      // 支持两种判断方式：1. 显式 authMethod 字段  2. 存在 startUrl/clientId
+      // 判断 IdC：1. 显式 authMethod  2. 有 clientId 和 clientSecret（Social 不需要）
       const authMethod = token.authMethod || token.auth_method || '';
-      const isIdC = authMethod === 'IdC' || authMethod === 'idc' ||
-                    !!(token.startUrl && token.clientId);
+      const hasCredentials = !!(token.clientId || token.client_id) &&
+                             !!(token.clientSecret || token.client_secret);
+      const isIdC = authMethod === 'IdC' || authMethod === 'idc' || hasCredentials;
+
       if (isIdC || token.startUrl || token.clientId || token.clientSecret) {
         idToken = JSON.stringify({
           authMethod: isIdC ? 'IdC' : 'Social',
@@ -2707,6 +2716,7 @@ function updateKiroTokenUI(token) {
   const statusBadge = document.getElementById('kiroTokenStatusBadge');
   const tokenInfo = document.getElementById('kiroTokenInfo');
   const authTypeEl = document.getElementById('kiroAuthType');
+  const emailEl = document.getElementById('kiroEmail');
   const expiresAtEl = document.getElementById('kiroExpiresAt');
 
   const tokenInputSection = document.getElementById('kiroTokenInputSection');
@@ -2727,6 +2737,15 @@ function updateKiroTokenUI(token) {
     const isIdC = authMethod === 'IdC' || authMethod === 'idc' || !!token.startUrl;
     const authType = isIdC ? 'IdC (Builder ID)' : 'Social (GitHub/Google)';
     authTypeEl.textContent = authType;
+
+    // 显示邮箱
+    if (token.email) {
+      emailEl.textContent = token.email;
+      emailEl.style.color = 'var(--primary-600)';
+    } else {
+      emailEl.textContent = '获取中...';
+      emailEl.style.color = 'var(--neutral-400)';
+    }
 
     // 显示过期时间
     const expiresAt = token.expiresAt || token.expires_at;
@@ -2876,10 +2895,24 @@ function applyKiroToken() {
         throw new Error('无法解析 JSON');
       }
 
-      // 合并所有 JSON 对象
+      // 智能合并 JSON 对象
+      // Token 文件（有 refreshToken）的 expiresAt 是访问令牌过期时间
+      // 凭证文件（有 clientId）的 expiresAt 是客户端注册过期时间
+      // 我们需要保留 Token 文件的 expiresAt
       const mergedConfig = {};
+      let tokenExpiresAt = ''; // 记录 token 文件的过期时间
+
       for (const obj of jsonObjects) {
+        // 如果这个对象有 refreshToken，记录它的 expiresAt
+        if (obj.refreshToken || obj.refresh_token) {
+          tokenExpiresAt = obj.expiresAt || obj.expires_at || '';
+        }
         Object.assign(mergedConfig, obj);
+      }
+
+      // 恢复 token 文件的过期时间（避免被凭证文件的 expiresAt 覆盖）
+      if (tokenExpiresAt) {
+        mergedConfig.expiresAt = tokenExpiresAt;
       }
 
       // 验证必要字段
@@ -2934,6 +2967,13 @@ function applyKiroToken() {
 
     // 更新 UI
     updateKiroTokenUI(normalizedToken);
+
+    // 如果有 accessToken，自动获取邮箱
+    if (normalizedToken.accessToken) {
+      fetchKiroEmail(normalizedToken.accessToken).then(email => {
+        updateKiroTokenEmail(normalizedToken, email);
+      });
+    }
 
     // 清空输入框
     textarea.value = '';
@@ -3027,6 +3067,11 @@ async function refreshKiroToken() {
       token.accessToken = result.data.access_token || result.data.accessToken;
       token.expiresAt = result.data.expires_at || result.data.expiresAt;
 
+      // 刷新 Token 后自动获取邮箱
+      fetchKiroEmail(token.accessToken).then(email => {
+        updateKiroTokenEmail(token, email);
+      });
+
       updateKiroTokenUI(token);
       if (window.showSuccess) showSuccess('Token 刷新成功');
     } else {
@@ -3042,4 +3087,63 @@ async function refreshKiroToken() {
       refreshBtn.textContent = '🔄 刷新 Token';
     }
   }
+}
+
+/**
+ * 获取 Kiro 用户邮箱
+ * @param {string} accessToken - 访问令牌
+ * @returns {Promise<string|null>} 邮箱地址或 null
+ */
+async function fetchKiroEmail(accessToken) {
+  if (!accessToken) {
+    return null;
+  }
+
+  try {
+    const result = await fetchAPIWithAuth('/admin/kiro/email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ access_token: accessToken })
+    });
+
+    if (result.success && result.data && result.data.email) {
+      return result.data.email;
+    } else {
+      return null;
+    }
+  } catch (e) {
+    console.error('[Kiro] Error fetching email:', e);
+    return null;
+  }
+}
+
+/**
+ * 更新 Kiro Token 的邮箱信息
+ * 会自动更新 UI 和隐藏的 input
+ * @param {Object} token - Token 对象
+ * @param {string|null} email - 邮箱地址，null 表示获取失败
+ */
+function updateKiroTokenEmail(token, email) {
+  if (!token) return;
+
+  const emailEl = document.getElementById('kiroEmail');
+
+  if (email) {
+    // 获取成功
+    token.email = email;
+    if (emailEl) {
+      emailEl.textContent = email;
+      emailEl.style.color = 'var(--primary-600)';
+    }
+  } else {
+    // 获取失败（Token 过期或 API 错误）
+    token.email = '';
+    if (emailEl) {
+      emailEl.textContent = '获取失败';
+      emailEl.style.color = 'var(--neutral-400)';
+    }
+  }
+
+  // 更新隐藏的 input（用于保存）
+  document.getElementById('kiroApiKey').value = JSON.stringify(token);
 }

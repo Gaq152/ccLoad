@@ -7,7 +7,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
@@ -164,6 +163,7 @@ func (s *Server) refreshKiroSocialToken(ctx context.Context, config *KiroAuthCon
 
 	// 检查状态码
 	if resp.StatusCode != http.StatusOK {
+		log.Printf("[ERROR] [Kiro Social] Refresh failed (status=%d): %s", resp.StatusCode, string(respBody))
 		return nil, fmt.Errorf("refresh failed (status=%d): %s", resp.StatusCode, string(respBody))
 	}
 
@@ -185,25 +185,32 @@ func (s *Server) refreshKiroSocialToken(ctx context.Context, config *KiroAuthCon
 
 // refreshKiroIdCToken 刷新 IdC 方式的 Token
 func (s *Server) refreshKiroIdCToken(ctx context.Context, config *KiroAuthConfig) (*KiroTokenInfo, error) {
-	// 构建请求体（OAuth2 标准格式）
-	body := url.Values{
-		"grant_type":    {"refresh_token"},
-		"client_id":     {config.ClientID},
-		"client_secret": {config.ClientSecret},
-		"refresh_token": {config.RefreshToken},
+	// 构建请求体（JSON 格式，使用 camelCase 字段名）
+	reqBody := KiroIdCRefreshRequest{
+		ClientId:     config.ClientID,
+		ClientSecret: config.ClientSecret,
+		GrantType:    "refresh_token",
+		RefreshToken: config.RefreshToken,
+	}
+
+	jsonData, err := sonic.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("marshal request: %w", err)
 	}
 
 	// 创建请求
-	req, err := http.NewRequestWithContext(ctx, "POST", KiroIdCRefreshTokenURL, strings.NewReader(body.Encode()))
+	req, err := http.NewRequestWithContext(ctx, "POST", KiroIdCRefreshTokenURL, bytes.NewReader(jsonData))
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Host", "oidc.us-east-1.amazonaws.com")
 
 	// 添加 AWS SDK 风格的请求头（参考 kiro2api）
-	req.Header.Set("x-amz-user-agent", "aws-sdk-js/1.0.27 KiroIDE-0.8.0")
+	req.Header.Set("x-amz-user-agent", "aws-sdk-js/3.738.0 ua/2.1 os/linux lang/js md/browser api/sso-oidc#3.738.0 m/E KiroIDE")
 	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+	req.Header.Set("Accept", "*/*")
+	req.Header.Set("User-Agent", "node")
 
 	// 发送请求
 	resp, err := s.client.Do(req)
@@ -220,12 +227,14 @@ func (s *Server) refreshKiroIdCToken(ctx context.Context, config *KiroAuthConfig
 
 	// 检查状态码
 	if resp.StatusCode != http.StatusOK {
+		log.Printf("[ERROR] [Kiro IdC] Refresh failed (status=%d): %s", resp.StatusCode, string(respBody))
 		return nil, fmt.Errorf("refresh failed (status=%d): %s", resp.StatusCode, string(respBody))
 	}
 
 	// 解析响应
 	var result KiroIdCRefreshResponse
 	if err := sonic.Unmarshal(respBody, &result); err != nil {
+		log.Printf("[ERROR] [Kiro IdC] Failed to decode response: %v", err)
 		return nil, fmt.Errorf("decode response: %w", err)
 	}
 
