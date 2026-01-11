@@ -39,6 +39,10 @@ func (s *Server) forwardKiroRequest(
 		return nil, 0, fmt.Errorf("kiro access token is empty")
 	}
 
+	// 估算输入 token（使用原始 Anthropic 请求体）
+	// 注意：这是快速估算，用于监控统计，误差约 10-20%
+	estimatedInputTokens := estimateKiroInputTokens(reqCtx.body)
+
 	// 发送请求到 Kiro API（使用配置的设备指纹）
 	resp, err := s.ForwardKiroRequest(ctx, kiroBody, reqCtx.kiroAccessToken, reqCtx.isStreaming, reqCtx.kiroDeviceFingerprint)
 	if err != nil {
@@ -95,12 +99,14 @@ func (s *Server) forwardKiroRequest(
 			log.Printf("[WARN] [Kiro] AWS Event Stream 处理错误: %v", err)
 		}
 
-		inputTokens, outputTokens := parser.GetUsage()
+		// 获取输出 token（从响应中提取）
+		_, outputTokens := parser.GetUsage()
+
 		return &fwResult{
 			Status:       http.StatusOK,
 			Header:       resp.Header.Clone(),
-			InputTokens:  inputTokens,
-			OutputTokens: outputTokens,
+			InputTokens:  estimatedInputTokens, // 使用估算的输入 token
+			OutputTokens: outputTokens,          // 使用实际的输出 token
 		}, duration, nil
 	}
 
@@ -994,4 +1000,70 @@ func IsKiroTemporarilySuspended(errorBody []byte) bool {
 	return strings.Contains(errorStr, "temporarily_suspended") ||
 		strings.Contains(errorStr, "temporarily is suspended") ||
 		strings.Contains(errorStr, "account suspended")
+}
+
+// ============================================================================
+// Kiro 输入 Token 估算
+// ============================================================================
+
+// estimateKiroInputTokens 估算 Kiro 请求的输入 token 数量
+// 使用原始 Anthropic 请求体进行快速估算（纯算法，无依赖）
+// 注意：这是快速估算，用于监控统计，误差约 10-20%
+func estimateKiroInputTokens(anthropicBody []byte) int {
+	if len(anthropicBody) == 0 {
+		return 0
+	}
+
+	// 解析 Anthropic 请求体
+	var anthropicReq map[string]any
+	if err := sonic.Unmarshal(anthropicBody, &anthropicReq); err != nil {
+		// 解析失败，使用字符数估算
+		return len(anthropicBody) / 4
+	}
+
+	// 构建 CountTokensRequest 用于估算
+	req := &CountTokensRequest{
+		Model: getStringField(anthropicReq, "model"),
+	}
+
+	// 提取 system
+	if system, ok := anthropicReq["system"]; ok {
+		req.System = system
+	}
+
+	// 提取 messages
+	if messages, ok := anthropicReq["messages"].([]any); ok {
+		for _, msg := range messages {
+			if msgMap, ok := msg.(map[string]any); ok {
+				req.Messages = append(req.Messages, MessageParam{
+					Role:    getStringField(msgMap, "role"),
+					Content: msgMap["content"],
+				})
+			}
+		}
+	}
+
+	// 提取 tools
+	if tools, ok := anthropicReq["tools"].([]any); ok {
+		for _, tool := range tools {
+			if toolMap, ok := tool.(map[string]any); ok {
+				req.Tools = append(req.Tools, Tool{
+					Name:        getStringField(toolMap, "name"),
+					Description: getStringField(toolMap, "description"),
+					InputSchema: toolMap["input_schema"],
+				})
+			}
+		}
+	}
+
+	// 使用现有的估算函数
+	return EstimateInputTokens(req)
+}
+
+// getStringField 从 map 中安全获取字符串字段
+func getStringField(m map[string]any, key string) string {
+	if v, ok := m[key].(string); ok {
+		return v
+	}
+	return ""
 }

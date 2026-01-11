@@ -475,6 +475,24 @@ func (s *Server) handleUpdateChannel(c *gin.Context, id int64) {
 					return
 				}
 			}
+
+			// [FIX] 同步更新 QuotaConfig 中的 Authorization 头
+			// 如果渠道启用了用量监控，需要同步更新 Token
+			if upd.QuotaConfig != nil && upd.QuotaConfig.Enabled && apiKey.AccessToken != "" {
+				if upd.QuotaConfig.RequestHeaders == nil {
+					upd.QuotaConfig.RequestHeaders = make(map[string]string)
+				}
+				upd.QuotaConfig.RequestHeaders["Authorization"] = "Bearer " + apiKey.AccessToken
+
+				// 保存更新后的配置
+				updatedConfig, err := s.store.UpdateConfig(c.Request.Context(), id, upd)
+				if err != nil {
+					log.Printf("[WARN] 同步更新 QuotaConfig Authorization 失败 (channel=%d): %v", id, err)
+				} else {
+					upd = updatedConfig
+					log.Printf("[INFO] 已同步更新 QuotaConfig Authorization (channel=%d)", id)
+				}
+			}
 		}
 	} else {
 		// 自定义预设或其他渠道：检查 API Key 是否变化

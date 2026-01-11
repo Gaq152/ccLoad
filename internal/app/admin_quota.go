@@ -69,6 +69,7 @@ func (s *Server) handleQuotaFetch(c *gin.Context) {
 		qc = config.QuotaConfig
 
 		// [FIX] 官方预设：检查并刷新过期的 Token
+		tokenRefreshed := false // 标记是否刷新了 Token
 		switch config.Preset {
 		case "kiro":
 			// Kiro 预设：刷新 Token
@@ -110,6 +111,7 @@ func (s *Server) handleQuotaFetch(c *gin.Context) {
 								qc.RequestHeaders = make(map[string]string)
 							}
 							qc.RequestHeaders["Authorization"] = "Bearer " + newAccessToken
+							tokenRefreshed = true
 							log.Printf("[INFO] [Kiro Quota] Token 已自动刷新 (channel=%d, expiresAt=%d)", channelID, newExpiresAt)
 						} else {
 							log.Printf("[WARN] [Kiro Quota] Token 刷新失败 (channel=%d): %v", channelID, err)
@@ -141,6 +143,7 @@ func (s *Server) handleQuotaFetch(c *gin.Context) {
 								qc.RequestHeaders = make(map[string]string)
 							}
 							qc.RequestHeaders["Authorization"] = "Bearer " + newAccessToken
+							tokenRefreshed = true
 							log.Printf("[INFO] [Codex Quota] Token 已自动刷新 (channel=%d)", channelID)
 						} else {
 							log.Printf("[WARN] [Codex Quota] Token 刷新失败 (channel=%d): %v", channelID, err)
@@ -164,12 +167,24 @@ func (s *Server) handleQuotaFetch(c *gin.Context) {
 								qc.RequestHeaders = make(map[string]string)
 							}
 							qc.RequestHeaders["Authorization"] = "Bearer " + newAccessToken
+							tokenRefreshed = true
 							log.Printf("[INFO] [Gemini Quota] Token 已自动刷新 (channel=%d)", channelID)
 						} else {
 							log.Printf("[WARN] [Gemini Quota] Token 刷新失败 (channel=%d): %v", channelID, err)
 						}
 					}
 				}
+			}
+		}
+
+		// 如果刷新了 Token，需要保存更新后的 QuotaConfig 到数据库
+		if tokenRefreshed {
+			config.QuotaConfig = qc
+			_, err := s.store.UpdateConfig(c.Request.Context(), channelID, config)
+			if err != nil {
+				log.Printf("[WARN] [Quota] 保存更新后的 QuotaConfig 失败 (channel=%d): %v", channelID, err)
+			} else {
+				log.Printf("[INFO] [Quota] 已保存更新后的 Token 到 QuotaConfig (channel=%d)", channelID)
 			}
 		}
 	} else {
