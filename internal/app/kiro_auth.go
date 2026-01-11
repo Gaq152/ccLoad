@@ -252,12 +252,12 @@ func (s *Server) refreshKiroIdCToken(ctx context.Context, config *KiroAuthConfig
 // Kiro 请求头构建
 // ============================================================================
 
-// 默认设备指纹（当用户未配置时使用）
-const KiroDefaultDeviceFingerprint = "66c23a8c5d15afabec89ef9954ef52a119f10d369df04d548fc6c1eac694b0d1"
+// 默认设备指纹（降级时使用，来自真实 Kiro IDE）
+const KiroDefaultDeviceFingerprint = "0823f56eae74294cd89009c31e1b6828034938a892a7f4ca1409ef8e3dd1c846"
 
 // BuildKiroRequestHeaders 构建 Kiro API 请求头
 // deviceFingerprint: 设备指纹，为空时使用默认值
-func BuildKiroRequestHeaders(accessToken string, isStreaming bool, deviceFingerprint string) http.Header {
+func BuildKiroRequestHeaders(accessToken string, isStreaming bool, deviceFingerprintJSON string) http.Header {
 	headers := make(http.Header)
 
 	headers.Set("Authorization", "Bearer "+accessToken)
@@ -275,16 +275,29 @@ func BuildKiroRequestHeaders(accessToken string, isStreaming bool, deviceFingerp
 	headers.Set("amz-sdk-invocation-id", uuid.New().String())
 	headers.Set("amz-sdk-request", "attempt=1; max=3")
 
-	// 使用配置的设备指纹，未配置则使用默认值
-	if deviceFingerprint == "" {
-		deviceFingerprint = KiroDefaultDeviceFingerprint
+	// 解析设备指纹
+	fm := GetFingerprintManager()
+	fp, err := fm.ParseFingerprint(deviceFingerprintJSON)
+	if err != nil || fp == nil {
+		// 解析失败或为空，生成新的指纹
+		fp, err = fm.GenerateFingerprint()
+		if err != nil {
+			// 生成失败，使用默认值（降级）
+			log.Printf("[WARN] [Kiro] Failed to generate fingerprint: %v, using defaults", err)
+			headers.Set("x-amz-user-agent", "aws-sdk-js/1.0.27 KiroIDE-0.8.0-"+KiroDefaultDeviceFingerprint)
+			headers.Set("User-Agent", "aws-sdk-js/1.0.27 ua/2.1 os/darwin#25.0.0 lang/js md/nodejs#20.16.0 api/codewhispererstreaming#1.0.27 m/E KiroIDE-0.8.0-"+KiroDefaultDeviceFingerprint)
+			headers.Set("Accept-Language", "en-US,en;q=0.9")
+			headers.Set("Accept-Encoding", "gzip, deflate, br")
+			headers.Set("Connection", "close")
+			return headers
+		}
 	}
 
-	// AWS SDK 风格的 User-Agent（包含设备指纹）
-	headers.Set("x-amz-user-agent", "aws-sdk-js/1.0.27 KiroIDE-0.8.0-"+deviceFingerprint)
-	headers.Set("User-Agent", "aws-sdk-js/1.0.27 ua/2.1 os/darwin#25.0.0 lang/js md/nodejs#20.16.0 api/codewhispererstreaming#1.0.27 m/E KiroIDE-0.8.0-"+deviceFingerprint)
-	headers.Set("Accept-Language", "en-US,en;q=0.9")
-	headers.Set("Accept-Encoding", "gzip, deflate, br")
+	// 应用完整的设备指纹
+	headers.Set("x-amz-user-agent", fp.BuildAmzUserAgent())
+	headers.Set("User-Agent", fp.BuildUserAgent())
+	headers.Set("Accept-Language", fp.AcceptLanguage)
+	headers.Set("Accept-Encoding", fp.AcceptEncoding)
 	headers.Set("Connection", "close")
 
 	return headers

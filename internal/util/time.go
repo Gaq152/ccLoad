@@ -88,7 +88,13 @@ func CalculateBackoffDuration(prevMs int64, until time.Time, now time.Time, stat
 
 	// 以下为指数退避模式（exponential）
 
-	// 特殊处理：超时错误（状态码598）直接冷却1分钟，不使用指数退避
+	// 特殊处理 1：AWS 账户暂停（状态码595）直接冷却24小时，不使用指数退避
+	// 参考 kiro2api: TEMPORARILY_SUSPENDED 错误需要长时间冷却避免频繁尝试
+	if statusCode != nil && *statusCode == 595 {
+		return 24 * time.Hour
+	}
+
+	// 特殊处理 2：超时错误（状态码598）直接冷却1分钟，不使用指数退避
 	// 设计原则：上游服务响应超时或完全无响应时，应立即停止请求避免资源浪费和级联故障
 	if statusCode != nil && *statusCode == 598 {
 		return TimeoutErrorCooldown

@@ -551,3 +551,23 @@ func (s *SQLStore) GetAllAPIKeys(ctx context.Context) (map[int64][]*model.APIKey
 
 	return result, nil
 }
+
+// SetDeviceFingerprint 设置 API Key 的设备指纹（用于 Kiro 等需要设备指纹的预设）
+func (s *SQLStore) SetDeviceFingerprint(ctx context.Context, channelID int64, keyIndex int, fingerprint string) error {
+	updatedAtUnix := timeToUnix(time.Now())
+
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE api_keys
+		SET device_fingerprint = ?, updated_at = ?
+		WHERE channel_id = ? AND key_index = ?
+	`, fingerprint, updatedAtUnix, channelID, keyIndex)
+
+	if err != nil {
+		return fmt.Errorf("update device fingerprint: %w", err)
+	}
+
+	// 触发异步Redis同步
+	s.triggerAsyncSync(syncChannels)
+
+	return nil
+}

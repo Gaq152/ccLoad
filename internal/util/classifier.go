@@ -28,6 +28,11 @@ const (
 	// 来源：(1) context.Canceled → 不重试  (2) 上游返回499 → 重试其他渠道
 	StatusClientClosedRequest = 499
 
+	// StatusTemporarilySuspended AWS 账户暂停（自定义状态码，用于 Kiro TEMPORARILY_SUSPENDED 错误）
+	// 触发条件：Kiro (CodeWhisperer) 返回账户暂停错误
+	// 冷却策略：24 小时 Key 级冷却（参考 kiro2api）
+	StatusTemporarilySuspended = 595
+
 	// StatusQuotaExceeded 配额超限（自定义状态码，用于1308错误）
 	// 触发条件：检测到1308配额错误，区分于普通SSE错误
 	StatusQuotaExceeded = 596
@@ -104,8 +109,9 @@ var statusCodeClassification = map[int]ErrorLevel{
 	524: ErrorLevelRetry, // Cloudflare: A Timeout Occurred
 
 	// 自定义内部状态码
-	StatusFirstByteTimeout: ErrorLevelChannel, // 598 上游首字节超时
-	StatusStreamIncomplete: ErrorLevelChannel, // 599 流式响应不完整
+	StatusTemporarilySuspended: ErrorLevelKey,     // 595 AWS 账户暂停（24小时冷却）
+	StatusFirstByteTimeout:     ErrorLevelChannel, // 598 上游首字节超时
+	StatusStreamIncomplete:     ErrorLevelChannel, // 599 流式响应不完整
 
 	// 客户端错误：不冷却，直接返回
 	404: ErrorLevelClient, // Not Found

@@ -37,6 +37,7 @@ type Store interface {
 	DeleteAPIKey(ctx context.Context, channelID int64, keyIndex int) error
 	CompactKeyIndices(ctx context.Context, channelID int64, removedIndex int) error
 	DeleteAllAPIKeys(ctx context.Context, channelID int64) error
+	SetDeviceFingerprint(ctx context.Context, channelID int64, keyIndex int, fingerprint string) error
 
 	// ============================================================================
 	// 冷却管理
