@@ -5,6 +5,7 @@ go 1.25.0
 require (
 	github.com/bytedance/sonic v1.14.1
 	github.com/gin-gonic/gin v1.10.1
+	github.com/pkoukk/tiktoken-go v0.1.7
 	github.com/redis/go-redis/v9 v9.7.0
 	github.com/stretchr/testify v1.10.0
 	modernc.org/sqlite v1.38.2
@@ -13,7 +14,6 @@ require (
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dlclark/regexp2 v1.10.0 // indirect
-	github.com/pkoukk/tiktoken-go v0.1.7 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 )
 
