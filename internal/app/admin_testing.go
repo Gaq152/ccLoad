@@ -921,6 +921,10 @@ func convertKiroToAnthropicSSE(data []byte, model string, anthropicBody []byte) 
 	parser := newKiroSSEParser()
 	parser.requestedModel = model
 
+	// 估算输入 token 并设置到 parser
+	inputTokens := estimateInputTokensFromBody(anthropicBody)
+	parser.inputTokens = inputTokens
+
 	var sseBuilder strings.Builder
 
 	// 解析所有帧并转换
@@ -949,9 +953,6 @@ func convertKiroToAnthropicSSE(data []byte, model string, anthropicBody []byte) 
 			sseBuilder.WriteString(event)
 		}
 	}
-
-	// 估算输入 token
-	inputTokens := estimateInputTokensFromBody(anthropicBody)
 
 	return sseBuilder.String(), inputTokens, parser.outputTokens
 }
@@ -998,7 +999,7 @@ func handleKiroAssistantResponseEventToSSE(payloadMap map[string]any, parser *ki
 
 	var events []string
 
-	// 首次收到内容时发送 message_start
+	// 首次收到内容时发送 message_start（使用估算的 input_tokens）
 	if !parser.messageStarted {
 		parser.messageStarted = true
 		msgStart := map[string]any{
@@ -1012,7 +1013,7 @@ func handleKiroAssistantResponseEventToSSE(payloadMap map[string]any, parser *ki
 				"stop_reason":   nil,
 				"stop_sequence": nil,
 				"usage": map[string]any{
-					"input_tokens":  0,
+					"input_tokens":  parser.inputTokens,
 					"output_tokens": 0,
 				},
 			},

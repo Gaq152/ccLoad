@@ -93,8 +93,8 @@ func (s *Server) forwardKiroRequest(
 
 	if isAWSEventStream {
 		// 解析 AWS Event Stream 并转换为 Anthropic SSE 格式
-		// 使用请求中的模型名称
-		parser, err := ProcessKiroAWSEventStream(ctx, body, w, reqCtx.originalModel)
+		// 使用请求中的模型名称和估算的输入 token
+		parser, err := ProcessKiroAWSEventStream(ctx, body, w, reqCtx.originalModel, estimatedInputTokens)
 		if err != nil && err != io.EOF {
 			log.Printf("[WARN] [Kiro] AWS Event Stream 处理错误: %v", err)
 		}
@@ -178,11 +178,13 @@ func (s *Server) ForwardKiroRequest(
 // ProcessKiroAWSEventStream 处理已读取的 AWS Event Stream 响应并转换为 Anthropic SSE 格式
 // 与 StreamCopyKiroSSE 不同，此函数接收已读取的字节数组而非流
 // requestedModel: 请求的模型名称，用于响应中的 model 字段
-func ProcessKiroAWSEventStream(ctx context.Context, data []byte, w http.ResponseWriter, requestedModel string) (*kiroSSEParser, error) {
+func ProcessKiroAWSEventStream(ctx context.Context, data []byte, w http.ResponseWriter, requestedModel string, estimatedInputTokens int) (*kiroSSEParser, error) {
 	parser := newKiroSSEParser()
 	if requestedModel != "" {
 		parser.requestedModel = requestedModel
 	}
+	// 设置估算的输入 token（Kiro 响应不包含 input_tokens）
+	parser.inputTokens = estimatedInputTokens
 
 	// 设置 SSE 响应头
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -506,7 +508,7 @@ func handleKiroAssistantResponseEvent(w http.ResponseWriter, flusher http.Flushe
 	if !parser.messageStarted {
 		parser.messageStarted = true
 
-		// 发送 message_start
+		// 发送 message_start（使用估算的 input_tokens）
 		msgStart := map[string]any{
 			"type": "message_start",
 			"message": map[string]any{
@@ -518,7 +520,7 @@ func handleKiroAssistantResponseEvent(w http.ResponseWriter, flusher http.Flushe
 				"stop_reason":   nil,
 				"stop_sequence": nil,
 				"usage": map[string]any{
-					"input_tokens":  0,
+					"input_tokens":  parser.inputTokens,
 					"output_tokens": 0,
 				},
 			},
