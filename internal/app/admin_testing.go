@@ -612,11 +612,12 @@ func (s *Server) captureTestForMonitor(
 		return
 	}
 
-	// 估算输入 token 数量
-	inputTokens := estimateInputTokensFromBody(requestBody)
-
-	// 解析输出 token 数量（从响应体中提取）
-	outputTokens := parseOutputTokensFromResponse(responseBody, isStreaming)
+	// 优先从响应体解析 token 数量，解析失败则估算
+	inputTokens, outputTokens := parseTokensFromResponse(responseBody, isStreaming)
+	if inputTokens <= 0 {
+		// 响应中没有 input_tokens，降级到估算
+		inputTokens = estimateInputTokensFromBody(requestBody)
+	}
 
 	// 构建追踪记录（标记为测试请求）
 	trace := &storage.Trace{
@@ -659,6 +660,71 @@ func (s *Server) captureTestForMonitor(
 	s.monitorService.Capture(trace)
 }
 
+// parseTokensFromResponse 从响应体解析 input_tokens 和 output_tokens
+// 返回 (inputTokens, outputTokens)，解析失败返回 0
+func parseTokensFromResponse(body []byte, isStreaming bool) (int, int) {
+	if len(body) == 0 {
+		return 0, 0
+	}
+
+	if isStreaming {
+		return parseStreamingTokens(body)
+	}
+
+	// 非流式响应：直接解析 usage 字段
+	var resp struct {
+		Usage struct {
+			InputTokens  int `json:"input_tokens"`
+			OutputTokens int `json:"output_tokens"`
+		} `json:"usage"`
+	}
+	if err := sonic.Unmarshal(body, &resp); err == nil {
+		return resp.Usage.InputTokens, resp.Usage.OutputTokens
+	}
+
+	return 0, 0
+}
+
+// parseStreamingTokens 解析流式响应中的 input_tokens 和 output_tokens
+func parseStreamingTokens(body []byte) (int, int) {
+	bodyStr := string(body)
+
+	var inputTokens, outputTokens int
+
+	// 解析 input_tokens（通常在 message_start 或 message_delta 中）
+	inputIdx := strings.LastIndex(bodyStr, `"input_tokens"`)
+	if inputIdx != -1 {
+		substr := bodyStr[inputIdx:]
+		if _, err := fmt.Sscanf(substr, `"input_tokens":%d`, &inputTokens); err != nil {
+			fmt.Sscanf(substr, `"input_tokens": %d`, &inputTokens)
+		}
+	}
+
+	// 解析 output_tokens（通常在 message_delta 中）
+	outputIdx := strings.LastIndex(bodyStr, `"output_tokens"`)
+	if outputIdx != -1 {
+		substr := bodyStr[outputIdx:]
+		if _, err := fmt.Sscanf(substr, `"output_tokens":%d`, &outputTokens); err != nil {
+			fmt.Sscanf(substr, `"output_tokens": %d`, &outputTokens)
+		}
+	}
+
+	// 如果标准格式解析失败，尝试 AWS EventStream 格式（Kiro）
+	if outputTokens == 0 && strings.Contains(bodyStr, "meteringEvent") {
+		usageIdx := strings.LastIndex(bodyStr, `"usage":`)
+		if usageIdx != -1 {
+			substr := bodyStr[usageIdx:]
+			var usage float64
+			if _, err := fmt.Sscanf(substr, `"usage":%f`, &usage); err == nil && usage > 0 {
+				// 从 credit 消耗估算 token
+				outputTokens = int(usage / 0.003)
+			}
+		}
+	}
+
+	return inputTokens, outputTokens
+}
+
 // estimateInputTokensFromBody 从请求体估算输入 token 数量
 func estimateInputTokensFromBody(body []byte) int {
 	if len(body) == 0 {
@@ -679,104 +745,6 @@ func estimateInputTokensFromBody(body []byte) int {
 		tokens = estimateTokens(&req)
 	}
 	return tokens
-}
-
-// parseOutputTokensFromResponse 从响应体解析输出 token 数量
-func parseOutputTokensFromResponse(body []byte, isStreaming bool) int {
-	if len(body) == 0 {
-		return 0
-	}
-
-	if isStreaming {
-		// 流式响应：查找最后的 message_stop 或 message_delta 事件中的 usage
-		return parseStreamingOutputTokens(body)
-	}
-
-	// 非流式响应：直接解析 usage 字段
-	var resp struct {
-		Usage struct {
-			OutputTokens int `json:"output_tokens"`
-		} `json:"usage"`
-	}
-	if err := sonic.Unmarshal(body, &resp); err == nil && resp.Usage.OutputTokens > 0 {
-		return resp.Usage.OutputTokens
-	}
-
-	return 0
-}
-
-// parseStreamingOutputTokens 解析流式响应中的输出 token 数量
-// 支持两种格式：
-// 1. SSE 格式（标准 Anthropic 响应）
-// 2. AWS EventStream 二进制格式（Kiro/CodeWhisperer 响应）
-func parseStreamingOutputTokens(body []byte) int {
-	bodyStr := string(body)
-
-	// 先尝试标准 SSE 格式
-	// 查找最后一个 output_tokens
-	lastIdx := strings.LastIndex(bodyStr, `"output_tokens"`)
-	if lastIdx != -1 {
-		substr := bodyStr[lastIdx:]
-		var outputTokens int
-		if _, err := fmt.Sscanf(substr, `"output_tokens":%d`, &outputTokens); err == nil && outputTokens > 0 {
-			return outputTokens
-		}
-		if _, err := fmt.Sscanf(substr, `"output_tokens": %d`, &outputTokens); err == nil && outputTokens > 0 {
-			return outputTokens
-		}
-	}
-
-	// 尝试 AWS EventStream 格式（Kiro 响应）
-	// AWS EventStream 中的 meteringEvent 包含 usage 信息
-	// 格式: {"unit":"credit","unitPlural":"credits","usage":0.05119446334991708}
-	// 需要从 usage 值估算 output_tokens（约 0.003 credit/token for haiku）
-	if strings.Contains(bodyStr, "meteringEvent") {
-		// 查找 usage 值
-		usageIdx := strings.LastIndex(bodyStr, `"usage":`)
-		if usageIdx != -1 {
-			substr := bodyStr[usageIdx:]
-			var usage float64
-			if _, err := fmt.Sscanf(substr, `"usage":%f`, &usage); err == nil && usage > 0 {
-				// 估算 token 数量（基于 credit 消耗）
-				// Haiku: ~0.003 credit/token, Sonnet: ~0.015 credit/token
-				// 使用保守估算（假设 Haiku）
-				estimatedTokens := int(usage / 0.003)
-				if estimatedTokens > 0 {
-					return estimatedTokens
-				}
-			}
-		}
-	}
-
-	// 尝试从响应文本内容估算（最后的降级方案）
-	// 统计所有 "content" 字段中的文本长度
-	totalContentLen := 0
-	contentIdx := 0
-	for {
-		idx := strings.Index(bodyStr[contentIdx:], `"content":"`)
-		if idx == -1 {
-			break
-		}
-		contentIdx += idx + 11 // len(`"content":"`)
-		endIdx := strings.Index(bodyStr[contentIdx:], `"`)
-		if endIdx == -1 {
-			break
-		}
-		content := bodyStr[contentIdx : contentIdx+endIdx]
-		// 解码 JSON 转义字符
-		content = strings.ReplaceAll(content, `\n`, "\n")
-		content = strings.ReplaceAll(content, `\"`, "\"")
-		totalContentLen += len([]rune(content))
-		contentIdx += endIdx + 1
-	}
-
-	if totalContentLen > 0 {
-		// 估算 token 数量（约 4 字符/token for 英文，1.5 字符/token for 中文）
-		// 使用保守估算
-		return (totalContentLen + 2) / 3
-	}
-
-	return 0
 }
 
 // testKiroChannel Kiro 预设专用测试函数
