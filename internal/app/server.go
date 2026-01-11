@@ -464,6 +464,8 @@ func (s *Server) SetupRoutes(r *gin.Engine) {
 		admin.POST("/kiro/refresh", s.HandleKiroRefresh)
 		// Kiro 获取邮箱
 		admin.POST("/kiro/email", s.HandleKiroGetEmail)
+		// Kiro 生成设备指纹
+		admin.GET("/kiro/fingerprint/generate", s.HandleKiroGenerateFingerprint)
 
 		// 统计分析
 		admin.GET("/logs", s.HandleErrors)

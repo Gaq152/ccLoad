@@ -478,10 +478,17 @@
                       <div style="font-size: 12px; color: var(--neutral-500); margin-bottom: 6px;">
                         设备指纹 <span style="color: var(--neutral-400);">(可选，留空将自动生成)</span>
                       </div>
-                      <input type="text" id="kiroDeviceFingerprint" class="form-input"
-                        placeholder="留空将自动生成随机指纹，也可手动填写完整 JSON 配置"
-                        oninput="updateKiroFingerprintStatus(this.value)"
-                        style="font-size: 12px; font-family: monospace;">
+                      <div style="display: flex; gap: 8px; align-items: center;">
+                        <input type="text" id="kiroDeviceFingerprint" class="form-input"
+                          placeholder="留空将自动生成随机指纹，也可手动填写完整 JSON 配置"
+                          oninput="updateKiroFingerprintStatus(this.value)"
+                          style="flex: 1; font-size: 12px; font-family: monospace;">
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="regenerateKiroFingerprint()"
+                          style="padding: 6px 12px; font-size: 12px; white-space: nowrap;"
+                          title="生成新的随机指纹">
+                          🔄 重新生成
+                        </button>
+                      </div>
                       <div style="font-size: 11px; color: var(--neutral-400); margin-top: 6px; line-height: 1.5;">
                         💡 系统会为每个渠道自动生成独立的随机指纹（包含 OS/Node/SDK 版本等维度），无需手动配置<br>
                         📝 如需使用真实设备指纹或自定义配置，可粘贴完整 JSON 格式的指纹数据

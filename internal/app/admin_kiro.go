@@ -163,3 +163,29 @@ func (s *Server) HandleKiroGetEmail(c *gin.Context) {
 		"user_id": usageLimits.UserInfo.UserID,
 	})
 }
+
+// HandleKiroGenerateFingerprint 生成新的随机设备指纹
+// GET /admin/kiro/fingerprint/generate
+func (s *Server) HandleKiroGenerateFingerprint(c *gin.Context) {
+	fm := GetFingerprintManager()
+	fp, err := fm.GenerateFingerprint()
+	if err != nil {
+		log.Printf("[ERROR] [Kiro Fingerprint] 生成失败: %v", err)
+		RespondError(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	fpJSON, err := fp.ToJSON()
+	if err != nil {
+		log.Printf("[ERROR] [Kiro Fingerprint] 序列化失败: %v", err)
+		RespondError(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	log.Printf("[INFO] [Kiro Fingerprint] 生成成功: %s", fp.GetSummary())
+
+	RespondJSON(c, http.StatusOK, gin.H{
+		"fingerprint": fpJSON,
+		"summary":     fp.GetSummary(),
+	})
+}
