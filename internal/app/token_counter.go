@@ -36,14 +36,11 @@ type CountTokensResponse struct {
 	InputTokens int `json:"input_tokens"`
 }
 
-// handleCountTokens 实现 token 计数接口（本地估算）
-// 策略（参考 kiro2api）：
-// 1. [未实现] 优先调用上游 API（100% 准确，需要独立实现 HTTP 客户端）
-// 2. [未实现] 降级使用 tiktoken 本地计算（~5% 误差，需要库支持）
-// 3. 使用纯算法估算（~16% 误差，无依赖，快速）
-//
-// 注意：暂不支持 beta 参数转发到上游，避免无限递归问题
-// 如需精确计数，建议直接调用 Anthropic 官方 API
+// handleCountTokens 实现 token 计数接口（本地计算）
+// 策略：
+// 1. [带beta时由上游处理] 转发到上游渠道（100% 准确）
+// 2. 优先使用 tiktoken 本地计算（~5% 误差）
+// 3. 降级使用纯算法估算（~16% 误差，无依赖，快速）
 func (s *Server) handleCountTokens(c *gin.Context) {
 	var req CountTokensRequest
 
@@ -69,8 +66,12 @@ func (s *Server) handleCountTokens(c *gin.Context) {
 		return
 	}
 
-	// 使用纯算法估算
-	tokenCount := estimateTokens(&req)
+	// 优先使用 tiktoken 计算，失败则降级到纯算法
+	tokenCount := countTokensWithTiktokenFromRequest(&req)
+	if tokenCount <= 0 {
+		// tiktoken 失败，降级到纯算法
+		tokenCount = estimateTokens(&req)
+	}
 
 	// 返回符合官方API格式的响应
 	c.JSON(http.StatusOK, CountTokensResponse{
