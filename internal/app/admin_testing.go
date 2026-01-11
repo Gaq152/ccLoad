@@ -612,20 +612,28 @@ func (s *Server) captureTestForMonitor(
 		return
 	}
 
+	// 估算输入 token 数量
+	inputTokens := estimateInputTokensFromBody(requestBody)
+
+	// 解析输出 token 数量（从响应体中提取）
+	outputTokens := parseOutputTokensFromResponse(responseBody, isStreaming)
+
 	// 构建追踪记录（标记为测试请求）
 	trace := &storage.Trace{
-		Time:        time.Now().UnixMilli(),
-		ChannelID:   int(cfg.ID),
-		ChannelName: cfg.Name,
-		ChannelType: cfg.GetChannelType(),
-		Model:       testModel,
-		RequestPath: fmt.Sprintf("/admin/channels/%d/test", cfg.ID),
-		StatusCode:  statusCode,
-		Duration:    duration,
-		IsStreaming: isStreaming,
-		IsTest:      true, // 标记为测试请求
-		ClientIP:    clientIP,
-		APIKeyUsed:  "[测试]",
+		Time:         time.Now().UnixMilli(),
+		ChannelID:    int(cfg.ID),
+		ChannelName:  cfg.Name,
+		ChannelType:  cfg.GetChannelType(),
+		Model:        testModel,
+		RequestPath:  fmt.Sprintf("/admin/channels/%d/test", cfg.ID),
+		StatusCode:   statusCode,
+		Duration:     duration,
+		IsStreaming:  isStreaming,
+		IsTest:       true, // 标记为测试请求
+		ClientIP:     clientIP,
+		APIKeyUsed:   "[测试]",
+		InputTokens:  inputTokens,
+		OutputTokens: outputTokens,
 	}
 
 	// 捕获请求体（限制大小）
@@ -649,6 +657,78 @@ func (s *Server) captureTestForMonitor(
 
 	// 异步捕获（不阻塞主流程）
 	s.monitorService.Capture(trace)
+}
+
+// estimateInputTokensFromBody 从请求体估算输入 token 数量
+func estimateInputTokensFromBody(body []byte) int {
+	if len(body) == 0 {
+		return 0
+	}
+
+	// 解析请求体
+	var req CountTokensRequest
+	if err := sonic.Unmarshal(body, &req); err != nil {
+		// 解析失败，使用简单估算（约4字符/token）
+		return len(body) / 4
+	}
+
+	// 使用 tiktoken 计算
+	tokens := countTokensWithTiktokenFromRequest(&req)
+	if tokens <= 0 {
+		// 降级到纯算法
+		tokens = estimateTokens(&req)
+	}
+	return tokens
+}
+
+// parseOutputTokensFromResponse 从响应体解析输出 token 数量
+func parseOutputTokensFromResponse(body []byte, isStreaming bool) int {
+	if len(body) == 0 {
+		return 0
+	}
+
+	if isStreaming {
+		// 流式响应：查找最后的 message_stop 或 message_delta 事件中的 usage
+		return parseStreamingOutputTokens(body)
+	}
+
+	// 非流式响应：直接解析 usage 字段
+	var resp struct {
+		Usage struct {
+			OutputTokens int `json:"output_tokens"`
+		} `json:"usage"`
+	}
+	if err := sonic.Unmarshal(body, &resp); err == nil && resp.Usage.OutputTokens > 0 {
+		return resp.Usage.OutputTokens
+	}
+
+	return 0
+}
+
+// parseStreamingOutputTokens 解析流式响应中的输出 token 数量
+func parseStreamingOutputTokens(body []byte) int {
+	// 从后向前查找 "output_tokens" 字段
+	bodyStr := string(body)
+
+	// 查找最后一个 output_tokens
+	lastIdx := strings.LastIndex(bodyStr, `"output_tokens"`)
+	if lastIdx == -1 {
+		return 0
+	}
+
+	// 提取数值
+	substr := bodyStr[lastIdx:]
+	var outputTokens int
+	if _, err := fmt.Sscanf(substr, `"output_tokens":%d`, &outputTokens); err == nil {
+		return outputTokens
+	}
+
+	// 尝试带空格的格式
+	if _, err := fmt.Sscanf(substr, `"output_tokens": %d`, &outputTokens); err == nil {
+		return outputTokens
+	}
+
+	return 0
 }
 
 // testKiroChannel Kiro 预设专用测试函数
