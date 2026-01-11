@@ -706,35 +706,83 @@ func parseOutputTokensFromResponse(body []byte, isStreaming bool) int {
 }
 
 // parseStreamingOutputTokens 解析流式响应中的输出 token 数量
+// 支持两种格式：
+// 1. SSE 格式（标准 Anthropic 响应）
+// 2. AWS EventStream 二进制格式（Kiro/CodeWhisperer 响应）
 func parseStreamingOutputTokens(body []byte) int {
-	// 从后向前查找 "output_tokens" 字段
 	bodyStr := string(body)
 
+	// 先尝试标准 SSE 格式
 	// 查找最后一个 output_tokens
 	lastIdx := strings.LastIndex(bodyStr, `"output_tokens"`)
-	if lastIdx == -1 {
-		return 0
+	if lastIdx != -1 {
+		substr := bodyStr[lastIdx:]
+		var outputTokens int
+		if _, err := fmt.Sscanf(substr, `"output_tokens":%d`, &outputTokens); err == nil && outputTokens > 0 {
+			return outputTokens
+		}
+		if _, err := fmt.Sscanf(substr, `"output_tokens": %d`, &outputTokens); err == nil && outputTokens > 0 {
+			return outputTokens
+		}
 	}
 
-	// 提取数值
-	substr := bodyStr[lastIdx:]
-	var outputTokens int
-	if _, err := fmt.Sscanf(substr, `"output_tokens":%d`, &outputTokens); err == nil {
-		return outputTokens
+	// 尝试 AWS EventStream 格式（Kiro 响应）
+	// AWS EventStream 中的 meteringEvent 包含 usage 信息
+	// 格式: {"unit":"credit","unitPlural":"credits","usage":0.05119446334991708}
+	// 需要从 usage 值估算 output_tokens（约 0.003 credit/token for haiku）
+	if strings.Contains(bodyStr, "meteringEvent") {
+		// 查找 usage 值
+		usageIdx := strings.LastIndex(bodyStr, `"usage":`)
+		if usageIdx != -1 {
+			substr := bodyStr[usageIdx:]
+			var usage float64
+			if _, err := fmt.Sscanf(substr, `"usage":%f`, &usage); err == nil && usage > 0 {
+				// 估算 token 数量（基于 credit 消耗）
+				// Haiku: ~0.003 credit/token, Sonnet: ~0.015 credit/token
+				// 使用保守估算（假设 Haiku）
+				estimatedTokens := int(usage / 0.003)
+				if estimatedTokens > 0 {
+					return estimatedTokens
+				}
+			}
+		}
 	}
 
-	// 尝试带空格的格式
-	if _, err := fmt.Sscanf(substr, `"output_tokens": %d`, &outputTokens); err == nil {
-		return outputTokens
+	// 尝试从响应文本内容估算（最后的降级方案）
+	// 统计所有 "content" 字段中的文本长度
+	totalContentLen := 0
+	contentIdx := 0
+	for {
+		idx := strings.Index(bodyStr[contentIdx:], `"content":"`)
+		if idx == -1 {
+			break
+		}
+		contentIdx += idx + 11 // len(`"content":"`)
+		endIdx := strings.Index(bodyStr[contentIdx:], `"`)
+		if endIdx == -1 {
+			break
+		}
+		content := bodyStr[contentIdx : contentIdx+endIdx]
+		// 解码 JSON 转义字符
+		content = strings.ReplaceAll(content, `\n`, "\n")
+		content = strings.ReplaceAll(content, `\"`, "\"")
+		totalContentLen += len([]rune(content))
+		contentIdx += endIdx + 1
+	}
+
+	if totalContentLen > 0 {
+		// 估算 token 数量（约 4 字符/token for 英文，1.5 字符/token for 中文）
+		// 使用保守估算
+		return (totalContentLen + 2) / 3
 	}
 
 	return 0
 }
 
 // testKiroChannel Kiro 预设专用测试函数
-// 使用 CodeWhisperer API 格式发送请求
+// 使用 CodeWhisperer API 格式发送请求，响应转换为 Anthropic SSE 格式
 func (s *Server) testKiroChannel(cfg *model.Config, accessToken string, testReq *testutil.TestChannelRequest, deviceFingerprint string) map[string]any {
-	// 构建 Anthropic 格式的请求体（用于转换）
+	// 构建 Anthropic 格式的请求体（用于转换和 token 估算）
 	anthropicReq := map[string]any{
 		"model": testReq.Model,
 		"messages": []map[string]any{
@@ -806,12 +854,6 @@ func (s *Server) testKiroChannel(cfg *model.Config, accessToken string, testReq 
 		result["response_headers"] = hdr
 	}
 
-	contentType := resp.Header.Get("Content-Type")
-	if contentType != "" {
-		result["content_type"] = contentType
-	}
-
-	// Kiro 响应是 AWS Event Stream 二进制格式，需要解析二进制帧
 	// 读取完整响应体
 	bodyData, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -819,76 +861,425 @@ func (s *Server) testKiroChannel(cfg *model.Config, accessToken string, testReq 
 		return result
 	}
 
-	// 保存原始响应（用于调试）
-	result["raw_response"] = string(bodyData)
+	// 检测是否是 AWS Event Stream 二进制格式
+	contentType := resp.Header.Get("Content-Type")
+	isAWSEventStream := strings.Contains(contentType, "event-stream") ||
+		strings.Contains(contentType, "amazon") ||
+		isAWSEventStreamBinary(bodyData)
 
-	// 解析 AWS Event Stream 二进制帧
-	var textBuilder strings.Builder
-	var lastErrMsg string
-	buf := bodyData
+	var sseResponse string
+	var inputTokens, outputTokens int
 
+	if isAWSEventStream && resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		// 将 AWS EventStream 转换为 Anthropic SSE 格式
+		sseResponse, inputTokens, outputTokens = convertKiroToAnthropicSSE(bodyData, testReq.Model, anthropicBody)
+		result["content_type"] = "text/event-stream"
+		result["response_text"] = sseResponse
+		result["message"] = "API测试成功（Kiro → Anthropic SSE）"
+	} else {
+		// 非 AWS EventStream 或错误响应，直接返回原始内容
+		result["content_type"] = contentType
+		result["raw_response"] = string(bodyData)
+
+		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			result["message"] = "API测试成功（Kiro）"
+		} else {
+			// 尝试解析错误信息
+			var errResp map[string]any
+			if err := sonic.Unmarshal(bodyData, &errResp); err == nil {
+				if msg, ok := errResp["message"].(string); ok {
+					result["error"] = msg
+				} else {
+					result["error"] = "API返回错误状态: " + resp.Status
+				}
+			} else {
+				result["error"] = "API返回错误状态: " + resp.Status
+			}
+		}
+
+		// 估算 token（错误情况下）
+		inputTokens = estimateInputTokensFromBody(anthropicBody)
+	}
+
+	// 监控捕获：使用转换后的 SSE 响应
+	var captureBody []byte
+	if sseResponse != "" {
+		captureBody = []byte(sseResponse)
+	} else {
+		captureBody = bodyData
+	}
+
+	// 创建带 token 信息的监控记录
+	s.captureTestForMonitorWithTokens(cfg, testReq.Model, anthropicBody, captureBody, resp.StatusCode, duration.Seconds(), true, "admin-test", inputTokens, outputTokens)
+
+	return result
+}
+
+// convertKiroToAnthropicSSE 将 Kiro AWS EventStream 转换为 Anthropic SSE 格式字符串
+// 返回：SSE 字符串、输入 token 数、输出 token 数
+func convertKiroToAnthropicSSE(data []byte, model string, anthropicBody []byte) (string, int, int) {
+	parser := newKiroSSEParser()
+	parser.requestedModel = model
+
+	var sseBuilder strings.Builder
+
+	// 解析所有帧并转换
+	buf := data
 	for len(buf) >= 16 {
 		frameLen, frame, remaining := parseAWSEventStreamFrame(buf)
 		if frameLen == 0 {
 			break
 		}
+
+		if frame != nil && len(frame.Payload) > 0 {
+			// 处理帧并收集 SSE 输出
+			sseEvents := processAWSEventStreamFrameToSSE(frame, parser)
+			for _, event := range sseEvents {
+				sseBuilder.WriteString(event)
+			}
+		}
+
 		buf = remaining
+	}
 
-		if frame == nil || len(frame.Payload) == 0 {
-			continue
-		}
-
-		// 解析 payload JSON
-		var payloadMap map[string]any
-		if err := sonic.Unmarshal(frame.Payload, &payloadMap); err != nil {
-			continue
-		}
-
-		eventType := frame.Headers[":event-type"]
-
-		// 处理不同事件类型
-		switch eventType {
-		case "assistantResponseEvent":
-			// 提取文本内容
-			if content, ok := payloadMap["content"].(string); ok && content != "" {
-				textBuilder.WriteString(content)
-			}
-		case "meteringEvent", "contextUsageEvent":
-			// 计量事件，忽略
-		default:
-			// 其他事件，尝试提取 content
-			if content, ok := payloadMap["content"].(string); ok && content != "" {
-				textBuilder.WriteString(content)
-			}
-		}
-
-		// 错误处理
-		if errObj, ok := payloadMap["error"].(map[string]any); ok {
-			if msg, ok := errObj["message"].(string); ok {
-				lastErrMsg = msg
-			}
-			result["api_error"] = payloadMap
-		}
-		if msg, ok := payloadMap["message"].(string); ok && msg != "" {
-			lastErrMsg = msg
+	// 如果有内容输出但没有收到 completionEvent，手动发送结束事件
+	if parser.messageStarted {
+		endEvents := generateKiroStreamEndEvents(parser)
+		for _, event := range endEvents {
+			sseBuilder.WriteString(event)
 		}
 	}
 
-	if textBuilder.Len() > 0 {
-		result["response_text"] = textBuilder.String()
+	// 估算输入 token
+	inputTokens := estimateInputTokensFromBody(anthropicBody)
+
+	return sseBuilder.String(), inputTokens, parser.outputTokens
+}
+
+// processAWSEventStreamFrameToSSE 处理单个 AWS EventStream 帧并返回 SSE 事件字符串列表
+func processAWSEventStreamFrameToSSE(frame *awsEventFrame, parser *kiroSSEParser) []string {
+	if frame == nil || len(frame.Payload) == 0 {
+		return nil
 	}
 
-	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-		result["message"] = "API测试成功（Kiro）"
+	var payloadMap map[string]any
+	if err := sonic.Unmarshal(frame.Payload, &payloadMap); err != nil {
+		return nil
+	}
+
+	eventType := frame.Headers[":event-type"]
+	var events []string
+
+	switch eventType {
+	case "assistantResponseEvent":
+		events = handleKiroAssistantResponseEventToSSE(payloadMap, parser)
+	case "meteringEvent":
+		handleKiroMeteringEventForParser(payloadMap, parser)
+	case "toolUseEvent":
+		events = handleKiroToolUseEventToSSE(payloadMap, parser)
+	case "completionEvent":
+		events = handleKiroCompletionEventToSSE(payloadMap, parser)
+	default:
+		// 其他事件类型，尝试提取 content
+		if content, ok := payloadMap["content"].(string); ok && content != "" {
+			events = handleKiroAssistantResponseEventToSSE(map[string]any{"content": content}, parser)
+		}
+	}
+
+	return events
+}
+
+// handleKiroAssistantResponseEventToSSE 处理 assistantResponseEvent 并返回 SSE 事件
+func handleKiroAssistantResponseEventToSSE(payloadMap map[string]any, parser *kiroSSEParser) []string {
+	content, ok := payloadMap["content"].(string)
+	if !ok || content == "" {
+		return nil
+	}
+
+	var events []string
+
+	// 首次收到内容时发送 message_start
+	if !parser.messageStarted {
+		parser.messageStarted = true
+		msgStart := map[string]any{
+			"type": "message_start",
+			"message": map[string]any{
+				"id":            fmt.Sprintf("msg_kiro_%d", time.Now().UnixNano()),
+				"type":          "message",
+				"role":          "assistant",
+				"content":       []any{},
+				"model":         parser.requestedModel,
+				"stop_reason":   nil,
+				"stop_sequence": nil,
+				"usage": map[string]any{
+					"input_tokens":  0,
+					"output_tokens": 0,
+				},
+			},
+		}
+		msgStartData, _ := sonic.Marshal(msgStart)
+		events = append(events, formatSSEEvent("message_start", msgStartData))
+	}
+
+	// 检测思考内容
+	isThinking := strings.HasPrefix(content, "<thinking>") || parser.inThinkingBlock
+	if strings.Contains(content, "<thinking>") {
+		parser.inThinkingBlock = true
+		isThinking = true
+	}
+	if strings.Contains(content, "</thinking>") {
+		parser.inThinkingBlock = false
+	}
+
+	// 发送 content_block_start（如果需要）
+	if isThinking && !parser.thinkingBlockSent {
+		parser.thinkingBlockSent = true
+		parser.currentBlockIndex = 0
+		blockStart := map[string]any{
+			"type":  "content_block_start",
+			"index": 0,
+			"content_block": map[string]any{
+				"type":     "thinking",
+				"thinking": "",
+			},
+		}
+		blockStartData, _ := sonic.Marshal(blockStart)
+		events = append(events, formatSSEEvent("content_block_start", blockStartData))
+	} else if !isThinking && !parser.textBlockSent {
+		// 如果之前有思考块，先关闭它
+		if parser.thinkingBlockSent && !parser.thinkingBlockStopped {
+			parser.thinkingBlockStopped = true
+			blockStop := map[string]any{
+				"type":  "content_block_stop",
+				"index": parser.currentBlockIndex,
+			}
+			blockStopData, _ := sonic.Marshal(blockStop)
+			events = append(events, formatSSEEvent("content_block_stop", blockStopData))
+			parser.currentBlockIndex++
+		}
+
+		parser.textBlockSent = true
+		blockStart := map[string]any{
+			"type":  "content_block_start",
+			"index": parser.currentBlockIndex,
+			"content_block": map[string]any{
+				"type": "text",
+				"text": "",
+			},
+		}
+		blockStartData, _ := sonic.Marshal(blockStart)
+		events = append(events, formatSSEEvent("content_block_start", blockStartData))
+	}
+
+	// 发送 content_block_delta
+	var delta map[string]any
+	if isThinking {
+		delta = map[string]any{
+			"type":          "content_block_delta",
+			"index":         parser.currentBlockIndex,
+			"delta": map[string]any{
+				"type":     "thinking_delta",
+				"thinking": content,
+			},
+		}
 	} else {
-		if lastErrMsg == "" {
-			lastErrMsg = "API返回错误状态: " + resp.Status
+		delta = map[string]any{
+			"type":  "content_block_delta",
+			"index": parser.currentBlockIndex,
+			"delta": map[string]any{
+				"type": "text_delta",
+				"text": content,
+			},
 		}
-		result["error"] = lastErrMsg
+	}
+	deltaData, _ := sonic.Marshal(delta)
+	events = append(events, formatSSEEvent("content_block_delta", deltaData))
+
+	// 累计输出 token（简单估算）
+	parser.outputTokens += (len([]rune(content)) + 3) / 4
+
+	return events
+}
+
+// handleKiroMeteringEventForParser 处理 meteringEvent 更新 parser 状态
+func handleKiroMeteringEventForParser(payloadMap map[string]any, parser *kiroSSEParser) {
+	if usage, ok := payloadMap["usage"].(float64); ok && usage > 0 {
+		// 从 credit 消耗估算 token（约 0.003 credit/token for haiku）
+		estimatedTokens := int(usage / 0.003)
+		if estimatedTokens > parser.outputTokens {
+			parser.outputTokens = estimatedTokens
+		}
+	}
+}
+
+// handleKiroToolUseEventToSSE 处理 toolUseEvent 并返回 SSE 事件
+func handleKiroToolUseEventToSSE(payloadMap map[string]any, parser *kiroSSEParser) []string {
+	parser.hasToolUse = true
+
+	var events []string
+
+	// 关闭之前的文本块
+	if parser.textBlockSent && !parser.textBlockStopped {
+		parser.textBlockStopped = true
+		blockStop := map[string]any{
+			"type":  "content_block_stop",
+			"index": parser.currentBlockIndex,
+		}
+		blockStopData, _ := sonic.Marshal(blockStop)
+		events = append(events, formatSSEEvent("content_block_stop", blockStopData))
+		parser.currentBlockIndex++
 	}
 
-	// 监控捕获：保存原始响应数据
-	s.captureTestForMonitor(cfg, testReq.Model, kiroBody, bodyData, resp.StatusCode, duration.Seconds(), true, "admin-test")
+	// 提取工具信息
+	toolName, _ := payloadMap["name"].(string)
+	toolID, _ := payloadMap["id"].(string)
+	if toolID == "" {
+		toolID = fmt.Sprintf("toolu_%d", time.Now().UnixNano())
+	}
 
-	return result
+	// 发送 tool_use content_block_start
+	blockStart := map[string]any{
+		"type":  "content_block_start",
+		"index": parser.currentBlockIndex,
+		"content_block": map[string]any{
+			"type":  "tool_use",
+			"id":    toolID,
+			"name":  toolName,
+			"input": map[string]any{},
+		},
+	}
+	blockStartData, _ := sonic.Marshal(blockStart)
+	events = append(events, formatSSEEvent("content_block_start", blockStartData))
+
+	// 发送 input_json_delta
+	if input, ok := payloadMap["input"]; ok {
+		inputJSON, _ := sonic.Marshal(input)
+		delta := map[string]any{
+			"type":  "content_block_delta",
+			"index": parser.currentBlockIndex,
+			"delta": map[string]any{
+				"type":         "input_json_delta",
+				"partial_json": string(inputJSON),
+			},
+		}
+		deltaData, _ := sonic.Marshal(delta)
+		events = append(events, formatSSEEvent("content_block_delta", deltaData))
+	}
+
+	// 发送 content_block_stop
+	blockStop := map[string]any{
+		"type":  "content_block_stop",
+		"index": parser.currentBlockIndex,
+	}
+	blockStopData, _ := sonic.Marshal(blockStop)
+	events = append(events, formatSSEEvent("content_block_stop", blockStopData))
+
+	parser.currentBlockIndex++
+
+	return events
+}
+
+// handleKiroCompletionEventToSSE 处理 completionEvent 并返回 SSE 事件
+func handleKiroCompletionEventToSSE(_ map[string]any, parser *kiroSSEParser) []string {
+	return generateKiroStreamEndEvents(parser)
+}
+
+// generateKiroStreamEndEvents 生成流结束事件
+func generateKiroStreamEndEvents(parser *kiroSSEParser) []string {
+	var events []string
+
+	// 关闭未关闭的内容块
+	if (parser.thinkingBlockSent && !parser.thinkingBlockStopped) ||
+		(parser.textBlockSent && !parser.textBlockStopped) {
+		blockStop := map[string]any{
+			"type":  "content_block_stop",
+			"index": parser.currentBlockIndex,
+		}
+		blockStopData, _ := sonic.Marshal(blockStop)
+		events = append(events, formatSSEEvent("content_block_stop", blockStopData))
+	}
+
+	// 发送 message_delta
+	stopReason := "end_turn"
+	if parser.hasToolUse {
+		stopReason = "tool_use"
+	}
+	msgDelta := map[string]any{
+		"type": "message_delta",
+		"delta": map[string]any{
+			"stop_reason":   stopReason,
+			"stop_sequence": nil,
+		},
+		"usage": map[string]any{
+			"output_tokens": parser.outputTokens,
+		},
+	}
+	msgDeltaData, _ := sonic.Marshal(msgDelta)
+	events = append(events, formatSSEEvent("message_delta", msgDeltaData))
+
+	// 发送 message_stop
+	msgStop := map[string]any{"type": "message_stop"}
+	msgStopData, _ := sonic.Marshal(msgStop)
+	events = append(events, formatSSEEvent("message_stop", msgStopData))
+
+	return events
+}
+
+// formatSSEEvent 格式化 SSE 事件
+func formatSSEEvent(eventType string, data []byte) string {
+	return fmt.Sprintf("event: %s\ndata: %s\n\n", eventType, string(data))
+}
+
+// captureTestForMonitorWithTokens 捕获测试请求用于监控（带 token 信息）
+func (s *Server) captureTestForMonitorWithTokens(
+	cfg *model.Config,
+	testModel string,
+	requestBody []byte,
+	responseBody []byte,
+	statusCode int,
+	duration float64,
+	isStreaming bool,
+	clientIP string,
+	inputTokens int,
+	outputTokens int,
+) {
+	if s.monitorService == nil || !s.monitorService.IsEnabled() {
+		return
+	}
+
+	trace := &storage.Trace{
+		Time:         time.Now().UnixMilli(),
+		ChannelID:    int(cfg.ID),
+		ChannelName:  cfg.Name,
+		ChannelType:  cfg.GetChannelType(),
+		Model:        testModel,
+		RequestPath:  fmt.Sprintf("/admin/channels/%d/test", cfg.ID),
+		StatusCode:   statusCode,
+		Duration:     duration,
+		IsStreaming:  isStreaming,
+		IsTest:       true,
+		ClientIP:     clientIP,
+		APIKeyUsed:   "[测试]",
+		InputTokens:  inputTokens,
+		OutputTokens: outputTokens,
+	}
+
+	const maxCaptureSize = 1024 * 1024
+	if len(requestBody) > 0 {
+		if len(requestBody) <= maxCaptureSize {
+			trace.RequestBody = string(requestBody)
+		} else {
+			trace.RequestBody = string(requestBody[:maxCaptureSize]) + "\n...(truncated)"
+		}
+	}
+
+	if len(responseBody) > 0 {
+		if len(responseBody) <= maxCaptureSize {
+			trace.ResponseBody = string(responseBody)
+		} else {
+			trace.ResponseBody = string(responseBody[:maxCaptureSize]) + "\n...(truncated)"
+		}
+	}
+
+	s.monitorService.Capture(trace)
 }

@@ -1,9 +1,14 @@
 package app
 
 import (
+	"bytes"
+	"context"
 	"fmt"
+	"io"
+	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/bytedance/sonic"
 	"github.com/gin-gonic/gin"
@@ -36,16 +41,27 @@ type CountTokensResponse struct {
 	InputTokens int `json:"input_tokens"`
 }
 
-// handleCountTokens 实现 token 计数接口（本地计算）
+// handleCountTokens 实现 token 计数接口（三层降级策略）
 // 策略：
-// 1. [带beta时由上游处理] 转发到上游渠道（100% 准确）
-// 2. 优先使用 tiktoken 本地计算（~5% 误差）
-// 3. 降级使用纯算法估算（~16% 误差，无依赖，快速）
+// 1. 带 beta 参数时尝试转发到上游渠道（100% 准确）
+// 2. 上游失败或无 beta 时使用 tiktoken 本地计算（~5% 误差）
+// 3. tiktoken 失败时降级使用纯算法估算（~16% 误差）
 func (s *Server) handleCountTokens(c *gin.Context) {
-	var req CountTokensRequest
+	// 读取请求体（需要保留用于可能的上游转发）
+	bodyBytes, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": gin.H{
+				"type":    "invalid_request_error",
+				"message": "Failed to read request body",
+			},
+		})
+		return
+	}
 
 	// 解析请求体
-	if err := c.ShouldBindJSON(&req); err != nil {
+	var req CountTokensRequest
+	if err := sonic.Unmarshal(bodyBytes, &req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": gin.H{
 				"type":    "invalid_request_error",
@@ -55,7 +71,7 @@ func (s *Server) handleCountTokens(c *gin.Context) {
 		return
 	}
 
-	// 验证模型参数（支持所有Claude模型）
+	// 验证模型参数
 	if !isValidClaudeModel(req.Model) {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": gin.H{
@@ -66,17 +82,141 @@ func (s *Server) handleCountTokens(c *gin.Context) {
 		return
 	}
 
-	// 优先使用 tiktoken 计算，失败则降级到纯算法
-	tokenCount := countTokensWithTiktokenFromRequest(&req)
-	if tokenCount <= 0 {
-		// tiktoken 失败，降级到纯算法
-		tokenCount = estimateTokens(&req)
+	// 检查是否请求 beta 功能（尝试上游 API）
+	useBeta := c.Query("beta") == "true" ||
+		strings.Contains(c.GetHeader("anthropic-beta"), "token-counting")
+
+	var tokenCount int
+
+	if useBeta {
+		// 第一层：尝试转发到上游渠道
+		tokenCount = s.tryCountTokensViaUpstream(c, bodyBytes)
+		if tokenCount > 0 {
+			// 上游成功，直接返回
+			c.JSON(http.StatusOK, CountTokensResponse{InputTokens: tokenCount})
+			return
+		}
+		// 上游失败，降级到本地计算
+		log.Printf("[INFO] [CountTokens] 上游调用失败，降级到本地计算")
 	}
 
-	// 返回符合官方API格式的响应
-	c.JSON(http.StatusOK, CountTokensResponse{
-		InputTokens: tokenCount,
-	})
+	// 第二层：使用 tiktoken 本地计算
+	tokenCount = countTokensWithTiktokenFromRequest(&req)
+	if tokenCount > 0 {
+		c.JSON(http.StatusOK, CountTokensResponse{InputTokens: tokenCount})
+		return
+	}
+
+	// 第三层：降级到纯算法估算
+	tokenCount = estimateTokens(&req)
+	c.JSON(http.StatusOK, CountTokensResponse{InputTokens: tokenCount})
+}
+
+// tryCountTokensViaUpstream 尝试通过上游渠道计算 token
+// 返回 0 表示失败，需要降级到本地计算
+func (s *Server) tryCountTokensViaUpstream(c *gin.Context, bodyBytes []byte) int {
+	// 选择一个可用的渠道
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+	defer cancel()
+
+	// 获取所有启用的渠道
+	channels, err := s.store.ListConfigs(ctx)
+	if err != nil || len(channels) == 0 {
+		return 0
+	}
+
+	// 找一个支持 Anthropic API 的渠道
+	var targetChannel *struct {
+		BaseURL string
+		APIKey  string
+	}
+
+	for _, ch := range channels {
+		if !ch.Enabled {
+			continue
+		}
+		// 只选择 Anthropic 类型的渠道（非 Kiro、非 Codex、非 Gemini）
+		channelType := ch.GetChannelType()
+		if channelType != "anthropic" {
+			continue
+		}
+		// 跳过官方预设（它们可能不支持 count_tokens）
+		if ch.Preset == "official" || ch.Preset == "kiro" {
+			continue
+		}
+
+		// 获取 API Key
+		keys, err := s.store.GetAPIKeys(ctx, ch.ID)
+		if err != nil || len(keys) == 0 {
+			continue
+		}
+
+		baseURL := ch.URL
+		if baseURL == "" {
+			baseURL = "https://api.anthropic.com"
+		}
+
+		targetChannel = &struct {
+			BaseURL string
+			APIKey  string
+		}{
+			BaseURL: baseURL,
+			APIKey:  keys[0].APIKey,
+		}
+		break
+	}
+
+	if targetChannel == nil {
+		return 0
+	}
+
+	// 构建上游请求
+	url := strings.TrimSuffix(targetChannel.BaseURL, "/") + "/v1/messages/count_tokens"
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(bodyBytes))
+	if err != nil {
+		return 0
+	}
+
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("x-api-key", targetChannel.APIKey)
+	httpReq.Header.Set("anthropic-version", "2023-06-01")
+	// 添加 beta 头
+	httpReq.Header.Set("anthropic-beta", "token-counting-2024-11-01")
+
+	// 发送请求
+	resp, err := http.DefaultClient.Do(httpReq)
+	if err != nil {
+		log.Printf("[WARN] [CountTokens] 上游请求失败: %v", err)
+		return 0
+	}
+	defer resp.Body.Close()
+
+	// 读取响应
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return 0
+	}
+
+	// 检查状态码
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		log.Printf("[WARN] [CountTokens] 上游返回错误 status=%d body=%s", resp.StatusCode, string(respBody))
+		return 0
+	}
+
+	// 解析响应
+	var result CountTokensResponse
+	if err := sonic.Unmarshal(respBody, &result); err != nil {
+		log.Printf("[WARN] [CountTokens] 解析上游响应失败: %v", err)
+		return 0
+	}
+
+	// 检查返回值是否有效
+	if result.InputTokens <= 0 {
+		log.Printf("[WARN] [CountTokens] 上游返回无效值: %d", result.InputTokens)
+		return 0
+	}
+
+	return result.InputTokens
 }
 
 // EstimateInputTokens 估算输入消息的 token 数量（公共函数，供监控等功能使用）

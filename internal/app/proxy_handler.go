@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/bytedance/sonic"
@@ -138,14 +137,7 @@ func (s *Server) handleSpecialRoutes(c *gin.Context) bool {
 		s.handleListGeminiModels(c)
 		return true
 	case method == http.MethodPost && path == "/v1/messages/count_tokens":
-		// 如果请求带有 beta 参数或 anthropic-beta 头，则转发到上游渠道
-		// 否则使用本地估算
-		useBeta := c.Query("beta") == "true" ||
-			strings.Contains(c.GetHeader("anthropic-beta"), "token-counting")
-		if useBeta {
-			// 不拦截，让 HandleProxyRequest 正常转发到上游
-			return false
-		}
+		// 统一由 handleCountTokens 处理（包含上游调用和降级逻辑）
 		s.handleCountTokens(c)
 		return true
 	}
