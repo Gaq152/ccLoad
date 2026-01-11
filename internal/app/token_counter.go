@@ -36,31 +36,15 @@ type CountTokensResponse struct {
 	InputTokens int `json:"input_tokens"`
 }
 
-// handleCountTokens 实现 token 计数接口（三层降级策略）
+// handleCountTokens 实现 token 计数接口（本地估算）
 // 策略（参考 kiro2api）：
-// 1. 优先转发到上游渠道（100% 准确，需要 beta 参数）
-// 2. 降级使用 tiktoken 本地计算（~5% 误差，需要库支持）
-// 3. 最终降级使用纯算法估算（~16% 误差，无依赖）
+// 1. [未实现] 优先调用上游 API（100% 准确，需要独立实现 HTTP 客户端）
+// 2. [未实现] 降级使用 tiktoken 本地计算（~5% 误差，需要库支持）
+// 3. 使用纯算法估算（~16% 误差，无依赖，快速）
+//
+// 注意：暂不支持 beta 参数转发到上游，避免无限递归问题
+// 如需精确计数，建议直接调用 Anthropic 官方 API
 func (s *Server) handleCountTokens(c *gin.Context) {
-	// 检查是否请求 beta 功能（官方 API）
-	// 支持两种方式：
-	// 1. 查询参数: ?beta=true
-	// 2. 请求头: anthropic-beta: token-counting-2024-11-01
-	useBeta := c.Query("beta") == "true" ||
-		strings.Contains(c.GetHeader("anthropic-beta"), "token-counting")
-
-	if useBeta {
-		// 第一层：转发到上游渠道（使用官方 API）
-		// 移除 beta 查询参数，保留 anthropic-beta 请求头
-		c.Request.URL.RawQuery = strings.ReplaceAll(c.Request.URL.RawQuery, "beta=true", "")
-		c.Request.URL.RawQuery = strings.TrimSuffix(strings.TrimSuffix(c.Request.URL.RawQuery, "&"), "?")
-
-		// 转发到代理处理器（会选择合适的渠道）
-		s.HandleProxyRequest(c)
-		return
-	}
-
-	// 第二层和第三层：本地计算
 	var req CountTokensRequest
 
 	// 解析请求体
@@ -85,15 +69,7 @@ func (s *Server) handleCountTokens(c *gin.Context) {
 		return
 	}
 
-	// 第二层：尝试使用 tiktoken（如果可用）
-	// TODO: 未来可以在这里添加 tiktoken 支持
-	// if tiktokenAvailable {
-	//     tokenCount := countWithTiktoken(&req)
-	//     c.JSON(http.StatusOK, CountTokensResponse{InputTokens: tokenCount})
-	//     return
-	// }
-
-	// 第三层：使用纯算法估算（快速但误差较大）
+	// 使用纯算法估算
 	tokenCount := estimateTokens(&req)
 
 	// 返回符合官方API格式的响应
