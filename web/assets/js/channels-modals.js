@@ -1565,7 +1565,7 @@ const QUOTA_TEMPLATES = {
  * 应用用量监控模板
  * @param {string} templateKey - 模板键名
  */
-function applyQuotaTemplate(templateKey) {
+async function applyQuotaTemplate(templateKey) {
   const template = QUOTA_TEMPLATES[templateKey];
   if (!template) {
     console.error('未知模板:', templateKey);
@@ -1578,9 +1578,9 @@ function applyQuotaTemplate(templateKey) {
     return;
   }
 
-  // Kiro 官方模板特殊处理
+  // Kiro 官方模板特殊处理（async）
   if (templateKey === 'kiro') {
-    applyKiroQuotaTemplate(template);
+    await applyKiroQuotaTemplate(template);
     return;
   }
 
@@ -1708,7 +1708,7 @@ function applyCodexQuotaTemplate(template) {
  * 从 Kiro Token 动态生成 headers
  * @param {Object} template - 模板对象
  */
-function applyKiroQuotaTemplate(template) {
+async function applyKiroQuotaTemplate(template) {
   // 检查是否为 Kiro 预设
   const channelType = document.querySelector('input[name="channelType"]:checked')?.value;
   const preset = document.querySelector('input[name="channelPreset"]:checked')?.value;
@@ -1737,6 +1737,41 @@ function applyKiroQuotaTemplate(template) {
       showError('Kiro Token 格式错误');
     }
     return;
+  }
+
+  // 检查 Token 是否即将过期或已过期，如果是则先刷新
+  const now = Date.now();
+  const expiresAt = token.expiresAt || 0;
+  const needsRefresh = !token.accessToken || expiresAt === 0 || (expiresAt - now < 60000); // 提前1分钟刷新
+
+  if (needsRefresh) {
+    if (!token.refreshToken) {
+      if (window.showError) {
+        showError('Kiro Token 缺少 refreshToken，无法刷新');
+      }
+      return;
+    }
+
+    // 显示刷新提示
+    if (window.showInfo) {
+      showInfo('Token 即将过期，正在自动刷新...');
+    }
+
+    try {
+      // 调用刷新 Token 的函数
+      await refreshKiroToken();
+
+      // 重新读取刷新后的 Token
+      const refreshedTokenJson = document.getElementById('kiroApiKey')?.value;
+      if (refreshedTokenJson) {
+        token = JSON.parse(refreshedTokenJson);
+      }
+    } catch (e) {
+      if (window.showError) {
+        showError('Token 刷新失败: ' + e.message);
+      }
+      return;
+    }
   }
 
   // Kiro Token 需要 accessToken 字段
