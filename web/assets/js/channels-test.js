@@ -1,3 +1,69 @@
+// 解析 SSE 流式响应，提取实际文本内容
+function parseSSEResponse(responseBody) {
+  let thinking = '';
+  let reply = '';
+  let currentBlockType = 'text';
+
+  const lines = responseBody.split('\n');
+  for (const line of lines) {
+    if (!line.startsWith('data:')) continue;
+    const data = line.slice(5).trim();
+    if (data === '[DONE]' || data === '') continue;
+
+    try {
+      const obj = JSON.parse(data);
+
+      // OpenAI SSE: choices[0].delta.content
+      if (obj.choices && obj.choices[0] && obj.choices[0].delta) {
+        const delta = obj.choices[0].delta;
+        if (delta.content) reply += delta.content;
+        if (delta.reasoning_content) thinking += delta.reasoning_content;
+      }
+
+      // Claude SSE: content_block_start 标记块类型
+      if (obj.type === 'content_block_start' && obj.content_block) {
+        currentBlockType = obj.content_block.type || 'text';
+      }
+
+      // Claude SSE: content_block_delta 内容增量
+      if (obj.type === 'content_block_delta' && obj.delta) {
+        if (obj.delta.type === 'thinking_delta' && obj.delta.thinking) {
+          thinking += obj.delta.thinking;
+        } else if (obj.delta.type === 'text_delta' && obj.delta.text) {
+          reply += obj.delta.text;
+        } else if (obj.delta.text) {
+          if (currentBlockType === 'thinking') {
+            thinking += obj.delta.text;
+          } else {
+            reply += obj.delta.text;
+          }
+        }
+      }
+
+      // Gemini SSE
+      const geminiCandidates = obj.response?.candidates || obj.candidates;
+      if (geminiCandidates && geminiCandidates[0]) {
+        const candidate = geminiCandidates[0];
+        if (candidate.content && candidate.content.parts) {
+          for (const part of candidate.content.parts) {
+            if (part.thought) thinking += part.thought;
+            else if (part.text) reply += part.text;
+          }
+        }
+      }
+
+      // Codex SSE
+      if (obj.type === 'response.output_text.delta' && obj.delta) {
+        reply += obj.delta;
+      }
+    } catch {
+      // 忽略单行解析错误
+    }
+  }
+
+  return { thinking, reply };
+}
+
 // 更新流式开关状态（Codex 强制流式）
 function updateStreamCheckbox() {
   const channelType = document.getElementById('testChannelType').value;
@@ -377,7 +443,24 @@ function displayTestResult(result) {
     }
 
     if (result.response_text) {
-      details += renderResponseSection('API 响应内容', result.response_text, 'block', false);
+      // 尝试解析 SSE 格式，提取实际文本内容
+      const parsed = parseSSEResponse(result.response_text);
+      const displayText = parsed.reply || parsed.thinking || result.response_text;
+
+      // 如果解析出了内容，显示解析后的文本；否则显示原始响应
+      if (parsed.reply || parsed.thinking) {
+        let parsedContent = '';
+        if (parsed.thinking) {
+          parsedContent += `[思考过程]\n${parsed.thinking}\n\n`;
+        }
+        if (parsed.reply) {
+          parsedContent += parsed.reply;
+        }
+        details += renderResponseSection('模型响应', parsedContent.trim(), 'block', false);
+        details += renderResponseSection('原始 SSE 响应', result.response_text, 'none', true);
+      } else {
+        details += renderResponseSection('API 响应内容', result.response_text, 'block', false);
+      }
     }
 
     if (result.api_response) {

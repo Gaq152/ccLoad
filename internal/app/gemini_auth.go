@@ -160,6 +160,9 @@ func (s *Server) RefreshGeminiTokenIfNeeded(
 		}
 	}
 
+	// 同步更新 quota_config 中的 Authorization（如果存在）
+	s.syncQuotaConfigAuthorization(ctx, channelID, newToken.AccessToken)
+
 	return newToken.AccessToken, newToken, nil
 }
 

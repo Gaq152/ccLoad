@@ -127,6 +127,9 @@ func (s *Server) RefreshKiroTokenIfNeeded(
 		}
 	}
 
+	// 同步更新 quota_config 中的 Authorization（如果存在）
+	s.syncQuotaConfigAuthorization(ctx, channelID, tokenInfo.AccessToken)
+
 	return tokenInfo.AccessToken, tokenInfo.ExpiresAt, nil
 }
 
@@ -315,4 +318,52 @@ func GetKiroModelId(anthropicModel string) string {
 // IsKiroSupportedModel 检查模型是否被 Kiro 支持
 func IsKiroSupportedModel(anthropicModel string) bool {
 	return GetKiroModelId(anthropicModel) != ""
+}
+
+// syncQuotaConfigAuthorization 同步更新 quota_config 中的 Authorization
+// 当 Token 刷新后，需要同步更新 quota_config 中的 Authorization header
+// 这样用量查询脚本才能使用最新的 Token
+func (s *Server) syncQuotaConfigAuthorization(ctx context.Context, channelID int64, newAccessToken string) {
+	if newAccessToken == "" {
+		return
+	}
+
+	// 获取渠道配置
+	config, err := s.store.GetConfig(ctx, channelID)
+	if err != nil {
+		log.Printf("[WARN] [SyncQuota] 获取渠道配置失败 (channel=%d): %v", channelID, err)
+		return
+	}
+
+	// 检查是否有 quota_config
+	if config.QuotaConfig == nil || !config.QuotaConfig.Enabled {
+		return
+	}
+
+	// 检查 RequestHeaders 中是否有 Authorization
+	if config.QuotaConfig.RequestHeaders == nil {
+		return
+	}
+
+	// 检查是否需要更新（只更新 Bearer token 格式的 Authorization）
+	currentAuth := config.QuotaConfig.RequestHeaders["Authorization"]
+	if currentAuth == "" || !strings.HasPrefix(currentAuth, "Bearer ") {
+		return
+	}
+
+	// 更新 Authorization
+	newAuth := "Bearer " + newAccessToken
+	if currentAuth == newAuth {
+		return // 已经是最新的
+	}
+
+	config.QuotaConfig.RequestHeaders["Authorization"] = newAuth
+
+	// 保存到数据库
+	_, err = s.store.UpdateConfig(ctx, channelID, config)
+	if err != nil {
+		log.Printf("[WARN] [SyncQuota] 保存更新后的 QuotaConfig 失败 (channel=%d): %v", channelID, err)
+	} else {
+		log.Printf("[INFO] [SyncQuota] 已同步更新 QuotaConfig Authorization (channel=%d)", channelID)
+	}
 }
