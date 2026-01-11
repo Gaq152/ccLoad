@@ -36,12 +36,31 @@ type CountTokensResponse struct {
 	InputTokens int `json:"input_tokens"`
 }
 
-// handleCountTokens 本地实现token计数接口
-// 设计原则：
-// - KISS: 简单高效的估算算法，避免引入复杂的tokenizer库
-// - 向后兼容: 支持所有Claude模型和消息格式
-// - 性能优先: 本地计算，响应时间<5ms
+// handleCountTokens 实现 token 计数接口（三层降级策略）
+// 策略（参考 kiro2api）：
+// 1. 优先转发到上游渠道（100% 准确，需要 beta 参数）
+// 2. 降级使用 tiktoken 本地计算（~5% 误差，需要库支持）
+// 3. 最终降级使用纯算法估算（~16% 误差，无依赖）
 func (s *Server) handleCountTokens(c *gin.Context) {
+	// 检查是否请求 beta 功能（官方 API）
+	// 支持两种方式：
+	// 1. 查询参数: ?beta=true
+	// 2. 请求头: anthropic-beta: token-counting-2024-11-01
+	useBeta := c.Query("beta") == "true" ||
+		strings.Contains(c.GetHeader("anthropic-beta"), "token-counting")
+
+	if useBeta {
+		// 第一层：转发到上游渠道（使用官方 API）
+		// 移除 beta 查询参数，保留 anthropic-beta 请求头
+		c.Request.URL.RawQuery = strings.ReplaceAll(c.Request.URL.RawQuery, "beta=true", "")
+		c.Request.URL.RawQuery = strings.TrimSuffix(strings.TrimSuffix(c.Request.URL.RawQuery, "&"), "?")
+
+		// 转发到代理处理器（会选择合适的渠道）
+		s.HandleProxyRequest(c)
+		return
+	}
+
+	// 第二层和第三层：本地计算
 	var req CountTokensRequest
 
 	// 解析请求体
@@ -66,7 +85,15 @@ func (s *Server) handleCountTokens(c *gin.Context) {
 		return
 	}
 
-	// 计算token数量
+	// 第二层：尝试使用 tiktoken（如果可用）
+	// TODO: 未来可以在这里添加 tiktoken 支持
+	// if tiktokenAvailable {
+	//     tokenCount := countWithTiktoken(&req)
+	//     c.JSON(http.StatusOK, CountTokensResponse{InputTokens: tokenCount})
+	//     return
+	// }
+
+	// 第三层：使用纯算法估算（快速但误差较大）
 	tokenCount := estimateTokens(&req)
 
 	// 返回符合官方API格式的响应
@@ -75,7 +102,19 @@ func (s *Server) handleCountTokens(c *gin.Context) {
 	})
 }
 
-// estimateTokens 估算消息的token数量
+// EstimateInputTokens 估算输入消息的 token 数量（公共函数，供监控等功能使用）
+// 这是一个快速估算函数，适用于实时监控场景
+// 算法说明：
+// - 基础估算: 英文平均4字符/token，中文平均1.5字符/token
+// - 固定开销: 消息角色标记、JSON结构等
+// - 工具开销: 每个工具定义约50-200 tokens
+//
+// 注意：此为快速估算，与官方tokenizer可能有±10-20%误差
+func EstimateInputTokens(req *CountTokensRequest) int {
+	return estimateTokens(req)
+}
+
+// estimateTokens 估算消息的token数量（内部实现）
 // 算法说明：
 // - 基础估算: 英文平均4字符/token，中文平均1.5字符/token
 // - 固定开销: 消息角色标记、JSON结构等

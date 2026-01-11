@@ -2263,6 +2263,10 @@ async function refreshCodexToken() {
       updatedToken.account_id = extractAccountIdFromToken(updatedToken.access_token) || token.account_id;
 
       updateCodexTokenUI(updatedToken);
+
+      // [FIX] 自动更新用量查询脚本的 Authorization 头
+      updateQuotaAuthorizationHeader(updatedToken.access_token);
+
       if (window.showSuccess) showSuccess('Token 刷新成功');
     } else {
       throw new Error(result.error || '刷新失败');
@@ -2674,6 +2678,8 @@ async function refreshGeminiToken() {
       }
 
       updateGeminiTokenUI(updatedToken);
+      // [FIX] 自动更新用量查询脚本的 Authorization 头
+      updateQuotaAuthorizationHeader(updatedToken.access_token);
       if (window.showSuccess) showSuccess('Token 刷新成功');
     } else {
       throw new Error(result.error || '刷新失败');
@@ -3122,6 +3128,10 @@ async function refreshKiroToken() {
       });
 
       updateKiroTokenUI(token);
+
+      // [FIX] 自动更新用量查询脚本的 Authorization 头
+      updateQuotaAuthorizationHeader(token.accessToken);
+
       if (window.showSuccess) showSuccess('Token 刷新成功');
     } else {
       throw new Error(result.error || '刷新失败');
@@ -3296,4 +3306,32 @@ async function regenerateKiroFingerprint() {
     input.placeholder = originalPlaceholder;
     input.disabled = false;
   }
+}
+
+/**
+ * 更新用量查询脚本的 Authorization 头
+ * 适用于官方预设（Kiro/Codex/Gemini）刷新 Token 后自动同步
+ * @param {string} accessToken - 新的访问令牌
+ */
+function updateQuotaAuthorizationHeader(accessToken) {
+  // 检查是否启用了用量查询
+  const quotaEnabled = document.getElementById('quotaEnabled')?.checked;
+  if (!quotaEnabled) {
+    return;
+  }
+
+  // 检查是否有 Authorization 头
+  const authHeaderIndex = quotaHeadersData.findIndex(h => h.key === 'Authorization');
+  if (authHeaderIndex === -1) {
+    // 没有 Authorization 头，不自动添加
+    return;
+  }
+
+  // 更新 Authorization 头的值
+  quotaHeadersData[authHeaderIndex].value = `Bearer ${accessToken}`;
+
+  // 重新渲染请求头列表
+  renderQuotaHeaders();
+
+  console.log('[Quota] Authorization 头已自动更新');
 }
