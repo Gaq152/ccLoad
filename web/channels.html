@@ -444,19 +444,6 @@
                     </div>
                   </div>
 
-                  <!-- 设备指纹输入 -->
-                  <div id="kiroDeviceFingerprintSection" style="margin-bottom: 12px;">
-                    <div style="font-size: 12px; color: var(--neutral-500); margin-bottom: 6px;">
-                      设备指纹 <span style="color: var(--neutral-400);">(可选，用于绕过风控)</span>
-                    </div>
-                    <input type="text" id="kiroDeviceFingerprint" class="form-input"
-                      placeholder="从 Kiro IDE 抓包获取的 64 位 hex 字符串"
-                      style="font-size: 12px; font-family: monospace;">
-                    <div style="font-size: 11px; color: var(--neutral-400); margin-top: 4px;">
-                      如遇到账户被封，请填写你自己的设备指纹（从 User-Agent 中的 KiroIDE-0.8.0-xxx 提取）
-                    </div>
-                  </div>
-
                   <!-- Token 配置输入 -->
                   <div id="kiroTokenInputSection" style="margin-bottom: 12px;">
                     <div style="font-size: 12px; color: var(--neutral-500); margin-bottom: 6px;">
@@ -471,6 +458,33 @@
                       </button>
                       <div style="font-size: 11px; color: var(--neutral-400);">
                         文件路径: <code style="background: var(--neutral-100); padding: 1px 4px; border-radius: 3px;">~/.aws/sso/cache/</code>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- 设备指纹配置（折叠区域） -->
+                  <div id="kiroDeviceFingerprintSection" style="margin-top: 12px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; cursor: pointer; padding: 8px; background: var(--neutral-50); border-radius: 6px; border: 1px solid var(--neutral-200);" onclick="toggleKiroFingerprint()">
+                      <div style="display: flex; align-items: center; gap: 8px;">
+                        <svg id="kiroFingerprintToggleIcon" width="12" height="12" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style="transition: transform 0.2s;">
+                          <path d="M4 6L8 10L12 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                        <span style="font-size: 12px; font-weight: 500; color: var(--neutral-700);">设备指纹配置</span>
+                        <span id="kiroFingerprintStatusBadge" style="font-size: 11px; padding: 2px 8px; border-radius: 10px; background: var(--neutral-200); color: var(--neutral-600);">未配置</span>
+                      </div>
+                      <span style="font-size: 11px; color: var(--neutral-500);">留空将自动生成</span>
+                    </div>
+                    <div id="kiroFingerprintContent" style="display: none; padding: 12px; background: var(--card-bg); border: 1px solid var(--neutral-200); border-top: none; border-radius: 0 0 6px 6px; margin-top: -8px;">
+                      <div style="font-size: 12px; color: var(--neutral-500); margin-bottom: 6px;">
+                        设备指纹 <span style="color: var(--neutral-400);">(可选，留空将自动生成)</span>
+                      </div>
+                      <input type="text" id="kiroDeviceFingerprint" class="form-input"
+                        placeholder="留空将自动生成随机指纹，也可手动填写完整 JSON 配置"
+                        oninput="updateKiroFingerprintStatus(this.value)"
+                        style="font-size: 12px; font-family: monospace;">
+                      <div style="font-size: 11px; color: var(--neutral-400); margin-top: 6px; line-height: 1.5;">
+                        💡 系统会为每个渠道自动生成独立的随机指纹（包含 OS/Node/SDK 版本等维度），无需手动配置<br>
+                        📝 如需使用真实设备指纹或自定义配置，可粘贴完整 JSON 格式的指纹数据
                       </div>
                     </div>
                   </div>

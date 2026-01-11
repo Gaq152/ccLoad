@@ -54,7 +54,10 @@ function showAddModal() {
   updateKiroTokenUI(null);
   // 清空设备指纹输入框
   const deviceFingerprintInput = document.getElementById('kiroDeviceFingerprint');
-  if (deviceFingerprintInput) deviceFingerprintInput.value = '';
+  if (deviceFingerprintInput) {
+    deviceFingerprintInput.value = '';
+    updateKiroFingerprintStatus('');
+  }
   initChannelTypeEventListener();
   // [FIX] 移除 toggleCodexAuthMode('oauth') 调用
   // handleChannelTypeChange → handlePresetChange 已经正确设置了 UI 状态
@@ -272,6 +275,11 @@ async function editChannel(id) {
         const deviceFingerprintInput = document.getElementById('kiroDeviceFingerprint');
         if (deviceFingerprintInput && firstKey.device_fingerprint) {
           deviceFingerprintInput.value = firstKey.device_fingerprint;
+          // 更新设备指纹状态徽章
+          updateKiroFingerprintStatus(firstKey.device_fingerprint);
+        } else {
+          // 未配置时也要更新状态
+          updateKiroFingerprintStatus('');
         }
       } else {
         updateKiroTokenUI(null);
@@ -703,7 +711,10 @@ async function copyChannel(id, name) {
     updateKiroTokenUI(null);
     // 清空设备指纹，防止状态残留
     const deviceFingerprintInput = document.getElementById('kiroDeviceFingerprint');
-    if (deviceFingerprintInput) deviceFingerprintInput.value = '';
+    if (deviceFingerprintInput) {
+      deviceFingerprintInput.value = '';
+      updateKiroFingerprintStatus('');
+    }
     updateCodexTokenUI(null);
     updateGeminiTokenUI(null);
     if (window.showWarning) {
@@ -3003,7 +3014,10 @@ async function clearKiroToken() {
     if (tokenInput) tokenInput.value = '';
     // 清除设备指纹
     const deviceFingerprintInput = document.getElementById('kiroDeviceFingerprint');
-    if (deviceFingerprintInput) deviceFingerprintInput.value = '';
+    if (deviceFingerprintInput) {
+      deviceFingerprintInput.value = '';
+      updateKiroFingerprintStatus('');
+    }
     updateKiroTokenUI(null);
   }
 }
@@ -3146,4 +3160,62 @@ function updateKiroTokenEmail(token, email) {
 
   // 更新隐藏的 input（用于保存）
   document.getElementById('kiroApiKey').value = JSON.stringify(token);
+}
+
+// ==================== Kiro 设备指纹配置 ====================
+
+/**
+ * 切换 Kiro 设备指纹配置区域的折叠/展开
+ */
+function toggleKiroFingerprint() {
+  const content = document.getElementById('kiroFingerprintContent');
+  const icon = document.getElementById('kiroFingerprintToggleIcon');
+
+  if (!content || !icon) return;
+
+  const isExpanded = content.style.display !== 'none';
+
+  if (isExpanded) {
+    // 折叠
+    content.style.display = 'none';
+    icon.style.transform = 'rotate(0deg)';
+  } else {
+    // 展开
+    content.style.display = 'block';
+    icon.style.transform = 'rotate(0deg)';
+  }
+}
+
+/**
+ * 更新设备指纹状态徽章
+ * @param {string} fingerprint - 设备指纹数据（可能是 JSON 字符串或简单字符串）
+ */
+function updateKiroFingerprintStatus(fingerprint) {
+  const badge = document.getElementById('kiroFingerprintStatusBadge');
+  if (!badge) return;
+
+  if (!fingerprint || fingerprint.trim() === '') {
+    // 未配置
+    badge.textContent = '未配置';
+    badge.style.background = 'var(--neutral-200)';
+    badge.style.color = 'var(--neutral-600)';
+  } else {
+    // 已配置
+    let statusText = '已配置';
+
+    // 尝试解析 JSON，判断是否为自动生成
+    try {
+      const fp = JSON.parse(fingerprint);
+      if (fp.kiroHash) {
+        statusText = '已配置 (自动)';
+      }
+    } catch (e) {
+      // 简单字符串格式（旧版本或手动输入）
+      statusText = '已配置 (手动)';
+    }
+
+    badge.textContent = statusText;
+    badge.style.background = 'var(--success-100)';
+    badge.style.color = 'var(--success-700)';
+  }
 }
