@@ -58,6 +58,19 @@ func (s *Server) forwardKiroRequest(
 		// 读取错误响应体
 		errorBody, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
 
+		// 检测内容长度超限错误（CONTENT_LENGTH_EXCEEDS_THRESHOLD）
+		// 参考 kiro2api: 将此错误映射为 Claude API 的 max_tokens stop_reason
+		if resp.StatusCode == http.StatusBadRequest && IsKiroContentLengthExceeds(errorBody) {
+			log.Printf("[INFO] [Kiro] 检测到内容长度超限错误，转换为 max_tokens stop_reason")
+			// 构建 max_tokens 响应并直接写入
+			BuildKiroContentLengthExceedsResponse(w, reqCtx.originalModel, estimatedInputTokens)
+			return &fwResult{
+				Status:       http.StatusOK, // 返回 200，因为已经写入了有效的 SSE 响应
+				InputTokens:  estimatedInputTokens,
+				OutputTokens: 0,
+			}, duration, nil
+		}
+
 		// 检测 AWS 账户暂停错误（TEMPORARILY_SUSPENDED）
 		// 需要应用 24 小时冷却（参考 kiro2api 实现）
 		actualStatus := resp.StatusCode
@@ -1002,6 +1015,95 @@ func IsKiroTemporarilySuspended(errorBody []byte) bool {
 	return strings.Contains(errorStr, "temporarily_suspended") ||
 		strings.Contains(errorStr, "temporarily is suspended") ||
 		strings.Contains(errorStr, "account suspended")
+}
+
+// IsKiroContentLengthExceeds 检测是否是内容长度超限错误
+// CodeWhisperer 在上下文过长时会返回 CONTENT_LENGTH_EXCEEDS_THRESHOLD 错误
+// 参考 kiro2api: 需要将此错误映射为 Claude API 的 max_tokens stop_reason
+func IsKiroContentLengthExceeds(errorBody []byte) bool {
+	if len(errorBody) == 0 {
+		return false
+	}
+
+	errorStr := string(errorBody)
+
+	// 检测内容长度超限的特征字符串
+	// 1. "CONTENT_LENGTH_EXCEEDS_THRESHOLD" - AWS 官方错误码
+	// 2. "content length exceeds" - 错误消息文本
+	return strings.Contains(errorStr, "CONTENT_LENGTH_EXCEEDS_THRESHOLD") ||
+		strings.Contains(strings.ToLower(errorStr), "content length exceeds")
+}
+
+// BuildKiroContentLengthExceedsResponse 构建内容长度超限的 SSE 响应
+// 将 CodeWhisperer 的 CONTENT_LENGTH_EXCEEDS_THRESHOLD 错误转换为
+// Claude API 兼容的 max_tokens stop_reason 响应
+// 参考 kiro2api: error_mapper.go ContentLengthExceedsStrategy
+func BuildKiroContentLengthExceedsResponse(w http.ResponseWriter, model string, inputTokens int) {
+	// 设置 SSE 响应头
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.WriteHeader(http.StatusOK)
+
+	flusher, _ := w.(http.Flusher)
+
+	// 生成消息 ID
+	msgID := fmt.Sprintf("msg_%d", time.Now().UnixNano())
+
+	// 1. 发送 message_start 事件
+	messageStart := map[string]any{
+		"type": "message_start",
+		"message": map[string]any{
+			"id":           msgID,
+			"type":         "message",
+			"role":         "assistant",
+			"content":      []any{},
+			"model":        model,
+			"stop_reason":  nil,
+			"stop_sequence": nil,
+			"usage": map[string]any{
+				"input_tokens":  inputTokens,
+				"output_tokens": 0,
+			},
+		},
+	}
+	if data, err := sonic.Marshal(messageStart); err == nil {
+		fmt.Fprintf(w, "event: message_start\ndata: %s\n\n", data)
+		if flusher != nil {
+			flusher.Flush()
+		}
+	}
+
+	// 2. 发送 message_delta 事件（包含 max_tokens stop_reason）
+	messageDelta := map[string]any{
+		"type": "message_delta",
+		"delta": map[string]any{
+			"stop_reason":   "max_tokens",
+			"stop_sequence": nil,
+		},
+		"usage": map[string]any{
+			"output_tokens": 0,
+		},
+	}
+	if data, err := sonic.Marshal(messageDelta); err == nil {
+		fmt.Fprintf(w, "event: message_delta\ndata: %s\n\n", data)
+		if flusher != nil {
+			flusher.Flush()
+		}
+	}
+
+	// 3. 发送 message_stop 事件
+	messageStop := map[string]any{
+		"type": "message_stop",
+	}
+	if data, err := sonic.Marshal(messageStop); err == nil {
+		fmt.Fprintf(w, "event: message_stop\ndata: %s\n\n", data)
+		if flusher != nil {
+			flusher.Flush()
+		}
+	}
+
+	log.Printf("[INFO] [Kiro] 内容长度超限，已转换为 max_tokens stop_reason")
 }
 
 // ============================================================================

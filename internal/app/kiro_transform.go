@@ -105,9 +105,14 @@ func TransformToKiroRequest(anthropicBody []byte) ([]byte, error) {
 				maxTokens = int(mt)
 			}
 
-			// 确保 max_tokens > budget_tokens
+			// 智能调整 max_tokens：确保 max_tokens > budget_tokens
+			// 参考 kiro2api: 如果 max_tokens 不足，自动调整为 budget_tokens + 4096
+			originalMaxTokens := maxTokens
 			if maxTokens <= budgetTokens {
 				maxTokens = budgetTokens + 4096
+				// 使用 fmt.Printf 避免引入 log 包（保持文件简洁）
+				fmt.Printf("[INFO] [Kiro] 自动调整 max_tokens 以满足 thinking 模式要求: original=%d, budget=%d, adjusted=%d\n",
+					originalMaxTokens, budgetTokens, maxTokens)
 			}
 
 			kiroReq.InferenceConfiguration = &KiroInferenceConfiguration{
