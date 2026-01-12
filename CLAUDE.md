@@ -21,8 +21,14 @@ go run -tags go_json .
 internal/
 ├── app/           # HTTP层+业务逻辑
 │   ├── proxy_*.go      # 代理转发 (handler/forward/error/stream/util)
+│   ├── proxy_kiro.go   # Kiro (CodeWhisperer) 请求转发与响应处理
 │   ├── proxy_codex.go  # Codex OAuth 认证与请求转换
 │   ├── proxy_gemini.go # Gemini OAuth 认证与请求转换
+│   ├── kiro_auth.go    # Kiro OAuth Token 管理与刷新
+│   ├── kiro_transform.go # Anthropic → CodeWhisperer 请求转换
+│   ├── kiro_types.go   # Kiro 类型定义与模型映射
+│   ├── token_counter.go    # Token 计数接口（三层降级）
+│   ├── tiktoken_counter.go # tiktoken 本地计算
 │   ├── admin_*.go      # 管理API (channels/tokens/settings/testing等)
 │   ├── selector.go     # 渠道选择器
 │   ├── key_selector.go # Key负载均衡
@@ -45,10 +51,25 @@ web/
 ## 核心功能模块
 
 ### 官方预设 OAuth 认证
+- **Kiro**: `kiro_auth.go` - Social/IdC 双认证、Token 刷新、设备指纹管理
 - **Codex**: `proxy_codex.go` - OAuth Token 解析、刷新、请求头注入
 - **Gemini**: `proxy_gemini.go` - OAuth Token 解析、刷新、CLI格式转换
-- **Token刷新**: `RefreshCodexTokenIfNeeded()` / `RefreshGeminiTokenIfNeeded()`
-- **数据库字段**: `api_keys.access_token`, `refresh_token`, `token_expires_at`
+- **Token刷新**: `RefreshKiroTokenIfNeeded()` / `RefreshCodexTokenIfNeeded()` / `RefreshGeminiTokenIfNeeded()`
+- **数据库字段**: `api_keys.access_token`, `refresh_token`, `token_expires_at`, `device_fingerprint`
+
+### Kiro (CodeWhisperer) 预设
+- **请求转换**: `kiro_transform.go:TransformToKiroRequest()` - Anthropic → CodeWhisperer 格式
+- **响应处理**: `proxy_kiro.go:ProcessKiroAWSEventStream()` - AWS EventStream → Anthropic SSE
+- **错误映射**: `IsKiroContentLengthExceeds()` → `max_tokens` stop_reason
+- **Thinking 智能调整**: 确保 `max_tokens > budget_tokens`，不足时自动 +4096
+- **Quota 同步**: Token 刷新时自动更新 `quota_config.Authorization`
+
+### Token 计数（三层降级）
+- **接口**: `POST /v1/messages/count_tokens`
+- **第一层**: 带 `beta` 参数时转发上游 API（100% 准确）
+- **第二层**: tiktoken 本地计算（~5% 误差）
+- **第三层**: 纯算法快速估算（~15% 误差）
+- **监控**: 所有请求记录到监控，显示计算来源
 
 ### 多端点管理
 - **表**: `channel_endpoints` (channel_id, url, latency, status_code, is_active)
@@ -71,6 +92,8 @@ web/
 - 渠道级错误(5xx/520/524) → 切换到其他渠道
 - 网关错误(502/503/504) → 重试同渠道，不冷却
 - 客户端错误(404/405) → 不重试，直接返回
+- Kiro 上下文超限 → 转换为 `max_tokens` stop_reason（触发客户端压缩）
+- Kiro 账户暂停 → 24小时冷却
 - 指数退避: 2min → 4min → 8min → 30min(上限)
 
 **关键入口**:
@@ -95,6 +118,7 @@ web/
 - 主题: CSS变量在 `styles.css`，JS切换在各页面 `applyTheme()`
 - 模板引擎: `TemplateEngine.render('tpl-xxx', data)`
 - SSE: `EventSource` 连接，注意重连和去重逻辑
+- SSE解析: `parseSSEResponse()` 提取实际文本内容
 
 ## 代码规范
 

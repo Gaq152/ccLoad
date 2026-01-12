@@ -36,7 +36,9 @@ ccLoad 通过以下特性解决这些痛点：
 ### 官方预设支持（OAuth 自动刷新）
 - 🤖 **Codex 官方预设** - 支持 OpenAI Codex CLI OAuth 认证，自动刷新 Token
 - 💎 **Gemini 官方预设** - 支持 Google Gemini CLI OAuth 认证，自动刷新 Token
+- 🎯 **Kiro 官方预设** - 支持 AWS CodeWhisperer (Kiro) OAuth 认证，Social/IdC 双模式
 - 🔐 **OAuth Token 管理** - Access Token 过期自动用 Refresh Token 刷新，用户无感知
+- 🔑 **设备指纹管理** - Kiro 预设支持自动生成和管理设备指纹
 
 ### 实时监控
 - 📊 **SSE 实时日志** - 日志实时推送，支持筛选条件过滤，非 200 状态码高亮显示
@@ -58,8 +60,10 @@ ccLoad 通过以下特性解决这些痛点：
 - 🎨 **响应式布局** - 适配不同屏幕尺寸，移动端友好
 
 ### 技术特性
-- 🧮 **本地 Token 计数** - 符合官方 API 规范的本地 Token 估算，响应 <5ms，准确度 93%+
+- 🧮 **Token 计数三层降级** - 上游 API → tiktoken 本地计算 → 纯算法估算，响应 <5ms
 - 🎯 **智能错误分类** - 区分 Key 级错误、渠道级错误和客户端错误，精准故障切换
+- 📏 **上下文长度处理** - Kiro 上下文超限自动转换为 `max_tokens` stop_reason，触发客户端压缩
+- 🧠 **Thinking 模式优化** - 自动调整 `max_tokens` 确保大于 `budget_tokens`
 - 🔒 **竞态安全** - Key 选择器竞态条件防护，启动时配置验证，资源自动清理
 - 🐳 **Docker 支持** - 多架构镜像（amd64/arm64），自动化 CI/CD
 - ☁️ **云原生** - 支持容器化部署，GitHub Actions 自动构建
@@ -515,9 +519,10 @@ curl -X POST http://localhost:8080/v1/chat/completions \
 
 ### 本地 Token 计数
 
-快速估算请求的 Token 消耗（无需调用上游 API）：
+支持三层降级策略的 Token 计数：
 
 ```bash
+# 方式1：本地计算（默认，tiktoken → 纯算法）
 curl -X POST http://localhost:8080/v1/messages/count_tokens \
   -H "Content-Type: application/json" \
   -d '{
@@ -528,18 +533,33 @@ curl -X POST http://localhost:8080/v1/messages/count_tokens \
     "system": "You are a helpful assistant."
   }'
 
+# 方式2：尝试上游 API（带 beta 参数，失败后降级到本地）
+curl -X POST "http://localhost:8080/v1/messages/count_tokens?beta=true" \
+  -H "Content-Type: application/json" \
+  -H "anthropic-beta: token-counting-2024-11-01" \
+  -d '{
+    "model": "claude-3-5-sonnet-20241022",
+    "messages": [
+      {"role": "user", "content": "Hello, how are you?"}
+    ]
+  }'
+
 # 响应示例
 # {
 #   "input_tokens": 28
 # }
 ```
 
+**三层降级策略**：
+1. **上游 API**（带 `beta` 参数）- 100% 准确，需要上游支持
+2. **tiktoken 本地计算** - ~5% 误差，使用 cl100k_base 编码
+3. **纯算法估算** - ~15% 误差，基于字符数和结构分析
+
 **特点**：
 - ✅ 符合 Anthropic 官方 API 规范
-- ✅ 本地计算，响应 <5ms，不消耗 API 配额
-- ✅ 准确度 93%+（与官方 API 对比）
+- ✅ 本地计算响应 <5ms，不消耗 API 配额
 - ✅ 支持系统提示词、工具定义、大规模工具场景
-- ✅ 需授权令牌访问（在 Web 管理界面 `/web/tokens.html` 配置令牌）
+- ✅ 所有请求记录到监控，显示计算来源（upstream/tiktoken/estimate）
 
 ### 渠道管理
 
