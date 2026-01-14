@@ -1267,37 +1267,45 @@ html.dark .sort-mode-changes {
 }
 
 /* 暗色模式适配 - 批量操作 */
-html.dark .header-checkbox-wrapper {
-  background: var(--card-bg);
-  border-color: var(--neutral-700);
+.dashboard-theme .header-checkbox-wrapper {
+  background: var(--theme-bg-secondary);
+  border-color: var(--theme-border);
 }
 
-html.dark .header-checkbox-label {
-  color: var(--neutral-300);
+.dashboard-theme .header-checkbox-label {
+  color: var(--theme-text-secondary);
 }
 
-html.dark #bulkActionBar {
-  background: rgba(30, 30, 30, 0.95);
-  border-color: var(--neutral-700);
+.dashboard-theme #bulkActionBar {
+  background: rgba(30, 41, 59, 0.95);
+  border-color: var(--theme-border);
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
 }
 
-html.dark .bulk-info {
-  color: var(--neutral-200);
+.dashboard-theme .bulk-info {
+  color: var(--theme-text-primary);
 }
 
-html.dark .bulk-divider {
-  background: var(--neutral-600);
+.dashboard-theme .bulk-divider {
+  background: var(--theme-border);
 }
 
-html.dark .bulk-actions .btn-enable {
+.dashboard-theme .bulk-actions .btn-enable {
   background: rgba(34, 197, 94, 0.15);
   color: var(--success-400);
   border-color: rgba(34, 197, 94, 0.3);
 }
 
-html.dark .bulk-actions .btn-disable {
+.dashboard-theme .bulk-actions .btn-enable:hover {
+  background: rgba(34, 197, 94, 0.25);
+}
+
+.dashboard-theme .bulk-actions .btn-disable {
   background: rgba(245, 158, 11, 0.15);
   color: var(--warning-400);
   border-color: rgba(245, 158, 11, 0.3);
+}
+
+.dashboard-theme .bulk-actions .btn-disable:hover {
+  background: rgba(245, 158, 11, 0.25);
 }
