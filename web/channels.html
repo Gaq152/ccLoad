@@ -43,6 +43,12 @@
         <!-- Filter Bar -->
         <div class="filter-bar">
           <div class="filter-controls">
+            <!-- 全选复选框 -->
+            <div class="header-checkbox-wrapper" title="全选当前显示的渠道">
+              <input type="checkbox" id="selectAllChannels" onchange="toggleSelectAll(this.checked)" style="width: 16px; height: 16px; cursor: pointer; accent-color: var(--primary-500);">
+              <label for="selectAllChannels" class="header-checkbox-label">全选</label>
+            </div>
+
             <!-- 渠道类型筛选 -->
             <div class="filter-group">
               <label class="filter-label">渠道类型</label>
@@ -924,6 +930,10 @@ function(response) {
   <template id="tpl-channel-card">
     <div class="{{cardClasses}}" id="channel-{{id}}" data-channel-id="{{id}}">
       <div class="channel-row">
+        <!-- 批量选择 Checkbox -->
+        <div class="channel-col col-checkbox">
+          <input type="checkbox" class="channel-checkbox" data-id="{{id}}" {{checkedAttr}}>
+        </div>
         <!-- 渠道名称（固定宽度，悬浮显示完整名称和模型） -->
         <div class="channel-col col-name" title="{{name}}&#10;模型: {{modelsText}}">
           <span class="channel-name-text">{{name}}</span>
@@ -1111,8 +1121,32 @@ function(response) {
     </div>
   </template>
 
+  <!-- 批量操作悬浮栏 -->
+  <div id="bulkActionBar">
+    <div class="bulk-info">
+      <span style="font-size: 16px;">✓</span>
+      <span>已选择 <span id="bulkSelectedCount" class="bulk-count-badge">0</span> 个渠道</span>
+    </div>
+    <div class="bulk-actions">
+      <button id="bulkEnableBtn" class="btn btn-sm btn-enable" onclick="executeBulkAction('enable')">
+        启用
+      </button>
+      <button id="bulkDisableBtn" class="btn btn-sm btn-disable" onclick="executeBulkAction('disable')">
+        禁用
+      </button>
+      <div class="bulk-divider"></div>
+      <button id="bulkDeleteBtn" class="btn btn-sm btn-danger" onclick="executeBulkAction('delete')">
+        删除
+      </button>
+      <button class="btn btn-secondary btn-sm" onclick="clearBulkSelection()">
+        取消
+      </button>
+    </div>
+  </div>
+
   <script src="/web/assets/js/template-engine.js"></script>
   <script src="/web/assets/js/channels-state.js"></script>
+  <script src="/web/assets/js/channels-bulk.js"></script>
   <script src="/web/assets/js/channels-render.js"></script>
   <script src="/web/assets/js/channels-filters.js"></script>
   <script src="/web/assets/js/channels-data.js"></script>
