@@ -1179,17 +1179,18 @@ func (s *Server) captureForMonitorWithCapture(
 
 	// 构建追踪记录
 	trace := &storage.Trace{
-		Time:        time.Now().UnixMilli(),
-		ChannelID:   int(cfg.ID),
-		ChannelName: cfg.Name,
-		ChannelType: cfg.GetChannelType(),
-		Model:       actualModel,
-		RequestPath: reqCtx.requestPath,
-		Duration:    duration,
-		IsStreaming: reqCtx.isStreaming,
-		IsTest:      isTest,
-		ClientIP:    reqCtx.clientIP,
-		APIKeyUsed:  maskAPIKey(selectedKey),
+		Time:          time.Now().UnixMilli(),
+		ChannelID:     int(cfg.ID),
+		ChannelName:   cfg.Name,
+		ChannelType:   cfg.GetChannelType(),
+		Model:         actualModel,
+		RequestPath:   reqCtx.requestPath,
+		Duration:      duration,
+		IsStreaming:   reqCtx.isStreaming,
+		IsTest:        isTest,
+		ClientIP:      reqCtx.clientIP,
+		APIKeyUsed:    getAPIKeyDisplayForMonitor(cfg, selectedKey),
+		AuthTokenName: reqCtx.tokenName,
 	}
 
 	// 提取 token 统计（如果有）
@@ -1243,4 +1244,30 @@ func (s *Server) captureForMonitorWithCapture(
 
 	// 异步捕获（不阻塞主流程）
 	s.monitorService.Capture(trace)
+}
+
+// getAPIKeyDisplayForMonitor 获取用于监控显示的 API Key
+// 对于 OAuth 认证的渠道（Kiro/Codex/Gemini 官方预设），显示认证类型而不是空值
+func getAPIKeyDisplayForMonitor(cfg *model.Config, selectedKey string) string {
+	// 如果有实际的 API Key，使用脱敏后的值
+	if selectedKey != "" {
+		return maskAPIKey(selectedKey)
+	}
+
+	// OAuth 认证渠道显示认证类型
+	if cfg.Preset == "official" || cfg.Preset == "kiro" {
+		channelType := cfg.GetChannelType()
+		switch channelType {
+		case "kiro":
+			return "[Kiro OAuth]"
+		case "codex":
+			return "[Codex OAuth]"
+		case "gemini":
+			return "[Gemini OAuth]"
+		default:
+			return "[OAuth]"
+		}
+	}
+
+	return "-"
 }

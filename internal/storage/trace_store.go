@@ -13,42 +13,44 @@ import (
 
 // Trace 请求追踪记录
 type Trace struct {
-	ID           int64   `json:"id"`
-	Time         int64   `json:"time"`           // 毫秒时间戳
-	ChannelID    int     `json:"channel_id"`
-	ChannelName  string  `json:"channel_name"`
-	ChannelType  string  `json:"channel_type"`
-	Model        string  `json:"model"`
-	RequestPath  string  `json:"request_path"`   // 请求路径（端点）
-	StatusCode   int     `json:"status_code"`
-	Duration     float64 `json:"duration"`
-	IsStreaming  bool    `json:"is_streaming"`
-	IsTest       bool    `json:"is_test"`        // 是否为测试请求
-	InputTokens  int     `json:"input_tokens"`   // 输入 tokens
-	OutputTokens int     `json:"output_tokens"`  // 输出 tokens
-	RequestBody  string  `json:"request_body,omitempty"`
-	ResponseBody string  `json:"response_body,omitempty"`
-	ClientIP     string  `json:"client_ip"`
-	APIKeyUsed   string  `json:"api_key_used"`
+	ID            int64   `json:"id"`
+	Time          int64   `json:"time"`            // 毫秒时间戳
+	ChannelID     int     `json:"channel_id"`
+	ChannelName   string  `json:"channel_name"`
+	ChannelType   string  `json:"channel_type"`
+	Model         string  `json:"model"`
+	RequestPath   string  `json:"request_path"`    // 请求路径（端点）
+	StatusCode    int     `json:"status_code"`
+	Duration      float64 `json:"duration"`
+	IsStreaming   bool    `json:"is_streaming"`
+	IsTest        bool    `json:"is_test"`         // 是否为测试请求
+	InputTokens   int     `json:"input_tokens"`    // 输入 tokens
+	OutputTokens  int     `json:"output_tokens"`   // 输出 tokens
+	RequestBody   string  `json:"request_body,omitempty"`
+	ResponseBody  string  `json:"response_body,omitempty"`
+	ClientIP      string  `json:"client_ip"`
+	APIKeyUsed    string  `json:"api_key_used"`
+	AuthTokenName string  `json:"auth_token_name"` // API 令牌名称
 }
 
 // TraceListItem 追踪记录列表项（不含请求体/响应体，减少传输量）
 type TraceListItem struct {
-	ID           int64   `json:"id"`
-	Time         int64   `json:"time"`
-	ChannelID    int     `json:"channel_id"`
-	ChannelName  string  `json:"channel_name"`
-	ChannelType  string  `json:"channel_type"`
-	Model        string  `json:"model"`
-	RequestPath  string  `json:"request_path"`
-	StatusCode   int     `json:"status_code"`
-	Duration     float64 `json:"duration"`
-	IsStreaming  bool    `json:"is_streaming"`
-	IsTest       bool    `json:"is_test"`
-	InputTokens  int     `json:"input_tokens"`
-	OutputTokens int     `json:"output_tokens"`
-	ClientIP     string  `json:"client_ip"`
-	APIKeyUsed   string  `json:"api_key_used"`
+	ID            int64   `json:"id"`
+	Time          int64   `json:"time"`
+	ChannelID     int     `json:"channel_id"`
+	ChannelName   string  `json:"channel_name"`
+	ChannelType   string  `json:"channel_type"`
+	Model         string  `json:"model"`
+	RequestPath   string  `json:"request_path"`
+	StatusCode    int     `json:"status_code"`
+	Duration      float64 `json:"duration"`
+	IsStreaming   bool    `json:"is_streaming"`
+	IsTest        bool    `json:"is_test"`
+	InputTokens   int     `json:"input_tokens"`
+	OutputTokens  int     `json:"output_tokens"`
+	ClientIP      string  `json:"client_ip"`
+	APIKeyUsed    string  `json:"api_key_used"`
+	AuthTokenName string  `json:"auth_token_name"` // API 令牌名称
 }
 
 // TraceStats 追踪统计信息
