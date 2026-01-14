@@ -1126,3 +1126,178 @@ html.dark .sort-mode-info {
 html.dark .sort-mode-changes {
   color: var(--primary-400);
 }
+
+/* ==================== 批量操作样式 ==================== */
+
+/* Checkbox 列 */
+.col-checkbox {
+  width: 32px;
+  min-width: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-left: 4px;
+}
+
+.channel-checkbox {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--primary-500);
+  margin: 0;
+}
+
+/* 头部全选框容器 */
+.header-checkbox-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--card-bg);
+  border: 1px solid var(--neutral-200);
+  border-radius: 6px;
+  height: 38px;
+}
+
+.header-checkbox-label {
+  font-size: 13px;
+  color: var(--neutral-700);
+  user-select: none;
+  cursor: pointer;
+}
+
+/* 底部悬浮操作栏 */
+#bulkActionBar {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%) translateY(150%);
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--neutral-200);
+  padding: 12px 24px;
+  border-radius: 16px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1), 0 4px 10px rgba(0, 0, 0, 0.05);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  z-index: 1000;
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  min-width: 420px;
+  justify-content: space-between;
+}
+
+#bulkActionBar.visible {
+  transform: translateX(-50%) translateY(0);
+}
+
+.bulk-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--neutral-700);
+  font-weight: 500;
+}
+
+.bulk-count-badge {
+  background: var(--primary-500);
+  color: white;
+  padding: 2px 10px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.bulk-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.bulk-divider {
+  width: 1px;
+  height: 20px;
+  background: var(--neutral-300);
+  margin: 0 4px;
+}
+
+/* 批量操作按钮样式 */
+.bulk-actions .btn {
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.bulk-actions .btn-enable {
+  color: var(--success-600);
+  background: var(--success-50);
+  border-color: var(--success-200);
+}
+
+.bulk-actions .btn-enable:hover {
+  background: var(--success-100);
+}
+
+.bulk-actions .btn-disable {
+  color: var(--warning-700);
+  background: var(--warning-50);
+  border-color: var(--warning-200);
+}
+
+.bulk-actions .btn-disable:hover {
+  background: var(--warning-100);
+}
+
+/* 小型加载动画 */
+.spinner-small {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  vertical-align: middle;
+  margin-right: 4px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* 暗色模式适配 - 批量操作 */
+html.dark .header-checkbox-wrapper {
+  background: var(--card-bg);
+  border-color: var(--neutral-700);
+}
+
+html.dark .header-checkbox-label {
+  color: var(--neutral-300);
+}
+
+html.dark #bulkActionBar {
+  background: rgba(30, 30, 30, 0.95);
+  border-color: var(--neutral-700);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+}
+
+html.dark .bulk-info {
+  color: var(--neutral-200);
+}
+
+html.dark .bulk-divider {
+  background: var(--neutral-600);
+}
+
+html.dark .bulk-actions .btn-enable {
+  background: rgba(34, 197, 94, 0.15);
+  color: var(--success-400);
+  border-color: rgba(34, 197, 94, 0.3);
+}
+
+html.dark .bulk-actions .btn-disable {
+  background: rgba(245, 158, 11, 0.15);
+  color: var(--warning-400);
+  border-color: rgba(245, 158, 11, 0.3);
+}

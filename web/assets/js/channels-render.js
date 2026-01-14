@@ -196,6 +196,9 @@ function createChannelCard(channel) {
 
   const modelsText = Array.isArray(channel.models) ? channel.models.join(', ') : '';
 
+  // 检查选中状态 (使用 bulkState 全局对象)
+  const isChecked = typeof bulkState !== 'undefined' && bulkState.selectedIds.has(channel.id);
+
   // 准备模板数据
   const cardData = {
     cardClasses: cardClasses.join(' '),
@@ -216,7 +219,9 @@ function createChannelCard(channel) {
     // 禁用/启用图标：启用状态显示暂停图标，禁用状态显示播放图标
     toggleIcon: channel.enabled
       ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>'
-      : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>'
+      : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>',
+    // 注入选中属性
+    checkedAttr: isChecked ? 'checked' : ''
   };
 
   // 使用模板引擎渲染
@@ -589,6 +594,11 @@ function renderChannels(channelsToRender = channels) {
 
   el.innerHTML = '';
   el.appendChild(fragment);
+
+  // 重新渲染后同步批量选择UI状态
+  if (typeof updateBulkUI === 'function') {
+    updateBulkUI();
+  }
 }
 
 // ============================================================
