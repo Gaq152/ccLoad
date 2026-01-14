@@ -145,6 +145,26 @@ func (s *Server) HandleMonitorList(c *gin.Context) {
 		return
 	}
 
+	// 收集需要查询名称的 token_id
+	tokenIDs := make(map[int64]bool)
+	for _, t := range traces {
+		if t.TokenID > 0 {
+			tokenIDs[t.TokenID] = true
+		}
+	}
+
+	// 批量查询令牌名称（description）
+	tokenNames, _ := s.store.FetchTokenNamesBatch(c.Request.Context(), tokenIDs)
+
+	// 填充 AuthTokenName
+	for _, t := range traces {
+		if t.TokenID > 0 {
+			if name, ok := tokenNames[t.TokenID]; ok {
+				t.AuthTokenName = name
+			}
+		}
+	}
+
 	// 获取统计信息
 	stats, _ := s.monitorService.GetStore().Stats(c.Request.Context())
 
@@ -190,6 +210,16 @@ func (s *Server) HandleMonitorDetail(c *gin.Context) {
 	if err != nil {
 		RespondErrorMsg(c, 404, "追踪记录不存在")
 		return
+	}
+
+	// 填充令牌名称
+	if trace.TokenID > 0 {
+		tokenIDs := map[int64]bool{trace.TokenID: true}
+		if tokenNames, err := s.store.FetchTokenNamesBatch(c.Request.Context(), tokenIDs); err == nil {
+			if name, ok := tokenNames[trace.TokenID]; ok {
+				trace.AuthTokenName = name
+			}
+		}
 	}
 
 	RespondJSON(c, 200, trace)
