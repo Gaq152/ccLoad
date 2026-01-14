@@ -8,6 +8,8 @@ let sseEventSource = null;
 let traces = []; // 缓存的追踪记录
 let filteredTraces = []; // 过滤后的追踪记录
 let currentFilter = 'all'; // 当前筛选：all/success/error
+let currentTokenFilter = ''; // 当前令牌筛选
+let knownTokens = new Set(); // 已知的令牌名称集合
 const MAX_TRACES = 500; // 最大缓存数量
 
 // 统计数据
@@ -165,7 +167,8 @@ async function loadTraces() {
       stats = calculateStats(traces);
     }
     updateStatsUI();
-    applyFilter();
+    updateTokenSelect();
+    applyFilters();
   } catch (e) {
     console.error('加载追踪记录失败:', e);
   }
@@ -194,26 +197,93 @@ function updateStatsUI() {
   if (errorEl) errorEl.textContent = stats.error;
 }
 
-// 设置筛选条件
+// 设置筛选条件（状态筛选）
 function setFilter(filter) {
   currentFilter = filter;
-  applyFilter();
+  applyFilters();
   updateFilterUI();
 }
 
-// 应用过滤（200=成功，非200=错误）
-function applyFilter() {
+// 应用所有筛选条件
+function applyFilters() {
+  // 获取令牌筛选值
+  const tokenSelect = document.getElementById('tokenFilter');
+  currentTokenFilter = tokenSelect ? tokenSelect.value : '';
+
+  // 先按状态筛选
+  let result = traces;
   switch (currentFilter) {
     case 'success':
-      filteredTraces = traces.filter(t => t.status_code === 200);
+      result = result.filter(t => t.status_code === 200);
       break;
     case 'error':
-      filteredTraces = traces.filter(t => t.status_code !== 200);
+      result = result.filter(t => t.status_code !== 200);
+      break;
+  }
+
+  // 再按令牌筛选
+  if (currentTokenFilter) {
+    result = result.filter(t => t.auth_token_name === currentTokenFilter);
+  }
+
+  filteredTraces = result;
+  renderTraces();
+  updateFilterStatus();
+}
+
+// 更新筛选状态显示
+function updateFilterStatus() {
+  const statusEl = document.getElementById('filterStatus');
+  if (!statusEl) return;
+
+  const parts = [];
+
+  // 状态筛选
+  switch (currentFilter) {
+    case 'success':
+      parts.push('成功请求');
+      break;
+    case 'error':
+      parts.push('错误请求');
       break;
     default:
-      filteredTraces = [...traces];
+      parts.push('全部请求');
   }
-  renderTraces();
+
+  // 令牌筛选
+  if (currentTokenFilter) {
+    parts.push(`令牌: ${currentTokenFilter}`);
+  }
+
+  statusEl.textContent = `显示 ${parts.join(' · ')} (${filteredTraces.length}条)`;
+}
+
+// 更新令牌下拉列表
+function updateTokenSelect() {
+  const select = document.getElementById('tokenFilter');
+  if (!select) return;
+
+  // 收集所有令牌名称
+  traces.forEach(t => {
+    if (t.auth_token_name) {
+      knownTokens.add(t.auth_token_name);
+    }
+  });
+
+  // 保存当前选中值
+  const currentValue = select.value;
+
+  // 重建选项
+  select.innerHTML = '<option value="">全部令牌</option>';
+  Array.from(knownTokens).sort().forEach(token => {
+    const option = document.createElement('option');
+    option.value = token;
+    option.textContent = token;
+    select.appendChild(option);
+  });
+
+  // 恢复选中值
+  select.value = currentValue;
 }
 
 // 更新筛选 UI 状态
@@ -253,7 +323,13 @@ function prependTrace(trace) {
     stats.error++;
   }
   updateStatsUI();
-  applyFilter();
+
+  // 更新令牌下拉列表（如果有新令牌）
+  if (trace.auth_token_name && !knownTokens.has(trace.auth_token_name)) {
+    updateTokenSelect();
+  }
+
+  applyFilters();
 }
 
 // 更新记录数量显示
@@ -840,7 +916,7 @@ window.closeDetailModal = closeDetailModal;
 window.clearTraces = clearTraces;
 window.closeConfirmModal = closeConfirmModal;
 window.confirmClearTraces = confirmClearTraces;
-window.applyFilter = applyFilter;
+window.applyFilters = applyFilters;
 window.setFilter = setFilter;
 window.toggleRequestBody = toggleRequestBody;
 window.toggleRawResponse = toggleRawResponse;
