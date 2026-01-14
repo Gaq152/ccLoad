@@ -394,12 +394,12 @@ function renderTraces() {
       ? `<span class="tokens-in">${inputTokens}</span> / <span class="tokens-out">${outputTokens}</span>`
       : '-';
 
-    // IP/令牌 显示
+    // IP/令牌 显示（换行）
     const ipDisplay = escapeHtml(trace.client_ip || '-');
     const tokenDisplay = trace.auth_token_name ? escapeHtml(trace.auth_token_name) : '';
     const ipTokenDisplay = tokenDisplay
-      ? `<span class="ip-part">${ipDisplay}</span><span class="token-part">/${tokenDisplay}</span>`
-      : ipDisplay;
+      ? `<span class="ip-part">${ipDisplay}</span><span class="token-part">${tokenDisplay}</span>`
+      : `<span class="ip-part">${ipDisplay}</span>`;
 
     // 模型/端点 合并显示
     const modelEndpointDisplay = `
