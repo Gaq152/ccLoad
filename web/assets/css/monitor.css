@@ -229,6 +229,26 @@
   color: var(--theme-text-secondary);
 }
 
+/* IP/令牌 单元格 */
+.monitor-table .ip-token-cell {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--theme-text-secondary);
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.monitor-table .ip-token-cell .ip-part {
+  color: var(--theme-text-secondary);
+}
+
+.monitor-table .ip-token-cell .token-part {
+  color: var(--primary-400);
+  font-weight: 500;
+}
+
 .monitor-table .channel-cell {
   max-width: 180px;
   overflow: hidden;
@@ -714,8 +734,13 @@
 
 .dashboard-theme .monitor-table .time-cell,
 .dashboard-theme .monitor-table .ip-cell,
+.dashboard-theme .monitor-table .ip-token-cell,
 .dashboard-theme .monitor-table .duration-cell {
   color: var(--theme-text-secondary);
+}
+
+.dashboard-theme .monitor-table .ip-token-cell .token-part {
+  color: var(--primary-400);
 }
 
 .dashboard-theme .channel-cell .channel-id {

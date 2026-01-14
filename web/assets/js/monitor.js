@@ -318,9 +318,16 @@ function renderTraces() {
       ? `<span class="tokens-in">${inputTokens}</span> / <span class="tokens-out">${outputTokens}</span>`
       : '-';
 
+    // IP/令牌 显示
+    const ipDisplay = escapeHtml(trace.client_ip || '-');
+    const tokenDisplay = trace.auth_token_name ? escapeHtml(trace.auth_token_name) : '';
+    const ipTokenDisplay = tokenDisplay
+      ? `<span class="ip-part">${ipDisplay}</span><span class="token-part">/${tokenDisplay}</span>`
+      : ipDisplay;
+
     row.innerHTML = `
       <td class="time-cell">${formatTime(trace.time)}${testBadge}</td>
-      <td class="ip-cell">${escapeHtml(trace.client_ip || '-')}</td>
+      <td class="ip-token-cell">${ipTokenDisplay}</td>
       <td class="endpoint-cell">${escapeHtml(endpoint)}</td>
       <td><span class="model-tag">${escapeHtml(trace.model || '-')}</span></td>
       <td class="channel-cell">${channelDisplay}</td>
@@ -352,6 +359,7 @@ async function viewDetail(id) {
     document.getElementById('detailInputTokens').textContent = trace.input_tokens > 0 ? trace.input_tokens : '-';
     document.getElementById('detailOutputTokens').textContent = trace.output_tokens > 0 ? trace.output_tokens : '-';
     document.getElementById('detailClientIP').textContent = trace.client_ip || '-';
+    document.getElementById('detailAuthToken').textContent = trace.auth_token_name || '-';
     document.getElementById('detailAPIKey').textContent = trace.api_key_used || '-';
     document.getElementById('detailIsTest').textContent = trace.is_test ? '是' : '否';
     document.getElementById('detailIsTest').className = trace.is_test ? 'test-indicator' : '';
