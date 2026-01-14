@@ -83,21 +83,23 @@ func (s *MonitorService) saveAndBroadcast(trace *storage.Trace) {
 
 	// 转换为列表项（不含请求体/响应体）
 	item := &storage.TraceListItem{
-		ID:           trace.ID,
-		Time:         trace.Time,
-		ChannelID:    trace.ChannelID,
-		ChannelName:  trace.ChannelName,
-		ChannelType:  trace.ChannelType,
-		Model:        trace.Model,
-		RequestPath:  trace.RequestPath,
-		StatusCode:   trace.StatusCode,
-		Duration:     trace.Duration,
-		IsStreaming:  trace.IsStreaming,
-		IsTest:       trace.IsTest,
-		InputTokens:  trace.InputTokens,
-		OutputTokens: trace.OutputTokens,
-		ClientIP:     trace.ClientIP,
-		APIKeyUsed:   trace.APIKeyUsed,
+		ID:            trace.ID,
+		Time:          trace.Time,
+		ChannelID:     trace.ChannelID,
+		ChannelName:   trace.ChannelName,
+		ChannelType:   trace.ChannelType,
+		Model:         trace.Model,
+		RequestPath:   trace.RequestPath,
+		StatusCode:    trace.StatusCode,
+		Duration:      trace.Duration,
+		IsStreaming:   trace.IsStreaming,
+		IsTest:        trace.IsTest,
+		InputTokens:   trace.InputTokens,
+		OutputTokens:  trace.OutputTokens,
+		ClientIP:      trace.ClientIP,
+		APIKeyUsed:    trace.APIKeyUsed,
+		TokenID:       trace.TokenID,
+		AuthTokenName: trace.AuthTokenName, // 从 Trace 传递（Capture 时填充）
 	}
 
 	// 广播给所有订阅者

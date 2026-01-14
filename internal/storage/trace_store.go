@@ -30,7 +30,8 @@ type Trace struct {
 	ResponseBody  string  `json:"response_body,omitempty"`
 	ClientIP      string  `json:"client_ip"`
 	APIKeyUsed    string  `json:"api_key_used"`
-	AuthTokenName string  `json:"auth_token_name"` // API 令牌名称
+	TokenID       int64   `json:"token_id"`        // API 令牌 ID（用于关联查询名称）
+	AuthTokenName string  `json:"auth_token_name"` // API 令牌名称（查询时填充）
 }
 
 // TraceListItem 追踪记录列表项（不含请求体/响应体，减少传输量）
@@ -50,7 +51,8 @@ type TraceListItem struct {
 	OutputTokens  int     `json:"output_tokens"`
 	ClientIP      string  `json:"client_ip"`
 	APIKeyUsed    string  `json:"api_key_used"`
-	AuthTokenName string  `json:"auth_token_name"` // API 令牌名称
+	TokenID       int64   `json:"token_id"`        // API 令牌 ID
+	AuthTokenName string  `json:"auth_token_name"` // API 令牌名称（查询时填充）
 }
 
 // TraceStats 追踪统计信息
@@ -114,7 +116,8 @@ CREATE TABLE IF NOT EXISTS traces (
     request_body TEXT,
     response_body TEXT,
     client_ip VARCHAR(45) NOT NULL DEFAULT '',
-    api_key_used VARCHAR(191) NOT NULL DEFAULT ''
+    api_key_used VARCHAR(191) NOT NULL DEFAULT '',
+    token_id BIGINT NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_traces_time ON traces(time DESC);
@@ -128,6 +131,7 @@ CREATE INDEX IF NOT EXISTS idx_traces_time ON traces(time DESC);
 	_, _ = db.ExecContext(ctx, "ALTER TABLE traces ADD COLUMN request_path VARCHAR(255) NOT NULL DEFAULT ''")
 	_, _ = db.ExecContext(ctx, "ALTER TABLE traces ADD COLUMN input_tokens INT NOT NULL DEFAULT 0")
 	_, _ = db.ExecContext(ctx, "ALTER TABLE traces ADD COLUMN output_tokens INT NOT NULL DEFAULT 0")
+	_, _ = db.ExecContext(ctx, "ALTER TABLE traces ADD COLUMN token_id BIGINT NOT NULL DEFAULT 0")
 
 	return nil
 }
@@ -135,13 +139,13 @@ CREATE INDEX IF NOT EXISTS idx_traces_time ON traces(time DESC);
 // Save 保存追踪记录
 func (s *TraceStore) Save(ctx context.Context, t *Trace) (int64, error) {
 	query := `
-INSERT INTO traces (time, channel_id, channel_name, channel_type, model, request_path, status_code, duration, is_streaming, is_test, input_tokens, output_tokens, request_body, response_body, client_ip, api_key_used)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO traces (time, channel_id, channel_name, channel_type, model, request_path, status_code, duration, is_streaming, is_test, input_tokens, output_tokens, request_body, response_body, client_ip, api_key_used, token_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 	result, err := s.db.ExecContext(ctx, query,
 		t.Time, t.ChannelID, t.ChannelName, t.ChannelType, t.Model, t.RequestPath,
 		t.StatusCode, t.Duration, t.IsStreaming, t.IsTest, t.InputTokens, t.OutputTokens,
-		t.RequestBody, t.ResponseBody, t.ClientIP, t.APIKeyUsed,
+		t.RequestBody, t.ResponseBody, t.ClientIP, t.APIKeyUsed, t.TokenID,
 	)
 	if err != nil {
 		return 0, err
@@ -159,7 +163,7 @@ func (s *TraceStore) List(ctx context.Context, limit int) ([]*TraceListItem, err
 	}
 
 	query := `
-SELECT id, time, channel_id, channel_name, channel_type, model, request_path, status_code, duration, is_streaming, is_test, input_tokens, output_tokens, client_ip, api_key_used
+SELECT id, time, channel_id, channel_name, channel_type, model, request_path, status_code, duration, is_streaming, is_test, input_tokens, output_tokens, client_ip, api_key_used, token_id
 FROM traces
 ORDER BY time DESC
 LIMIT ?
@@ -177,7 +181,7 @@ LIMIT ?
 		if err := rows.Scan(
 			&item.ID, &item.Time, &item.ChannelID, &item.ChannelName, &item.ChannelType,
 			&item.Model, &item.RequestPath, &item.StatusCode, &item.Duration, &isStreaming, &isTest,
-			&item.InputTokens, &item.OutputTokens, &item.ClientIP, &item.APIKeyUsed,
+			&item.InputTokens, &item.OutputTokens, &item.ClientIP, &item.APIKeyUsed, &item.TokenID,
 		); err != nil {
 			return nil, err
 		}
@@ -192,7 +196,7 @@ LIMIT ?
 // Get 获取单条追踪记录详情（含请求体/响应体）
 func (s *TraceStore) Get(ctx context.Context, id int64) (*Trace, error) {
 	query := `
-SELECT id, time, channel_id, channel_name, channel_type, model, request_path, status_code, duration, is_streaming, is_test, input_tokens, output_tokens, request_body, response_body, client_ip, api_key_used
+SELECT id, time, channel_id, channel_name, channel_type, model, request_path, status_code, duration, is_streaming, is_test, input_tokens, output_tokens, request_body, response_body, client_ip, api_key_used, token_id
 FROM traces
 WHERE id = ?
 `
@@ -203,7 +207,7 @@ WHERE id = ?
 	err := s.db.QueryRowContext(ctx, query, id).Scan(
 		&trace.ID, &trace.Time, &trace.ChannelID, &trace.ChannelName, &trace.ChannelType,
 		&trace.Model, &trace.RequestPath, &trace.StatusCode, &trace.Duration, &isStreaming, &isTest,
-		&trace.InputTokens, &trace.OutputTokens, &requestBody, &responseBody, &trace.ClientIP, &trace.APIKeyUsed,
+		&trace.InputTokens, &trace.OutputTokens, &requestBody, &responseBody, &trace.ClientIP, &trace.APIKeyUsed, &trace.TokenID,
 	)
 	if err != nil {
 		return nil, err

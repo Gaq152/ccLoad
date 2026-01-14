@@ -81,11 +81,11 @@ func (s *SQLStore) fetchChannelInfoBatch(ctx context.Context, channelIDs map[int
 	return channelInfos, nil
 }
 
-// fetchTokenNamesBatch 批量查询令牌名称（description字段）
+// FetchTokenNamesBatch 批量查询令牌名称（description字段）
 // 性能提升：N+1查询 → 1次全表查询 + 内存过滤
 // 输入：令牌ID集合 map[int64]bool
 // 输出：ID→名称映射 map[int64]string
-func (s *SQLStore) fetchTokenNamesBatch(ctx context.Context, tokenIDs map[int64]bool) (map[int64]string, error) {
+func (s *SQLStore) FetchTokenNamesBatch(ctx context.Context, tokenIDs map[int64]bool) (map[int64]string, error) {
 	if len(tokenIDs) == 0 {
 		return make(map[int64]string), nil
 	}

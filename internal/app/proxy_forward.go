@@ -1190,7 +1190,8 @@ func (s *Server) captureForMonitorWithCapture(
 		IsTest:        isTest,
 		ClientIP:      reqCtx.clientIP,
 		APIKeyUsed:    getAPIKeyDisplayForMonitor(cfg, selectedKey),
-		AuthTokenName: reqCtx.tokenName,
+		TokenID:       reqCtx.tokenID,
+		AuthTokenName: reqCtx.tokenName, // 令牌名称（用于 SSE 实时推送）
 	}
 
 	// 提取 token 统计（如果有）

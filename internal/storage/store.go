@@ -97,6 +97,7 @@ type Store interface {
 	GetTokenChannels(ctx context.Context, tokenID int64) ([]int64, error)
 	SetTokenChannels(ctx context.Context, tokenID int64, channelIDs []int64) error
 	LoadTokenChannelsMap(ctx context.Context, tokenIDs []int64) (map[int64][]int64, error)
+	FetchTokenNamesBatch(ctx context.Context, tokenIDs map[int64]bool) (map[int64]string, error)
 
 	// ============================================================================
 	// 系统配置管理

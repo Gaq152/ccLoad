@@ -237,7 +237,7 @@ func (s *SQLStore) ListLogs(ctx context.Context, since time.Time, limit, offset 
 		}
 	}
 	if len(tokenIDsToFetch) > 0 {
-		tokenNames, err := s.fetchTokenNamesBatch(ctx, tokenIDsToFetch)
+		tokenNames, err := s.FetchTokenNamesBatch(ctx, tokenIDsToFetch)
 		if err != nil {
 			log.Printf("[WARN]  批量查询令牌名称失败: %v", err)
 			tokenNames = make(map[int64]string)
@@ -405,7 +405,7 @@ func (s *SQLStore) ListLogsRange(ctx context.Context, since, until time.Time, li
 		}
 	}
 	if len(tokenIDsToFetch) > 0 {
-		tokenNames, err := s.fetchTokenNamesBatch(ctx, tokenIDsToFetch)
+		tokenNames, err := s.FetchTokenNamesBatch(ctx, tokenIDsToFetch)
 		if err != nil {
 			log.Printf("[WARN]  批量查询令牌名称失败: %v", err)
 			tokenNames = make(map[int64]string)
