@@ -2,110 +2,6 @@
  * 监控页面专用样式
  */
 
-/* ===== 统计面板 ===== */
-.stats-panel {
-  display: flex;
-  align-items: stretch;
-  gap: var(--space-4);
-  padding: 0;
-  margin-bottom: var(--space-6);
-  background: transparent;
-  border: none;
-  flex-wrap: wrap;
-}
-
-.stat-card {
-  flex: 1;
-  min-width: 120px;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: center;
-  padding: var(--space-4) var(--space-5);
-  background: var(--theme-bg-card);
-  border: 1px solid var(--theme-border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--theme-shadow-sm);
-  position: relative;
-  overflow: hidden;
-}
-
-/* 装饰背景圆 */
-.stat-card::after {
-  content: '';
-  position: absolute;
-  top: -20px;
-  right: -20px;
-  width: 80px;
-  height: 80px;
-  border-radius: 50%;
-  background: currentColor;
-  opacity: 0.06;
-  pointer-events: none;
-}
-
-.stat-value {
-  font-size: 2rem;
-  font-weight: 700;
-  color: var(--theme-text-primary);
-  line-height: 1.1;
-  font-family: var(--font-mono);
-  letter-spacing: -0.02em;
-  margin-bottom: var(--space-1);
-}
-
-.stat-label {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--theme-text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.stat-card.stat-success {
-  color: var(--success-500);
-}
-
-.stat-card.stat-success .stat-value {
-  color: var(--success-500);
-}
-
-.stat-card.stat-error {
-  color: var(--danger-500);
-}
-
-.stat-card.stat-error .stat-value {
-  color: var(--danger-500);
-}
-
-/* 可点击的统计卡片 */
-.stat-card.clickable {
-  cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.stat-card.clickable:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--theme-shadow-md);
-  border-color: var(--theme-border-focus);
-}
-
-.stat-card.clickable.active {
-  background: var(--theme-bg-active);
-  border-color: var(--primary-500);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
-}
-
-.stat-card.stat-success.clickable.active {
-  border-color: var(--success-500);
-  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.15);
-}
-
-.stat-card.stat-error.clickable.active {
-  border-color: var(--danger-500);
-  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.15);
-}
-
 /* ===== 筛选栏 ===== */
 .filter-bar {
   display: flex;
@@ -117,43 +13,127 @@
   background: var(--theme-bg-card);
   border: 1px solid var(--theme-border);
   border-radius: var(--radius-lg);
+  flex-wrap: wrap;
 }
 
-.filter-group {
+.filter-left {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-3);
+  flex-wrap: wrap;
 }
 
-.filter-group label {
+/* 垂直分隔线 */
+.filter-separator {
+  width: 1px;
+  height: 20px;
+  background: var(--theme-border);
+}
+
+/* 状态筛选按钮组 (Segmented Control) */
+.status-filter-group {
+  display: inline-flex;
+  background: var(--theme-bg-input);
+  padding: 3px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--theme-border);
+}
+
+.status-filter-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
   font-size: 13px;
   font-weight: 500;
   color: var(--theme-text-secondary);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   white-space: nowrap;
 }
 
-.filter-group select {
-  padding: 6px 28px 6px 10px;
-  font-size: 13px;
-  border: 1px solid var(--theme-border);
-  border-radius: var(--radius-md);
-  background: var(--theme-bg-input);
+.status-filter-btn:hover:not(.active) {
   color: var(--theme-text-primary);
-  cursor: pointer;
+  background: var(--theme-bg-hover);
+}
+
+.status-filter-btn.active {
+  color: var(--theme-text-primary);
+  background: var(--theme-bg-card);
+  box-shadow: var(--theme-shadow-sm);
+  border-color: var(--theme-border-light);
+  font-weight: 600;
+}
+
+.status-filter-btn.success.active {
+  color: var(--success-600);
+  background: var(--success-50);
+  border-color: transparent;
+}
+
+.status-filter-btn.error.active {
+  color: var(--danger-600);
+  background: var(--danger-50);
+  border-color: transparent;
+}
+
+/* 计数徽章 */
+.filter-count {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 0 5px;
+  min-width: 16px;
+  height: 16px;
+  line-height: 16px;
+  text-align: center;
+  border-radius: 8px;
+  background: var(--theme-bg-hover);
+  color: var(--theme-text-tertiary);
+  transition: all 0.2s;
+}
+
+.status-filter-btn.active .filter-count {
+  background: rgba(0, 0, 0, 0.08);
+  color: inherit;
+}
+
+.status-filter-btn.success.active .filter-count {
+  background: rgba(16, 185, 129, 0.2);
+}
+
+.status-filter-btn.error.active .filter-count {
+  background: rgba(239, 68, 68, 0.2);
+}
+
+/* 令牌下拉框 (Modern Select) */
+.modern-select {
   -webkit-appearance: none;
   -moz-appearance: none;
   appearance: none;
+  background-color: var(--theme-bg-card);
+  border: 1px solid var(--theme-border);
+  border-radius: var(--radius-lg);
+  padding: 6px 32px 6px 12px;
+  font-size: 13px;
+  color: var(--theme-text-primary);
+  cursor: pointer;
+  height: 34px;
+  transition: all 0.2s;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
   background-repeat: no-repeat;
-  background-position: right 8px center;
-  min-width: 120px;
+  background-position: right 10px center;
 }
 
-.filter-group select:hover {
+.modern-select:hover {
   border-color: var(--theme-border-focus);
+  background-color: var(--theme-bg-input);
 }
 
-.filter-group select:focus {
+.modern-select:focus {
   outline: none;
   border-color: var(--primary-500);
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
@@ -170,18 +150,59 @@
   border-color: var(--theme-border-primary);
 }
 
-.dashboard-theme .filter-group select {
+.dashboard-theme .filter-separator {
+  background: var(--theme-border-primary);
+}
+
+.dashboard-theme .status-filter-group {
+  background: var(--theme-bg-tertiary);
+  border-color: var(--theme-border-primary);
+}
+
+.dashboard-theme .status-filter-btn.active {
+  background: var(--theme-bg-secondary);
+  border-color: var(--theme-border-primary);
+}
+
+.dashboard-theme .status-filter-btn.success.active {
+  color: var(--success-400);
+  background: rgba(34, 197, 94, 0.15);
+}
+
+.dashboard-theme .status-filter-btn.error.active {
+  color: var(--danger-400);
+  background: rgba(239, 68, 68, 0.15);
+}
+
+.dashboard-theme .filter-count {
+  background: var(--theme-bg-body);
+}
+
+.dashboard-theme .status-filter-btn.active .filter-count {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.dashboard-theme .status-filter-btn.success.active .filter-count {
+  background: rgba(34, 197, 94, 0.25);
+}
+
+.dashboard-theme .status-filter-btn.error.active .filter-count {
+  background: rgba(239, 68, 68, 0.25);
+}
+
+.dashboard-theme .modern-select {
   background-color: var(--theme-bg-tertiary);
   border-color: var(--theme-border-primary);
   color: var(--theme-text-primary);
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
 }
 
-.dashboard-theme .filter-group select:hover {
+.dashboard-theme .modern-select:hover {
   border-color: var(--theme-border-focus);
+  background-color: var(--theme-bg-secondary);
 }
 
-.dashboard-theme .filter-group select:focus {
+.dashboard-theme .modern-select:focus {
   border-color: var(--primary-400);
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
 }

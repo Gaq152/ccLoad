@@ -37,27 +37,25 @@
           </div>
         </header>
 
-        <!-- 统计面板 -->
-        <section class="stats-panel">
-          <div class="stat-card clickable" id="filterAll" onclick="setFilter('all')">
-            <div class="stat-value" id="statTotal">0</div>
-            <div class="stat-label">总请求</div>
-          </div>
-          <div class="stat-card stat-success clickable" id="filterSuccess" onclick="setFilter('success')">
-            <div class="stat-value" id="statSuccess">0</div>
-            <div class="stat-label">成功</div>
-          </div>
-          <div class="stat-card stat-error clickable" id="filterError" onclick="setFilter('error')">
-            <div class="stat-value" id="statError">0</div>
-            <div class="stat-label">错误</div>
-          </div>
-        </section>
-
-        <!-- 筛选栏 -->
+        <!-- 统计与筛选栏 -->
         <section class="filter-bar">
-          <div class="filter-group">
-            <label>令牌筛选:</label>
-            <select id="tokenFilter" onchange="applyFilters()">
+          <div class="filter-left">
+            <!-- 状态筛选按钮组 -->
+            <div class="status-filter-group">
+              <button class="status-filter-btn active" id="filterAll" onclick="setFilter('all')">
+                全部 <span class="filter-count" id="statTotal">0</span>
+              </button>
+              <button class="status-filter-btn success" id="filterSuccess" onclick="setFilter('success')">
+                成功 <span class="filter-count" id="statSuccess">0</span>
+              </button>
+              <button class="status-filter-btn error" id="filterError" onclick="setFilter('error')">
+                错误 <span class="filter-count" id="statError">0</span>
+              </button>
+            </div>
+            <!-- 分隔线 -->
+            <div class="filter-separator"></div>
+            <!-- 令牌筛选 -->
+            <select id="tokenFilter" class="modern-select" onchange="applyFilters()">
               <option value="">全部令牌</option>
             </select>
           </div>
