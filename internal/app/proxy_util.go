@@ -465,13 +465,34 @@ func maskAPIKey(key string) string {
 	return key[:4] + "..." + key[len(key)-4:]
 }
 
+// getAPIKeyDisplayForLog 获取用于日志显示的 API Key
+// 对于 OAuth 认证的渠道（Kiro/Codex/Gemini 官方预设），显示认证类型而不是空值
+func getAPIKeyDisplayForLog(apiKeyUsed string, channelType string) string {
+	// 如果有实际的 API Key，使用脱敏后的值
+	if apiKeyUsed != "" {
+		return maskAPIKey(apiKeyUsed)
+	}
+
+	// OAuth 认证渠道显示认证类型
+	switch channelType {
+	case "kiro":
+		return "[Kiro OAuth]"
+	case "codex":
+		return "[Codex OAuth]"
+	case "gemini":
+		return "[Gemini OAuth]"
+	}
+
+	return "-"
+}
+
 // buildLogEntry 构建日志条目（消除重复代码，遵循DRY原则）
 func buildLogEntry(originalModel string, channelID int64, channelName string, channelType string, statusCode int,
 	duration float64, isStreaming bool, apiKeyUsed string, apiBaseURL string, authTokenID int64, authTokenName string, clientIP string,
 	res *fwResult, errMsg string, startTime time.Time) *model.LogEntry {
 
-	// API Key 脱敏（SSE 推送和数据库写入都需要脱敏）
-	maskedKey := maskAPIKey(apiKeyUsed)
+	// API Key 显示（OAuth 渠道显示认证类型）
+	displayKey := getAPIKeyDisplayForLog(apiKeyUsed, channelType)
 
 	// 使用传入的开始时间，如果未设置则使用当前时间
 	logTime := startTime
@@ -488,7 +509,7 @@ func buildLogEntry(originalModel string, channelID int64, channelName string, ch
 		StatusCode:    statusCode,
 		Duration:      duration,
 		IsStreaming:   isStreaming,
-		APIKeyUsed:    maskedKey,
+		APIKeyUsed:    displayKey,
 		APIBaseURL:    apiBaseURL,
 		AuthTokenID:   authTokenID,
 		AuthTokenName: authTokenName,

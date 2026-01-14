@@ -53,6 +53,19 @@
           </div>
         </section>
 
+        <!-- 筛选栏 -->
+        <section class="filter-bar">
+          <div class="filter-group">
+            <label>令牌筛选:</label>
+            <select id="tokenFilter" onchange="applyFilters()">
+              <option value="">全部令牌</option>
+            </select>
+          </div>
+          <div class="filter-info">
+            <span id="filterStatus">显示全部请求</span>
+          </div>
+        </section>
+
         <!-- 追踪记录列表 -->
         <section class="glass-card">
           <div class="table-container">
