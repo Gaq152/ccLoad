@@ -325,14 +325,25 @@ function renderTraces() {
       ? `<span class="ip-part">${ipDisplay}</span><span class="token-part">/${tokenDisplay}</span>`
       : ipDisplay;
 
+    // 模型/端点 合并显示
+    const modelEndpointDisplay = `
+      <div class="model-endpoint-cell">
+        <span class="model-tag">${escapeHtml(trace.model || '-')}</span>
+        <span class="endpoint-text">${escapeHtml(endpoint)}</span>
+      </div>
+    `;
+
+    // 耗时 + 流式标记
+    const streamBadge = trace.is_streaming ? '<span class="stream-badge">流</span>' : '';
+    const durationDisplay = `${trace.duration?.toFixed(3) || '-'}s${streamBadge}`;
+
     row.innerHTML = `
       <td class="time-cell">${formatTime(trace.time)}${testBadge}</td>
       <td class="ip-token-cell">${ipTokenDisplay}</td>
-      <td class="endpoint-cell">${escapeHtml(endpoint)}</td>
-      <td><span class="model-tag">${escapeHtml(trace.model || '-')}</span></td>
+      <td>${modelEndpointDisplay}</td>
       <td class="channel-cell">${channelDisplay}</td>
       <td><span class="status-badge ${statusClass}">${trace.status_code || '-'}</span></td>
-      <td class="duration-cell">${trace.duration?.toFixed(3) || '-'}s</td>
+      <td class="duration-cell">${durationDisplay}</td>
       <td class="tokens-cell">${tokensDisplay}</td>
       <td>
         <button class="btn btn-secondary btn-xs" onclick="viewDetail(${trace.id})">查看</button>

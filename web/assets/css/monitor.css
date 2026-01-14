@@ -249,6 +249,47 @@
   font-weight: 500;
 }
 
+/* 模型/端点 合并单元格 */
+.monitor-table .model-endpoint-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.monitor-table .model-endpoint-cell .model-tag {
+  font-size: 12px;
+}
+
+.monitor-table .model-endpoint-cell .endpoint-text {
+  font-size: 10px;
+  color: var(--theme-text-tertiary);
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 150px;
+}
+
+/* 耗时居中 */
+.monitor-table .duration-cell {
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+/* 流式标记 */
+.monitor-table .stream-badge {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 1px 4px;
+  font-size: 9px;
+  font-weight: 500;
+  background: var(--primary-100);
+  color: var(--primary-600);
+  border-radius: 3px;
+  vertical-align: middle;
+}
+
 .monitor-table .channel-cell {
   max-width: 180px;
   overflow: hidden;
@@ -741,6 +782,16 @@
 
 .dashboard-theme .monitor-table .ip-token-cell .token-part {
   color: var(--primary-400);
+}
+
+/* 暗色主题流式标记 */
+.dashboard-theme .monitor-table .stream-badge {
+  background: rgba(59, 130, 246, 0.2);
+  color: var(--primary-400);
+}
+
+.dashboard-theme .monitor-table .model-endpoint-cell .endpoint-text {
+  color: var(--theme-text-tertiary);
 }
 
 .dashboard-theme .channel-cell .channel-id {
