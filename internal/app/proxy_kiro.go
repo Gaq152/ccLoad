@@ -231,7 +231,8 @@ func ProcessKiroAWSEventStream(ctx context.Context, data []byte, w http.Response
 
 	// 如果有内容输出但没有收到 completionEvent，手动发送结束事件
 	// Kiro 可能不发送 completionEvent，需要在流结束时补充
-	if parser.messageStarted {
+	// 如果异常已处理（如 ContentLengthExceeds），不再发送结束事件
+	if parser.messageStarted && !parser.exceptionHandled {
 		sendKiroStreamEndEvents(w, flusher, parser)
 	}
 
@@ -240,6 +241,11 @@ func ProcessKiroAWSEventStream(ctx context.Context, data []byte, w http.Response
 
 // sendKiroStreamEndEvents 发送流结束事件
 func sendKiroStreamEndEvents(w http.ResponseWriter, flusher http.Flusher, parser *kiroSSEParser) {
+	// 如果异常已处理，不再发送结束事件
+	if parser.exceptionHandled {
+		return
+	}
+
 	// 只有当有未关闭的内容块时才发送 content_block_stop
 	// 思考块、文本块或工具调用块如果已发送 start 但未发送 stop，需要关闭
 	// 工具调用块在 handleKiroToolUseEvent 中已经处理，不需要在这里关闭
@@ -464,6 +470,14 @@ func processAWSEventStreamFrame(w http.ResponseWriter, flusher http.Flusher, fra
 	// 获取事件类型
 	eventType := frame.Headers[":event-type"]
 	messageType := frame.Headers[":message-type"]
+	exceptionType := frame.Headers[":exception-type"]
+
+	// 处理异常事件（参考 kiro2api: handleExceptionEvent）
+	// 检测 ContentLengthExceededException 并转换为 max_tokens stop_reason
+	if messageType == "exception" || exceptionType != "" {
+		handleKiroExceptionEvent(w, flusher, frame, parser, exceptionType)
+		return
+	}
 
 	// 忽略非事件消息
 	if messageType != "event" && messageType != "" {
@@ -898,6 +912,9 @@ type kiroSSEParser struct {
 	activeToolUseIndex int    // 当前工具调用的 block 索引
 	toolUseBlockSent   bool   // 是否已发送 tool_use block start
 
+	// 异常处理状态
+	exceptionHandled bool // 是否已处理异常事件
+
 	// 统计信息
 	outputTokens int
 	inputTokens  int
@@ -1032,6 +1049,111 @@ func IsKiroContentLengthExceeds(errorBody []byte) bool {
 	// 2. "content length exceeds" - 错误消息文本
 	return strings.Contains(errorStr, "CONTENT_LENGTH_EXCEEDS_THRESHOLD") ||
 		strings.Contains(strings.ToLower(errorStr), "content length exceeds")
+}
+
+// handleKiroExceptionEvent 处理 AWS Event Stream 中的异常事件
+// 参考 kiro2api: handleExceptionEvent
+// 检测 ContentLengthExceededException 并转换为 max_tokens stop_reason
+func handleKiroExceptionEvent(w http.ResponseWriter, flusher http.Flusher, frame *awsEventFrame, parser *kiroSSEParser, exceptionType string) {
+	// 解析异常 payload
+	var exceptionData map[string]any
+	if len(frame.Payload) > 0 {
+		_ = sonic.Unmarshal(frame.Payload, &exceptionData)
+	}
+
+	// 获取异常类型（优先从 header，其次从 payload）
+	if exceptionType == "" {
+		if et, ok := exceptionData["exception_type"].(string); ok {
+			exceptionType = et
+		}
+	}
+
+	log.Printf("[INFO] [Kiro] 收到异常事件: type=%s, data=%v", exceptionType, exceptionData)
+
+	// 检测内容长度超限异常
+	// 参考 kiro2api: ContentLengthExceededException, CONTENT_LENGTH_EXCEEDS
+	isContentLengthExceeds := strings.Contains(exceptionType, "ContentLengthExceeds") ||
+		strings.Contains(exceptionType, "CONTENT_LENGTH_EXCEEDS") ||
+		strings.Contains(strings.ToUpper(exceptionType), "CONTENTLENGTH")
+
+	if isContentLengthExceeds {
+		log.Printf("[INFO] [Kiro] 检测到内容长度超限异常，转换为 max_tokens stop_reason")
+		sendKiroMaxTokensResponse(w, flusher, parser)
+		parser.exceptionHandled = true
+		return
+	}
+
+	// 其他异常类型，记录日志但不特殊处理
+	log.Printf("[WARN] [Kiro] 未处理的异常类型: %s", exceptionType)
+}
+
+// sendKiroMaxTokensResponse 发送 max_tokens stop_reason 响应
+// 参考 kiro2api: sendMaxTokensResponse
+// 用于将内容长度超限错误转换为 Claude API 兼容的响应
+func sendKiroMaxTokensResponse(w http.ResponseWriter, flusher http.Flusher, parser *kiroSSEParser) {
+	// 如果还没有发送 message_start，先发送
+	if !parser.messageStarted {
+		parser.messageStarted = true
+		msgStart := map[string]any{
+			"type": "message_start",
+			"message": map[string]any{
+				"id":            "msg_kiro_" + fmt.Sprintf("%d", time.Now().UnixNano()),
+				"type":          "message",
+				"role":          "assistant",
+				"content":       []any{},
+				"model":         parser.requestedModel,
+				"stop_reason":   nil,
+				"stop_sequence": nil,
+				"usage": map[string]any{
+					"input_tokens":  parser.inputTokens,
+					"output_tokens": 0,
+				},
+			},
+		}
+		msgStartData, _ := sonic.Marshal(msgStart)
+		writeSSEEvent(w, flusher, "message_start", msgStartData)
+	}
+
+	// 关闭所有已开启但未关闭的内容块
+	if parser.thinkingBlockSent && !parser.thinkingBlockStopped {
+		blockStop := map[string]any{
+			"type":  "content_block_stop",
+			"index": parser.currentBlockIndex,
+		}
+		blockStopData, _ := sonic.Marshal(blockStop)
+		writeSSEEvent(w, flusher, "content_block_stop", blockStopData)
+		parser.thinkingBlockStopped = true
+	}
+	if parser.textBlockSent && !parser.textBlockStopped {
+		blockStop := map[string]any{
+			"type":  "content_block_stop",
+			"index": parser.currentBlockIndex,
+		}
+		blockStopData, _ := sonic.Marshal(blockStop)
+		writeSSEEvent(w, flusher, "content_block_stop", blockStopData)
+		parser.textBlockStopped = true
+	}
+
+	// 发送 message_delta（包含 max_tokens stop_reason）
+	msgDelta := map[string]any{
+		"type": "message_delta",
+		"delta": map[string]any{
+			"stop_reason":   "max_tokens",
+			"stop_sequence": nil,
+		},
+		"usage": map[string]any{
+			"output_tokens": parser.outputTokens,
+		},
+	}
+	msgDeltaData, _ := sonic.Marshal(msgDelta)
+	writeSSEEvent(w, flusher, "message_delta", msgDeltaData)
+
+	// 发送 message_stop
+	msgStop := map[string]any{"type": "message_stop"}
+	msgStopData, _ := sonic.Marshal(msgStop)
+	writeSSEEvent(w, flusher, "message_stop", msgStopData)
+
+	log.Printf("[INFO] [Kiro] 已发送 max_tokens stop_reason 响应")
 }
 
 // BuildKiroContentLengthExceedsResponse 构建内容长度超限的 SSE 响应
