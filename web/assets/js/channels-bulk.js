@@ -192,8 +192,11 @@ async function executeBulkAction(action) {
 
     showToast(`批量操作完成: 成功 ${successCount} 个，失败 ${failCount} 个`, failCount > 0 ? 'warning' : 'success');
 
-    // 刷新列表并清空选择
-    await loadChannels();
+    // 清除缓存并刷新列表
+    if (typeof invalidateChannelsCache === 'function') {
+      invalidateChannelsCache();
+    }
+    await loadChannels('all', true);  // 强制刷新
     clearBulkSelection();
 
   } catch (err) {

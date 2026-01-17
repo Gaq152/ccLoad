@@ -104,7 +104,8 @@ const multiSelectOptions = {
   'nav_visible_pages': [
     { value: 'stats', label: '调用统计' },
     { value: 'trends', label: '请求趋势' },
-    { value: 'model-test', label: '模型测试' }
+    { value: 'model-test', label: '模型测试' },
+    { value: 'monitor', label: '请求监控' }
   ]
 };
 
