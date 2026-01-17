@@ -85,6 +85,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   // 启动自动测速倒计时
   AutoTestTimer.init();
 
+  // 监听"支持的模型"输入框变化，实时更新模型列表（用于模型重定向下拉选择）
+  const modelsInput = document.getElementById('channelModels');
+  if (modelsInput && typeof updateModelDatalist === 'function') {
+    modelsInput.addEventListener('input', updateModelDatalist);
+    modelsInput.addEventListener('change', updateModelDatalist);
+  }
+
   // 页面可见性监听（后台标签页暂停倒计时，节省CPU）
   document.addEventListener('visibilitychange', function() {
     if (document.hidden) {
