@@ -886,6 +886,43 @@ function renderRedirectTable() {
 
   tbody.innerHTML = '';
   tbody.appendChild(fragment);
+
+  // 更新模型列表（用于下拉选择）
+  updateModelDatalist();
+}
+
+/**
+ * 更新模型列表 datalist（用于模型重定向的下拉选择）
+ */
+function updateModelDatalist() {
+  const datalist = document.getElementById('modelList');
+  if (!datalist) return;
+
+  // 从"支持的模型"输入框获取模型列表
+  const modelsInput = document.getElementById('channelModels');
+  if (!modelsInput) return;
+
+  const modelsText = modelsInput.value.trim();
+  if (!modelsText) {
+    datalist.innerHTML = '';
+    return;
+  }
+
+  // 解析模型列表（逗号分隔）
+  const models = modelsText.split(',')
+    .map(m => m.trim())
+    .filter(m => m.length > 0);
+
+  // 生成 option 元素
+  const fragment = document.createDocumentFragment();
+  models.forEach(model => {
+    const option = document.createElement('option');
+    option.value = model;
+    fragment.appendChild(option);
+  });
+
+  datalist.innerHTML = '';
+  datalist.appendChild(fragment);
 }
 
 function redirectTableToJSON() {

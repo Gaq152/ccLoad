@@ -1018,6 +1018,7 @@ function(response) {
           data-index="{{index}}"
           value="{{from}}"
           placeholder="claude-opus-4"
+          list="modelList"
           style="width: 100%; padding: 6px 10px; border: 1px solid var(--neutral-300); border-radius: 6px; font-size: 13px; font-family: 'Monaco', 'Menlo', 'Courier New', monospace; background: var(--input-bg); color: var(--text-main);"
         >
       </td>
@@ -1028,6 +1029,7 @@ function(response) {
           data-index="{{index}}"
           value="{{to}}"
           placeholder="claude-opus-4-20250514"
+          list="modelList"
           style="width: 100%; padding: 6px 10px; border: 1px solid var(--neutral-300); border-radius: 6px; font-size: 13px; font-family: 'Monaco', 'Menlo', 'Courier New', monospace; background: var(--input-bg); color: var(--text-main);"
         >
       </td>
@@ -1044,6 +1046,11 @@ function(response) {
       </td>
     </tr>
   </template>
+
+  <!-- 模型列表 datalist（用于模型重定向的下拉选择） -->
+  <datalist id="modelList">
+    <!-- 动态填充模型选项 -->
+  </datalist>
 
   <!-- 重定向规则空状态模板 -->
   <template id="tpl-redirect-empty">
