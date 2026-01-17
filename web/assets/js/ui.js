@@ -255,7 +255,7 @@
       { key: 'stats', label: '调用统计', href: '/web/stats.html', icon: 'bars' },
       { key: 'trends', label: '请求趋势', href: '/web/trend.html', icon: 'trend' },
       { key: 'logs', label: '日志', href: '/web/logs.html', icon: 'alert', required: true },
-      { key: 'monitor', label: '监控', href: '/web/monitor.html', icon: 'monitor', required: true },
+      { key: 'monitor', label: '监控', href: '/web/monitor.html', icon: 'monitor' },
       { key: 'model-test', label: '模型测试', href: '/web/model-test.html', icon: 'test' },
       { key: 'settings', label: '设置', href: '/web/settings.html', icon: 'cog', required: true },
     ],
