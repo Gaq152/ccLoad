@@ -342,17 +342,13 @@ func (s *Server) syncQuotaConfigAuthorization(ctx context.Context, channelID int
 
 	// 检查 RequestHeaders 中是否有 Authorization
 	if config.QuotaConfig.RequestHeaders == nil {
-		return
+		config.QuotaConfig.RequestHeaders = make(map[string]string)
 	}
 
-	// 检查是否需要更新（只更新 Bearer token 格式的 Authorization）
-	currentAuth := config.QuotaConfig.RequestHeaders["Authorization"]
-	if currentAuth == "" || !strings.HasPrefix(currentAuth, "Bearer ") {
-		return
-	}
-
-	// 更新 Authorization
+	// 更新 Authorization（如果不存在或需要更新）
 	newAuth := "Bearer " + newAccessToken
+	currentAuth := config.QuotaConfig.RequestHeaders["Authorization"]
+
 	if currentAuth == newAuth {
 		return // 已经是最新的
 	}

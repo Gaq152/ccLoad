@@ -2,6 +2,7 @@ package app
 
 import (
 	"bytes"
+	"context"
 	"encoding/csv"
 	"fmt"
 	"io"
@@ -184,6 +185,7 @@ func (s *Server) HandleImportChannelsCSV(c *gin.Context) {
 		channelType := fetch("channel_type")
 		preset := fetch("preset")        // 预设类型（kiro/codex/gemini）
 		keyStrategy := fetch("key_strategy")
+		quotaConfigRaw := fetch("quota_config")  // 用量查询配置（JSON 格式）
 
 		if name == "" || apiKey == "" || modelsRaw == "" {
 			summary.Errors = append(summary.Errors, fmt.Sprintf("第%d行缺少必填字段", lineNo))
@@ -199,6 +201,18 @@ func (s *Server) HandleImportChannelsCSV(c *gin.Context) {
 			summary.Errors = append(summary.Errors, fmt.Sprintf("第%d行缺少URL", lineNo))
 			summary.Skipped++
 			continue
+		}
+
+		// OAuth 预设自动填充默认 URL
+		if url == "" && isOAuthPreset {
+			switch preset {
+			case "kiro":
+				url = "https://codewhisperer.us-east-1.amazonaws.com"
+			case "codex":
+				url = "https://api.codeium.com"
+			case "gemini":
+				url = "https://generativelanguage.googleapis.com"
+			}
 		}
 
 		if url != "" {
@@ -275,6 +289,17 @@ func (s *Server) HandleImportChannelsCSV(c *gin.Context) {
 			ChannelType:    channelType,
 			Preset:         preset,  // 设置预设类型
 			Enabled:        enabled,
+		}
+
+		// 解析用量查询配置（可选，JSON 格式）
+		if quotaConfigRaw != "" && quotaConfigRaw != "{}" {
+			var quotaConfig model.QuotaConfig
+			if err := sonic.Unmarshal([]byte(quotaConfigRaw), &quotaConfig); err != nil {
+				summary.Errors = append(summary.Errors, fmt.Sprintf("第%d行用量查询配置JSON格式错误: %v", lineNo, err))
+				summary.Skipped++
+				continue
+			}
+			cfg.QuotaConfig = &quotaConfig
 		}
 
 		// 解析并构建API Keys
@@ -397,6 +422,34 @@ func (s *Server) HandleImportChannelsCSV(c *gin.Context) {
 		s.InvalidateChannelListCache()
 		s.InvalidateAllAPIKeysCache()
 		s.invalidateCooldownCache()
+
+		// [FIX] 导入完成后，同步 Kiro 预设的 Authorization 头
+		// 如果 CSV 中已经包含了 AccessToken，立即同步到 quota_config
+		go func() {
+			ctx := context.Background()
+			// 重新查询所有渠道，获取 ID
+			allConfigs, err := s.store.ListConfigs(ctx)
+			if err != nil {
+				return
+			}
+			nameToID := make(map[string]int64)
+			for _, cfg := range allConfigs {
+				nameToID[cfg.Name] = cfg.ID
+			}
+
+			for _, cwk := range validChannels {
+				if cwk.Config.Preset == "kiro" && cwk.Config.QuotaConfig != nil && cwk.Config.QuotaConfig.Enabled {
+					channelID, ok := nameToID[cwk.Config.Name]
+					if !ok {
+						continue
+					}
+					// 获取 AccessToken
+					if len(cwk.APIKeys) > 0 && cwk.APIKeys[0].AccessToken != "" {
+						s.syncQuotaConfigAuthorization(ctx, channelID, cwk.APIKeys[0].AccessToken)
+					}
+				}
+			}
+		}()
 	}
 
 	// 导入完成后,检查Redis同步状态(批量导入方法会自动触发同步)
