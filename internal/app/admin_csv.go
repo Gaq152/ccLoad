@@ -182,25 +182,40 @@ func (s *Server) HandleImportChannelsCSV(c *gin.Context) {
 		modelsRaw := fetch("models")
 		modelRedirectsRaw := fetch("model_redirects")
 		channelType := fetch("channel_type")
+		preset := fetch("preset")        // 预设类型（kiro/codex/gemini）
 		keyStrategy := fetch("key_strategy")
 
-		if name == "" || apiKey == "" || url == "" || modelsRaw == "" {
+		if name == "" || apiKey == "" || modelsRaw == "" {
 			summary.Errors = append(summary.Errors, fmt.Sprintf("第%d行缺少必填字段", lineNo))
 			summary.Skipped++
 			continue
 		}
 
-		normalizedURL, err := validateChannelBaseURL(url)
-		if err != nil {
-			summary.Errors = append(summary.Errors, fmt.Sprintf("第%d行URL无效: %v", lineNo, err))
+		// OAuth 预设（通过 preset 字段判断）
+		isOAuthPreset := preset == "kiro" || preset == "codex" || preset == "gemini"
+
+		// 验证 URL（OAuth 预设可以为空）
+		if url == "" && !isOAuthPreset {
+			summary.Errors = append(summary.Errors, fmt.Sprintf("第%d行缺少URL", lineNo))
 			summary.Skipped++
 			continue
 		}
-		url = normalizedURL
 
-		// 渠道类型规范化（无效值静默回退为默认值 anthropic）
-		// 兼容旧数据：已删除的渠道类型（如 openai）会自动回退
-		channelType = util.NormalizeChannelTypeWithFallback(channelType)
+		if url != "" {
+			normalizedURL, err := validateChannelBaseURL(url)
+			if err != nil {
+				summary.Errors = append(summary.Errors, fmt.Sprintf("第%d行URL无效: %v", lineNo, err))
+				summary.Skipped++
+				continue
+			}
+			url = normalizedURL
+		}
+
+		// 渠道类型规范化（OAuth 预设不规范化，保持原值）
+		if !isOAuthPreset {
+			// 兼容旧数据：已删除的渠道类型（如 openai）会自动回退
+			channelType = util.NormalizeChannelTypeWithFallback(channelType)
+		}
 
 		// 验证Key使用策略(可选字段,默认sequential)
 		if keyStrategy == "" {
@@ -258,17 +273,102 @@ func (s *Server) HandleImportChannelsCSV(c *gin.Context) {
 			Models:         models,
 			ModelRedirects: modelRedirects,
 			ChannelType:    channelType,
+			Preset:         preset,  // 设置预设类型
 			Enabled:        enabled,
 		}
 
 		// 解析并构建API Keys
-		apiKeyList := util.ParseAPIKeys(apiKey)
-		apiKeys := make([]model.APIKey, len(apiKeyList))
-		for i, key := range apiKeyList {
-			apiKeys[i] = model.APIKey{
-				KeyIndex:    i,
-				APIKey:      key,
-				KeyStrategy: keyStrategy,
+		// 支持两种格式：
+		// 1. 普通格式：逗号分隔的 API Key 字符串
+		// 2. OAuth 预设格式（kiro/codex/gemini）：JSON 格式的认证配置
+		var apiKeys []model.APIKey
+
+		if isOAuthPreset && strings.HasPrefix(strings.TrimSpace(apiKey), "{") {
+			// OAuth 预设：解析 JSON 格式的认证配置
+			var authConfig map[string]any
+			if err := sonic.Unmarshal([]byte(apiKey), &authConfig); err != nil {
+				summary.Errors = append(summary.Errors, fmt.Sprintf("第%d行OAuth认证配置JSON格式错误: %v", lineNo, err))
+				summary.Skipped++
+				continue
+			}
+
+			// 提取 OAuth 字段
+			refreshToken, _ := authConfig["refreshToken"].(string)
+			clientId, _ := authConfig["clientId"].(string)
+			clientSecret, _ := authConfig["clientSecret"].(string)
+			accessToken, _ := authConfig["accessToken"].(string)
+
+			// deviceFingerprint 应该是 JSON 格式的指纹配置，不是简单的 UUID
+			// 如果 CSV 中提供了 deviceFingerprint，应该是完整的 JSON 配置
+			// 否则留空，让 Kiro 预设自动生成
+			deviceFingerprintJSON, _ := authConfig["deviceFingerprint"].(string)
+
+			// 提取 tokenExpiresAt（可能是 float64 或 int）
+			var tokenExpiresAt int64
+			if expiresAt, ok := authConfig["tokenExpiresAt"].(float64); ok {
+				tokenExpiresAt = int64(expiresAt)
+			} else if expiresAt, ok := authConfig["tokenExpiresAt"].(int64); ok {
+				tokenExpiresAt = expiresAt
+			}
+
+			// 验证必需字段
+			if refreshToken == "" {
+				summary.Errors = append(summary.Errors, fmt.Sprintf("第%d行OAuth配置缺少refreshToken", lineNo))
+				summary.Skipped++
+				continue
+			}
+
+			// 构建单个 API Key（OAuth 预设每个渠道只有一个认证配置）
+			apiKeys = []model.APIKey{
+				{
+					KeyIndex:          0,
+					APIKey:            "",                      // OAuth 预设不使用 api_key 字段（IdC 方式除外）
+					KeyStrategy:       keyStrategy,
+					RefreshToken:      refreshToken,            // 存储到 refresh_token 字段
+					AccessToken:       accessToken,             // 如果 CSV 中提供了 access_token
+					TokenExpiresAt:    tokenExpiresAt,          // 如果 CSV 中提供了过期时间
+					DeviceFingerprint: deviceFingerprintJSON,   // Kiro 设备指纹 JSON 配置（可选）
+				},
+			}
+
+			// [FIX] Kiro 预设：如果没有提供设备指纹，自动生成
+			if preset == "kiro" && deviceFingerprintJSON == "" {
+				fm := GetFingerprintManager()
+				fp, err := fm.GenerateFingerprint()
+				if err != nil {
+					log.Printf("[WARN] [CSV导入] 生成 Kiro 设备指纹失败 (第%d行): %v", lineNo, err)
+				} else {
+					fpJSON, err := fp.ToJSON()
+					if err != nil {
+						log.Printf("[WARN] [CSV导入] 序列化设备指纹失败 (第%d行): %v", lineNo, err)
+					} else {
+						apiKeys[0].DeviceFingerprint = fpJSON
+						log.Printf("[INFO] [CSV导入] 已为第%d行生成设备指纹: %s", lineNo, fp.GetSummary())
+					}
+				}
+			}
+
+			// 如果是 IdC 方式，将 clientId 和 clientSecret 存储到 id_token 字段（JSON 格式）
+			// [FIX] 与 admin_testing.go:96 保持一致，IdC 配置存储在 id_token 字段
+			if clientId != "" && clientSecret != "" {
+				idcConfig := map[string]string{
+					"clientId":     clientId,
+					"clientSecret": clientSecret,
+				}
+				if idcJSON, err := sonic.Marshal(idcConfig); err == nil {
+					apiKeys[0].IDToken = string(idcJSON)
+				}
+			}
+		} else {
+			// 普通格式：逗号分隔的 API Key
+			apiKeyList := util.ParseAPIKeys(apiKey)
+			apiKeys = make([]model.APIKey, len(apiKeyList))
+			for i, key := range apiKeyList {
+				apiKeys[i] = model.APIKey{
+					KeyIndex:    i,
+					APIKey:      key,
+					KeyStrategy: keyStrategy,
+				}
 			}
 		}
 

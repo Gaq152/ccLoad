@@ -86,6 +86,32 @@ func (s *Server) HandleChannelTest(c *gin.Context) {
 		// 保存设备指纹
 		kiroDeviceFingerprint = apiKeyData.DeviceFingerprint
 
+		// [FIX] 如果设备指纹为空，自动生成（与 proxy_forward.go:980 逻辑一致）
+		if kiroDeviceFingerprint == "" {
+			fm := GetFingerprintManager()
+			fp, err := fm.GenerateFingerprint()
+			if err != nil {
+				log.Printf("[WARN] [测试] 生成 Kiro 设备指纹失败: %v", err)
+			} else {
+				fpJSON, err := fp.ToJSON()
+				if err != nil {
+					log.Printf("[WARN] [测试] 序列化设备指纹失败: %v", err)
+				} else {
+					kiroDeviceFingerprint = fpJSON
+					// 异步保存到数据库
+					go func(channelID int64, keyIndex int, fingerprint string) {
+						updateCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+						defer cancel()
+						if err := s.store.SetDeviceFingerprint(updateCtx, channelID, keyIndex, fingerprint); err != nil {
+							log.Printf("[ERROR] [测试] 保存设备指纹失败 (channel=%d, key=%d): %v", channelID, keyIndex, err)
+						} else {
+							log.Printf("[INFO] [测试] 已为渠道 #%d Key #%d 生成并保存设备指纹: %s", channelID, keyIndex, fp.GetSummary())
+						}
+					}(id, keyIndex, fpJSON)
+				}
+			}
+		}
+
 		// 构建 Kiro 认证配置（从独立字段读取）
 		kiroConfig := &KiroAuthConfig{
 			AuthType:     KiroAuthMethodSocial, // 默认 Social 方式
