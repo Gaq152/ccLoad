@@ -14,6 +14,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"ccLoad/internal/model"
@@ -24,6 +25,23 @@ import (
 // QuotaFetchRequest 用量查询请求（可选，用于测试未保存的配置）
 type QuotaFetchRequest struct {
 	QuotaConfig *model.QuotaConfig `json:"quota_config,omitempty"`
+}
+
+// QuotaFetchResult SSE 推送的结果结构
+type QuotaFetchResult struct {
+	ChannelID   int64              `json:"channel_id"`
+	ChannelName string             `json:"channel_name"`
+	Success     bool               `json:"success"`
+	Data        *QuotaFetchResponse `json:"data,omitempty"`
+	Error       string             `json:"error,omitempty"`
+	ElapsedMs   int64              `json:"elapsed_ms,omitempty"`
+}
+
+// QuotaFetchResponse 用量查询响应（复用现有格式）
+type QuotaFetchResponse struct {
+	StatusCode int               `json:"status_code"`
+	Headers    map[string]string `json:"headers,omitempty"`
+	Body       string            `json:"body,omitempty"`
 }
 
 // handleQuotaFetch 代理渠道用量查询请求
@@ -714,4 +732,454 @@ func fetchChallengeCookie(targetURL string) (string, error) {
 	}
 
 	return cookieResp.Cookie, nil
+}
+
+// ============================================================================
+// 批量用量查询（异步 + SSE 推送）
+// ============================================================================
+
+// handleQuotaFetchAll 批量用量查询 SSE 端点
+// GET /admin/quota/fetch-all?concurrency=10
+//
+// 功能：
+//  1. 获取所有启用用量监控的渠道
+//  2. 使用 Worker Pool 并发查询
+//  3. 通过 SSE 逐个推送结果
+func (s *Server) handleQuotaFetchAll(c *gin.Context) {
+	// 解析并发数参数（默认 10，最大 50）
+	concurrency := 10
+	if concStr := c.Query("concurrency"); concStr != "" {
+		if val, err := strconv.Atoi(concStr); err == nil {
+			concurrency = val
+			if concurrency < 1 {
+				concurrency = 1
+			} else if concurrency > 50 {
+				concurrency = 50
+			}
+		}
+	}
+
+	// 设置 SSE 响应头
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	c.Header("X-Accel-Buffering", "no") // 禁用 nginx 缓冲
+
+	w := c.Writer
+
+	// 全局超时控制（5 分钟）
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Minute)
+	defer cancel()
+
+	// 获取所有启用用量监控的渠道
+	channels := s.getEnabledQuotaChannels(ctx)
+	totalCount := len(channels)
+
+	log.Printf("[INFO] [QuotaBatch] 开始批量用量查询：总数=%d, 并发数=%d", totalCount, concurrency)
+	startTime := time.Now()
+
+	// 发送初始连接成功事件
+	if _, err := w.WriteString("event: connected\ndata: {\"status\":\"connected\",\"total\":" + strconv.Itoa(totalCount) + "}\n\n"); err != nil {
+		return
+	}
+	w.Flush()
+
+	// Worker Pool
+	jobs := make(chan *model.Config, totalCount)
+	results := make(chan QuotaFetchResult, concurrency)
+
+	// 启动 Worker
+	var wg sync.WaitGroup
+	for i := 0; i < concurrency; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for cfg := range jobs {
+				// 每个渠道单独超时（30 秒）
+				chCtx, chCancel := context.WithTimeout(ctx, 30*time.Second)
+				res := s.fetchQuotaForChannel(chCtx, cfg, nil)
+				chCancel()
+
+				// 发送结果（防止阻塞）
+				select {
+				case results <- res:
+				case <-ctx.Done():
+					return
+				}
+			}
+		}()
+	}
+
+	// 发送任务
+	go func() {
+		defer close(jobs)
+		for _, cfg := range channels {
+			select {
+			case jobs <- cfg:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	// 关闭 results channel
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	// 心跳定时器（每 30 秒）
+	heartbeat := time.NewTicker(30 * time.Second)
+	defer heartbeat.Stop()
+
+	// 推送结果
+	successCount := 0
+	failedCount := 0
+	completedCount := 0
+
+	for {
+		select {
+		case <-ctx.Done():
+			// 客户端断开或超时
+			log.Printf("[WARN] [QuotaBatch] 批量查询中断：已完成=%d/%d", completedCount, totalCount)
+			return
+
+		case <-heartbeat.C:
+			// 发送心跳保活
+			if _, err := w.WriteString(": heartbeat\n\n"); err != nil {
+				return
+			}
+			w.Flush()
+
+		case res, ok := <-results:
+			if !ok {
+				// 所有任务完成
+				elapsed := time.Since(startTime)
+				log.Printf("[INFO] [QuotaBatch] 批量查询完成：总数=%d, 成功=%d, 失败=%d, 耗时=%v",
+					totalCount, successCount, failedCount, elapsed)
+
+				// 发送完成事件
+				doneData := fmt.Sprintf("{\"status\":\"done\",\"total\":%d,\"success\":%d,\"failed\":%d,\"elapsed_ms\":%d}",
+					totalCount, successCount, failedCount, elapsed.Milliseconds())
+				_, _ = w.WriteString("event: done\ndata: " + doneData + "\n\n")
+				w.Flush()
+				return
+			}
+
+			// 统计
+			completedCount++
+			if res.Success {
+				successCount++
+			} else {
+				failedCount++
+			}
+
+			// 推送结果
+			if err := writeSSEQuotaResult(w, res); err != nil {
+				log.Printf("[WARN] [QuotaBatch] 推送结果失败 (channel=%d): %v", res.ChannelID, err)
+				return
+			}
+			w.Flush()
+		}
+	}
+}
+
+// getEnabledQuotaChannels 获取所有启用用量监控的渠道
+func (s *Server) getEnabledQuotaChannels(ctx context.Context) []*model.Config {
+	// 获取所有渠道配置
+	configs, err := s.store.ListConfigs(ctx)
+	if err != nil {
+		log.Printf("[ERROR] [QuotaBatch] 获取渠道列表失败: %v", err)
+		return nil
+	}
+
+	// 筛选启用用量监控的渠道
+	var enabled []*model.Config
+	for _, cfg := range configs {
+		// 检查用量监控是否启用
+		if cfg.QuotaConfig != nil && cfg.QuotaConfig.Enabled {
+			enabled = append(enabled, cfg)
+		}
+	}
+
+	return enabled
+}
+
+// fetchQuotaForChannel 查询单个渠道用量（纯函数）
+// 从 handleQuotaFetch() 提取核心逻辑
+func (s *Server) fetchQuotaForChannel(ctx context.Context, cfg *model.Config, overrideQC *model.QuotaConfig) QuotaFetchResult {
+	startTime := time.Now()
+	result := QuotaFetchResult{
+		ChannelID:   cfg.ID,
+		ChannelName: cfg.Name,
+	}
+
+	// 使用覆盖配置或渠道配置
+	qc := overrideQC
+	if qc == nil {
+		qc = cfg.QuotaConfig
+	}
+
+	// 验证配置
+	if qc == nil || !qc.Enabled {
+		result.Error = "quota monitoring not enabled"
+		return result
+	}
+
+	if qc.RequestURL == "" {
+		result.Error = "quota config missing request_url"
+		return result
+	}
+
+	// URL 安全验证
+	if err := validateQuotaURL(qc.RequestURL); err != nil {
+		result.Error = "invalid request_url: " + err.Error()
+		return result
+	}
+
+	// 验证 HTTP 方法
+	method := strings.ToUpper(qc.GetRequestMethod())
+	if method != "GET" && method != "POST" {
+		result.Error = "invalid request method, only GET/POST allowed"
+		return result
+	}
+
+	// acw_sc__v2 反爬模式：调用外部服务
+	if qc.ChallengeMode == "acw_sc__v2" {
+		resp, err := s.fetchAcwScV2Quota(ctx, qc)
+		if err != nil {
+			result.Error = err.Error()
+			result.ElapsedMs = time.Since(startTime).Milliseconds()
+			return result
+		}
+		result.Success = true
+		result.Data = resp
+		result.ElapsedMs = time.Since(startTime).Milliseconds()
+		return result
+	}
+
+	// 构建 HTTP 请求
+	var bodyReader io.Reader
+	if method == "POST" && qc.RequestBody != "" {
+		if len(qc.RequestBody) > 64*1024 {
+			result.Error = "request_body too large (max 64KB)"
+			return result
+		}
+		bodyReader = bytes.NewBufferString(qc.RequestBody)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, qc.RequestURL, bodyReader)
+	if err != nil {
+		result.Error = "failed to create request: " + err.Error()
+		return result
+	}
+
+	// 设置默认请求头
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
+	req.Header.Set("Accept", "application/json, text/plain, */*")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7")
+
+	// 添加自定义请求头
+	blockedHeaders := map[string]bool{
+		"host":              true,
+		"content-length":    true,
+		"transfer-encoding": true,
+		"connection":        true,
+		"upgrade":           true,
+		"te":                true,
+		"trailer":           true,
+	}
+	for key, value := range qc.RequestHeaders {
+		lowerKey := strings.ToLower(key)
+		if blockedHeaders[lowerKey] || strings.HasPrefix(lowerKey, "proxy-") {
+			continue
+		}
+		req.Header.Set(key, value)
+	}
+
+	// 执行请求
+	tlsConfig := &tls.Config{
+		MinVersion:         tls.VersionTLS12,
+		InsecureSkipVerify: false,
+		CipherSuites: []uint16{
+			tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+			tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+			tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+			tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+			tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
+			tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,
+		},
+		CurvePreferences: []tls.CurveID{
+			tls.X25519,
+			tls.CurveP256,
+			tls.CurveP384,
+		},
+	}
+
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+		Transport: &http.Transport{
+			DisableCompression: true,
+			Proxy:              nil,
+			TLSClientConfig:    tlsConfig,
+			ForceAttemptHTTP2:  true,
+		},
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		result.Error = "upstream request failed: " + err.Error()
+		result.ElapsedMs = time.Since(startTime).Milliseconds()
+		return result
+	}
+	defer resp.Body.Close()
+
+	// 读取响应体
+	bodyBytes, err := readResponseBody(resp)
+	if err != nil {
+		result.Error = "failed to read response body: " + err.Error()
+		result.ElapsedMs = time.Since(startTime).Milliseconds()
+		return result
+	}
+
+	// 提取响应头
+	respHeaders := make(map[string]string)
+	for _, key := range []string{"Content-Type", "X-RateLimit-Remaining", "X-RateLimit-Limit"} {
+		if val := resp.Header.Get(key); val != "" {
+			respHeaders[key] = val
+		}
+	}
+
+	// 成功
+	result.Success = true
+	result.Data = &QuotaFetchResponse{
+		StatusCode: resp.StatusCode,
+		Headers:    respHeaders,
+		Body:       string(bodyBytes),
+	}
+	result.ElapsedMs = time.Since(startTime).Milliseconds()
+	return result
+}
+
+// fetchAcwScV2Quota 处理 acw_sc__v2 反爬模式的用量查询
+func (s *Server) fetchAcwScV2Quota(ctx context.Context, qc *model.QuotaConfig) (*QuotaFetchResponse, error) {
+	serviceURL := os.Getenv("ANYROUTER_COOKIE_SERVICE")
+	if serviceURL == "" {
+		return nil, fmt.Errorf("ANYROUTER_COOKIE_SERVICE 环境变量未设置")
+	}
+
+	// 从请求头配置中提取 Cookie 和 New-Api-User
+	cookieHeader := ""
+	userID := ""
+	for key, value := range qc.RequestHeaders {
+		switch strings.ToLower(key) {
+		case "cookie":
+			cookieHeader = value
+		case "new-api-user":
+			userID = value
+		}
+	}
+
+	if cookieHeader == "" {
+		return nil, fmt.Errorf("缺少 Cookie 请求头配置")
+	}
+	if userID == "" {
+		return nil, fmt.Errorf("缺少 New-Api-User 请求头配置")
+	}
+
+	// 从 Cookie 中提取 session
+	session := extractSessionFromCookie(cookieHeader)
+	if session == "" {
+		return nil, fmt.Errorf("Cookie 中未找到 session")
+	}
+
+	// 解析目标 URL 获取路径
+	parsedURL, err := url.Parse(qc.RequestURL)
+	if err != nil {
+		return nil, fmt.Errorf("无效的请求 URL")
+	}
+	targetPath := parsedURL.Path
+	if targetPath == "" {
+		targetPath = "/api/user/self"
+	}
+
+	// 调用外部服务的 /api/quota 端点
+	reqURL := strings.TrimSuffix(serviceURL, "/") + "/api/quota"
+
+	reqBody := map[string]string{
+		"session": session,
+		"user_id": userID,
+		"target":  targetPath,
+	}
+	reqBodyBytes, _ := json.Marshal(reqBody)
+
+	req, err := http.NewRequestWithContext(ctx, "POST", reqURL, bytes.NewReader(reqBodyBytes))
+	if err != nil {
+		return nil, fmt.Errorf("创建请求失败: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			Proxy: http.ProxyFromEnvironment,
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true,
+			},
+		},
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("请求外部服务失败: %v", err)
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return nil, fmt.Errorf("读取响应失败: %v", err)
+	}
+
+	// 解析外部服务响应
+	var extResp struct {
+		Success bool            `json:"success"`
+		Data    json.RawMessage `json:"data"`
+		Error   *string         `json:"error"`
+	}
+	if err := json.Unmarshal(bodyBytes, &extResp); err != nil {
+		return nil, fmt.Errorf("解析外部服务响应失败: %v", err)
+	}
+
+	if !extResp.Success {
+		errMsg := "外部服务返回错误"
+		if extResp.Error != nil {
+			errMsg = *extResp.Error
+		}
+		return nil, fmt.Errorf(errMsg)
+	}
+
+	// 返回与原有格式一致的响应
+	return &QuotaFetchResponse{
+		StatusCode: 200,
+		Headers:    map[string]string{"Content-Type": "application/json"},
+		Body:       string(extResp.Data),
+	}, nil
+}
+
+// writeSSEQuotaResult 写入 SSE 事件
+func writeSSEQuotaResult(w gin.ResponseWriter, res QuotaFetchResult) error {
+	data, err := json.Marshal(res)
+	if err != nil {
+		return err
+	}
+	if _, err := w.WriteString("event: quota\ndata: "); err != nil {
+		return err
+	}
+	if _, err := w.Write(data); err != nil {
+		return err
+	}
+	_, err = w.WriteString("\n\n")
+	return err
 }

@@ -13,6 +13,7 @@
   <script src="/web/assets/js/theme.js"></script>
   <link href="/web/assets/css/inter.css" rel="stylesheet">
   <link rel="stylesheet" href="/web/assets/css/channels.css">
+  <link rel="stylesheet" href="/web/assets/css/channels-quota-batch.css">
 </head>
 <body class="dashboard-theme">
   <div class="app-container">
@@ -107,6 +108,15 @@
                 <line x1="16" y1="3" x2="14" y2="21"></line>
               </svg>
               排序
+            </button>
+            <!-- 刷新所有用量按钮 -->
+            <button type="button" id="refreshAllQuotaBtn" class="btn btn-primary btn-sm" onclick="QuotaBatchManager.start()" title="批量刷新所有渠道的用量数据">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px;">
+                <polyline points="23 4 23 10 17 10"></polyline>
+                <polyline points="1 20 1 14 7 14"></polyline>
+                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+              </svg>
+              刷新所有用量
             </button>
           </div>
         </div>
@@ -1161,7 +1171,9 @@ function(response) {
   <script src="/web/assets/js/channels-keys.js"></script>
   <script src="/web/assets/js/channels-inline-endpoints.js"></script>
   <script src="/web/assets/js/channels-modals.js"></script>
+  <script src="/web/assets/js/channels-quota-queue.js"></script>
   <script src="/web/assets/js/channels-quota.js"></script>
+  <script src="/web/assets/js/channels-quota-batch.js"></script>
   <script src="/web/assets/js/channels-endpoints.js"></script>
   <script src="/web/assets/js/channels-test.js"></script>
   <script src="/web/assets/js/ui.js"></script>

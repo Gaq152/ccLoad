@@ -456,6 +456,7 @@ func (s *Server) SetupRoutes(r *gin.Engine) {
 
 		// 渠道用量监控
 		admin.POST("/channels/:id/quota/fetch", s.handleQuotaFetch)
+		admin.GET("/quota/fetch-all", s.handleQuotaFetchAll) // 批量用量查询（SSE）
 
 		// OAuth Token 代理（用于 Codex 渠道 OAuth 流程）
 		admin.POST("/oauth/token", s.HandleOAuthToken)

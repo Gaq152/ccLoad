@@ -1,0 +1,192 @@
+/* ============================================================================
+   批量用量查询进度悬浮窗
+   ============================================================================ */
+
+/* 右下角悬浮进度窗 */
+.batch-status-card {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    width: 320px;
+    background: var(--card-bg, white);
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+    padding: 20px;
+    z-index: 1000;
+    font-family: system-ui, -apple-system, sans-serif;
+    display: none; /* 默认隐藏 */
+    animation: slideIn 0.3s ease;
+    border: 1px solid var(--border-color, #e5e7eb);
+}
+
+.batch-status-card.active {
+    display: block;
+}
+
+/* 状态头部 */
+.status-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.status-header .title {
+    font-weight: 600;
+    font-size: 15px;
+    color: var(--text-primary, #1f2937);
+}
+
+.status-header .count {
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--primary-500, #3b82f6);
+    background: var(--primary-50, #eff6ff);
+    padding: 4px 10px;
+    border-radius: 12px;
+}
+
+/* 进度条轨道 */
+.progress-track {
+    height: 8px;
+    background: var(--gray-200, #e5e7eb);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 12px;
+}
+
+/* 进度条填充 */
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--primary-500, #3b82f6), var(--primary-600, #2563eb));
+    width: 0%;
+    transition: width 0.3s ease;
+    border-radius: 4px;
+}
+
+/* 当前操作描述 */
+.current-action {
+    font-size: 13px;
+    color: var(--text-secondary, #6b7280);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 12px;
+    min-height: 20px;
+}
+
+/* 取消按钮 */
+.cancel-btn {
+    width: 100%;
+    padding: 8px 16px;
+    background: var(--gray-100, #f3f4f6);
+    color: var(--text-secondary, #6b7280);
+    border: 1px solid var(--border-color, #e5e7eb);
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.cancel-btn:hover {
+    background: var(--gray-200, #e5e7eb);
+    color: var(--text-primary, #1f2937);
+}
+
+/* ============================================================================
+   渠道卡片状态样式
+   ============================================================================ */
+
+/* 卡片局部 Loading 状态 */
+.channel-quota-badge.updating {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+.channel-quota-badge.updating::after {
+    content: '';
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border: 2px solid var(--primary-500, #3b82f6);
+    border-radius: 50%;
+    border-top-color: transparent;
+    animation: spin 1s linear infinite;
+    margin-left: 8px;
+    vertical-align: middle;
+}
+
+/* 成功闪烁动画 */
+@keyframes flash-green {
+    0% {
+        background-color: rgba(16, 185, 129, 0.2);
+    }
+    100% {
+        background-color: transparent;
+    }
+}
+
+.channel-quota-badge.updated {
+    animation: flash-green 1s ease-out;
+}
+
+/* ============================================================================
+   动画定义
+   ============================================================================ */
+
+/* 滑入动画 */
+@keyframes slideIn {
+    from {
+        transform: translateY(20px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+/* 旋转动画 */
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* ============================================================================
+   暗色主题适配
+   ============================================================================ */
+
+[data-theme="dark"] .batch-status-card {
+    background: var(--card-bg-dark, #1f2937);
+    border-color: var(--border-color-dark, #374151);
+}
+
+[data-theme="dark"] .status-header .title {
+    color: var(--text-primary-dark, #f9fafb);
+}
+
+[data-theme="dark"] .status-header .count {
+    background: var(--primary-900, #1e3a8a);
+    color: var(--primary-300, #93c5fd);
+}
+
+[data-theme="dark"] .progress-track {
+    background: var(--gray-700, #374151);
+}
+
+[data-theme="dark"] .current-action {
+    color: var(--text-secondary-dark, #9ca3af);
+}
+
+[data-theme="dark"] .cancel-btn {
+    background: var(--gray-800, #1f2937);
+    color: var(--text-secondary-dark, #9ca3af);
+    border-color: var(--border-color-dark, #374151);
+}
+
+[data-theme="dark"] .cancel-btn:hover {
+    background: var(--gray-700, #374151);
+    color: var(--text-primary-dark, #f9fafb);
+}
