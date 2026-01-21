@@ -37,9 +37,15 @@ func (s *Server) HandleKiroRefresh(c *gin.Context) {
 		ClientSecret: req.ClientSecret,
 	}
 
-	// 默认 Social 方式
+	// 自动推断认证类型（与其他地方保持一致）
 	if config.AuthType == "" {
-		config.AuthType = KiroAuthMethodSocial
+		// 如果同时存在 clientId 和 clientSecret，自动推断为 IdC
+		if config.ClientID != "" && config.ClientSecret != "" {
+			config.AuthType = KiroAuthMethodIdC
+			log.Printf("[INFO] [Kiro Refresh] 自动推断为 IdC 认证模式 (clientId=%s)", config.ClientID)
+		} else {
+			config.AuthType = KiroAuthMethodSocial
+		}
 	}
 
 	// IdC 方式需要 client_id 和 client_secret

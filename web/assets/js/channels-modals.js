@@ -2907,9 +2907,11 @@ function updateKiroTokenUI(token) {
 
     tokenInfo.style.display = 'block';
 
-    // 判断认证类型（优先使用 authMethod 字段，兼容 startUrl 判断）
+    // 判断认证类型（优先使用 authMethod 字段，兼容 startUrl 判断，自动推断）
     const authMethod = token.authMethod || token.auth_method || '';
-    const isIdC = authMethod === 'IdC' || authMethod === 'idc' || !!token.startUrl;
+    const hasCredentials = !!(token.clientId || token.client_id) &&
+                           !!(token.clientSecret || token.client_secret);
+    const isIdC = authMethod === 'IdC' || authMethod === 'idc' || !!token.startUrl || hasCredentials;
     const authType = isIdC ? 'IdC (Builder ID)' : 'Social (GitHub/Google)';
     authTypeEl.textContent = authType;
 
@@ -3219,10 +3221,11 @@ async function refreshKiroToken() {
   try {
     // 构建刷新请求
     const refreshToken = token.refreshToken || token.refresh_token;
-    // 判断 IdC 方式：1. 显式 authMethod 字段  2. 存在完整的 clientId/clientSecret
+    // 判断 IdC 方式：1. 显式 authMethod 字段  2. 存在完整的 clientId/clientSecret（自动推断）
     const authMethod = token.authMethod || token.auth_method || '';
-    const isIdC = authMethod === 'IdC' || authMethod === 'idc' ||
-                  !!(token.startUrl && token.clientId && token.clientSecret);
+    const hasCredentials = !!(token.clientId || token.client_id) &&
+                           !!(token.clientSecret || token.client_secret);
+    const isIdC = authMethod === 'IdC' || authMethod === 'idc' || hasCredentials;
 
     const reqBody = {
       refresh_token: refreshToken,
