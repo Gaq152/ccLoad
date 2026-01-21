@@ -699,6 +699,19 @@ function(response) {
     </div>
   </div>
 
+  <!-- 批量删除确认模态框 -->
+  <div id="bulkDeleteModal" class="modal">
+    <div class="modal-content confirm-modal">
+      <h2 class="modal-title">确认删除</h2>
+      <p>确定要删除选中的 <span id="bulkDeleteCount"></span> 个渠道吗？</p>
+      <p style="color: var(--error-600); font-size: 0.875rem;">此操作不可恢复！</p>
+      <div class="confirm-actions">
+        <button class="btn btn-secondary" onclick="closeBulkDeleteModal()">取消</button>
+        <button class="btn btn-danger" onclick="confirmBulkDelete()">删除</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 测试渠道模态框 -->
   <div id="testModal" class="modal">
     <div class="modal-content test-modal-content">
