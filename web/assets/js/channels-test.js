@@ -87,79 +87,100 @@ async function testChannel(id, name) {
   const channel = channels.find(c => c.id === id);
   if (!channel) return;
 
+  // 性能优化：立即显示弹窗，提升响应速度
   testingChannelId = id;
   document.getElementById('testChannelName').textContent = name;
 
-  const modelSelect = document.getElementById('testModelSelect');
-  modelSelect.innerHTML = '';
-  channel.models.forEach(model => {
-    const option = document.createElement('option');
-    option.value = model;
-    option.textContent = model;
-    modelSelect.appendChild(option);
-  });
-
-  // 选择计费最低的模型作为默认值
-  if (channel.models.length > 0) {
-    try {
-      const result = await fetchDataWithAuth('/admin/models/cheapest', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ models: channel.models })
-      });
-      if (result?.model) {
-        modelSelect.value = result.model;
-      }
-    } catch (e) {
-      console.warn('获取推荐模型失败，使用第一个模型', e);
-    }
-  }
-
-  let apiKeys = [];
-  try {
-    apiKeys = await fetchDataWithAuth(`/admin/channels/${id}/keys`) || [];
-  } catch (e) {
-    console.error('获取API Keys失败', e);
-  }
-
-  const keys = apiKeys.map(k => k.api_key || k);
-  const keySelect = document.getElementById('testKeySelect');
-  const keySelectGroup = document.getElementById('testKeySelectGroup');
-  const batchTestBtn = document.getElementById('batchTestBtn');
-
-  if (keys.length > 1) {
-    keySelectGroup.style.display = 'block';
-    batchTestBtn.style.display = 'inline-block';
-    
-    keySelect.innerHTML = '';
-    const maxKeys = Math.min(keys.length, 10);
-    for (let i = 0; i < maxKeys; i++) {
-      const option = document.createElement('option');
-      option.value = i;
-      option.textContent = `Key ${i + 1}: ${maskKey(keys[i])}`;
-      keySelect.appendChild(option);
-    }
-    
-    if (keys.length > 10) {
-      const hintOption = document.createElement('option');
-      hintOption.disabled = true;
-      hintOption.textContent = `... 还有 ${keys.length - 10} 个Key（使用批量测试）`;
-      keySelect.appendChild(hintOption);
-    }
-  } else {
-    keySelectGroup.style.display = 'none';
-    batchTestBtn.style.display = 'none';
-  }
-
-  resetTestModal();
-
-  const channelType = channel.channel_type || 'anthropic';
-  await window.ChannelTypeManager.renderChannelTypeSelect('testChannelType', channelType);
-
-  // 根据渠道类型更新流式开关状态
-  updateStreamCheckbox();
-
+  // 立即显示弹窗
   document.getElementById('testModal').classList.add('show');
+
+  // 显示加载状态
+  const modalContent = document.querySelector('#testModal .modal-body');
+  if (modalContent) {
+    modalContent.style.opacity = '0.6';
+    modalContent.style.pointerEvents = 'none';
+  }
+
+  // 异步加载数据
+  try {
+    // 填充模型列表
+    const modelSelect = document.getElementById('testModelSelect');
+    modelSelect.innerHTML = '';
+    channel.models.forEach(model => {
+      const option = document.createElement('option');
+      option.value = model;
+      option.textContent = model;
+      modelSelect.appendChild(option);
+    });
+
+    // 选择计费最低的模型作为默认值
+    if (channel.models.length > 0) {
+      try {
+        const result = await fetchDataWithAuth('/admin/models/cheapest', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ models: channel.models })
+        });
+        if (result?.model) {
+          modelSelect.value = result.model;
+        }
+      } catch (e) {
+        console.warn('获取推荐模型失败，使用第一个模型', e);
+      }
+    }
+
+    // 加载 API Keys
+    let apiKeys = [];
+    try {
+      apiKeys = await fetchDataWithAuth(`/admin/channels/${id}/keys`) || [];
+    } catch (e) {
+      console.error('获取API Keys失败', e);
+    }
+
+    const keys = apiKeys.map(k => k.api_key || k);
+    const keySelect = document.getElementById('testKeySelect');
+    const keySelectGroup = document.getElementById('testKeySelectGroup');
+    const batchTestBtn = document.getElementById('batchTestBtn');
+
+    if (keys.length > 1) {
+      keySelectGroup.style.display = 'block';
+      batchTestBtn.style.display = 'inline-block';
+
+      keySelect.innerHTML = '';
+      const maxKeys = Math.min(keys.length, 10);
+      for (let i = 0; i < maxKeys; i++) {
+        const option = document.createElement('option');
+        option.value = i;
+        option.textContent = `Key ${i + 1}: ${maskKey(keys[i])}`;
+        keySelect.appendChild(option);
+      }
+
+      if (keys.length > 10) {
+        const hintOption = document.createElement('option');
+        hintOption.disabled = true;
+        hintOption.textContent = `... 还有 ${keys.length - 10} 个Key（使用批量测试）`;
+        keySelect.appendChild(hintOption);
+      }
+    } else {
+      keySelectGroup.style.display = 'none';
+      batchTestBtn.style.display = 'none';
+    }
+
+    resetTestModal();
+
+    const channelType = channel.channel_type || 'anthropic';
+    await window.ChannelTypeManager.renderChannelTypeSelect('testChannelType', channelType);
+
+    // 根据渠道类型更新流式开关状态
+    updateStreamCheckbox();
+
+  } finally {
+    // 恢复交互状态
+    if (modalContent) {
+      modalContent.style.opacity = '1';
+      modalContent.style.pointerEvents = 'auto';
+    }
+  }
 }
 
 function closeTestModal() {
