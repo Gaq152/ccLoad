@@ -98,6 +98,16 @@ func TestParseKiroAuthConfig_AutoDetectIdC(t *testing.T) {
 			shouldBeNil:  true,
 			description:  "缺少 refreshToken 应该返回 nil",
 		},
+		{
+			name: "IdC模式-有clientId和clientSecret但无refreshToken-真实场景",
+			input: `{
+				"clientId": "fzZxiQBSfY81EeIqVMjm7XVzLWVhc3QtMQ",
+				"clientSecret": "eyJraWQiOiJrZXktMTU2NDAyODA5OSIsImFsZyI6IkhTMzg0In0.test"
+			}`,
+			expectedType: "",
+			shouldBeNil:  true,
+			description:  "真实场景：id_token 字段包含 clientId/clientSecret，但 refreshToken 在数据库另一列，解析应该返回 nil",
+		},
 	}
 
 	for _, tt := range tests {

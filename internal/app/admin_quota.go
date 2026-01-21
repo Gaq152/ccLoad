@@ -19,6 +19,7 @@ import (
 
 	"ccLoad/internal/model"
 
+	"github.com/bytedance/sonic"
 	"github.com/gin-gonic/gin"
 )
 
@@ -97,43 +98,62 @@ func (s *Server) handleQuotaFetch(c *gin.Context) {
 
 				// 检查 Token 是否需要刷新
 				if IsKiroTokenExpiringSoon(firstKey.TokenExpiresAt) {
-					// 构建认证配置
-					var kiroConfig *KiroAuthConfig
-
-					// 尝试从 IDToken 解析 IdC 认证信息
-					if firstKey.IDToken != "" {
-						kiroConfig = ParseKiroAuthConfig(firstKey.IDToken)
+					// 构建认证配置（与 proxy_forward.go 保持一致）
+					if firstKey.RefreshToken == "" {
+						log.Printf("[WARN] [Kiro Quota] Key#0 缺少 RefreshToken，跳过刷新 (channel=%d)", channelID)
+						return
 					}
 
-					// 如果 IDToken 解析失败，使用 Social 方式
-					if kiroConfig == nil && firstKey.RefreshToken != "" {
-						kiroConfig = &KiroAuthConfig{
-							AuthType:     KiroAuthMethodSocial,
-							RefreshToken: firstKey.RefreshToken,
+					kiroConfig := &KiroAuthConfig{
+						AuthType:     KiroAuthMethodSocial, // 默认 Social 方式
+						RefreshToken: firstKey.RefreshToken,
+					}
+
+					// 检查是否是 IdC 方式（id_token 字段存储了 IdC 配置 JSON）
+					if firstKey.IDToken != "" && strings.HasPrefix(firstKey.IDToken, "{") {
+						var idcInfo struct {
+							AuthMethod   string `json:"authMethod"`
+							Auth         string `json:"auth"`
+							ClientID     string `json:"clientId"`
+							ClientSecret string `json:"clientSecret"`
 						}
-					}
-
-					if kiroConfig != nil {
-						// 尝试刷新 Token
-						newAccessToken, newExpiresAt, err := s.RefreshKiroTokenIfNeeded(
-							c.Request.Context(),
-							channelID,
-							0, // keyIndex
-							kiroConfig,
-							firstKey.AccessToken,
-							firstKey.TokenExpiresAt,
-						)
-						if err == nil && newAccessToken != "" {
-							// 刷新成功，更新 RequestHeaders 中的 Authorization
-							if qc.RequestHeaders == nil {
-								qc.RequestHeaders = make(map[string]string)
+						if err := sonic.Unmarshal([]byte(firstKey.IDToken), &idcInfo); err == nil {
+							// 判断 IdC 方式：
+							// 1. 显式 authMethod 或 auth 字段
+							// 2. 自动推断：同时存在 clientId 和 clientSecret
+							isIdC := idcInfo.AuthMethod == KiroAuthMethodIdC ||
+								idcInfo.Auth == KiroAuthMethodIdC ||
+								strings.EqualFold(idcInfo.AuthMethod, "idc") ||
+								strings.EqualFold(idcInfo.Auth, "idc") ||
+								(idcInfo.ClientID != "" && idcInfo.ClientSecret != "")
+							if isIdC {
+								kiroConfig.AuthType = KiroAuthMethodIdC
+								kiroConfig.ClientID = idcInfo.ClientID
+								kiroConfig.ClientSecret = idcInfo.ClientSecret
+								log.Printf("[INFO] [Kiro Quota] 检测到 IdC 认证模式 (channel=%d, clientId=%s)", channelID, idcInfo.ClientID)
 							}
-							qc.RequestHeaders["Authorization"] = "Bearer " + newAccessToken
-							tokenRefreshed = true
-							log.Printf("[INFO] [Kiro Quota] Token 已自动刷新 (channel=%d, expiresAt=%d)", channelID, newExpiresAt)
-						} else {
-							log.Printf("[WARN] [Kiro Quota] Token 刷新失败 (channel=%d): %v", channelID, err)
 						}
+					}
+
+					// 尝试刷新 Token
+					newAccessToken, newExpiresAt, err := s.RefreshKiroTokenIfNeeded(
+						c.Request.Context(),
+						channelID,
+						0, // keyIndex
+						kiroConfig,
+						firstKey.AccessToken,
+						firstKey.TokenExpiresAt,
+					)
+					if err == nil && newAccessToken != "" {
+						// 刷新成功，更新 RequestHeaders 中的 Authorization
+						if qc.RequestHeaders == nil {
+							qc.RequestHeaders = make(map[string]string)
+						}
+						qc.RequestHeaders["Authorization"] = "Bearer " + newAccessToken
+						tokenRefreshed = true
+						log.Printf("[INFO] [Kiro Quota] Token 已自动刷新 (channel=%d, expiresAt=%d)", channelID, newExpiresAt)
+					} else {
+						log.Printf("[WARN] [Kiro Quota] Token 刷新失败 (channel=%d): %v", channelID, err)
 					}
 				}
 			}
@@ -1157,7 +1177,7 @@ func (s *Server) fetchAcwScV2Quota(ctx context.Context, qc *model.QuotaConfig) (
 		if extResp.Error != nil {
 			errMsg = *extResp.Error
 		}
-		return nil, fmt.Errorf(errMsg)
+		return nil, fmt.Errorf("%s", errMsg)
 	}
 
 	// 返回与原有格式一致的响应
