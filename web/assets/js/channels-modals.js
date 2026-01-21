@@ -151,8 +151,8 @@ async function editChannel(id) {
     // 初始化渠道类型相关 UI（Codex OAuth 区块）
     initChannelTypeEventListener();
 
-  // OAuth 渠道（Codex/Gemini）：根据预设类型设置 UI
-  if (channelType === 'codex' || channelType === 'gemini') {
+    // OAuth 渠道（Codex/Gemini）：根据预设类型设置 UI
+    if (channelType === 'codex' || channelType === 'gemini') {
     // 从后端获取预设类型（新字段），如果没有则根据数据推断
     let preset = channel.preset || '';
 
@@ -314,10 +314,16 @@ async function editChannel(id) {
   window.addEventListener('message', handleCodexOAuthMessage);
   window.addEventListener('message', handleGeminiOAuthMessage);
 
-  document.getElementById('channelModal').classList.add('show');
-
   // 启动冷却倒计时（包括 Key 冷却）
   checkAndStartCooldownCountdown();
+
+  } finally {
+    // 恢复交互状态
+    if (modalContent) {
+      modalContent.style.opacity = '1';
+      modalContent.style.pointerEvents = 'auto';
+    }
+  }
 }
 
 function closeModal() {
