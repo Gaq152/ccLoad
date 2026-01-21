@@ -594,12 +594,59 @@ async function toggleChannel(id, enabled) {
       body: JSON.stringify({ enabled })
     });
     if (!res.success) throw new Error(res.error || '操作失败');
+
+    // 性能优化：局部更新而不是重新加载所有渠道
+    const channel = channels.find(c => c.id === id);
+    if (channel) {
+      channel.enabled = enabled;
+      // 更新卡片的 DOM
+      updateChannelCardDOM(id, { enabled });
+    }
+
     clearChannelsCache();
-    await loadChannels(filters.channelType);
     if (window.showSuccess) showSuccess(enabled ? '渠道已启用' : '渠道已禁用');
   } catch (e) {
     console.error('切换失败', e);
     if (window.showError) showError('操作失败');
+  }
+}
+
+/**
+ * 局部更新渠道卡片 DOM（性能优化）
+ * @param {number} id - 渠道 ID
+ * @param {Object} updates - 要更新的字段
+ */
+function updateChannelCardDOM(id, updates) {
+  const card = document.querySelector(`.channel-card[data-channel-id="${id}"]`);
+  if (!card) return;
+
+  if ('enabled' in updates) {
+    const statusBadge = card.querySelector('.channel-status');
+    const toggleBtn = card.querySelector('.channel-action-btn[data-action="toggle"]');
+
+    if (updates.enabled) {
+      card.classList.remove('channel-disabled');
+      if (statusBadge) {
+        statusBadge.textContent = '已启用';
+        statusBadge.className = 'channel-status status-enabled';
+      }
+      if (toggleBtn) {
+        toggleBtn.dataset.enabled = 'true';
+        toggleBtn.title = '禁用渠道';
+        toggleBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg> 禁用';
+      }
+    } else {
+      card.classList.add('channel-disabled');
+      if (statusBadge) {
+        statusBadge.textContent = '已禁用';
+        statusBadge.className = 'channel-status status-disabled';
+      }
+      if (toggleBtn) {
+        toggleBtn.dataset.enabled = 'false';
+        toggleBtn.title = '启用渠道';
+        toggleBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg> 启用';
+      }
+    }
   }
 }
 
