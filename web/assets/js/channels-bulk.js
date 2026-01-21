@@ -275,8 +275,35 @@ async function executeBulkAction(action) {
   if (ids.length === 0) return;
 
   if (action === 'delete') {
-    if (!confirm(`确定要删除选中的 ${ids.length} 个渠道吗？此操作不可恢复！`)) return;
+    // 显示批量删除确认模态框
+    document.getElementById('bulkDeleteCount').textContent = ids.length;
+    document.getElementById('bulkDeleteModal').classList.add('show');
+    return;
   }
+
+  await performBulkAction(action, ids);
+}
+
+/**
+ * 关闭批量删除确认模态框
+ */
+function closeBulkDeleteModal() {
+  document.getElementById('bulkDeleteModal').classList.remove('show');
+}
+
+/**
+ * 确认批量删除
+ */
+async function confirmBulkDelete() {
+  closeBulkDeleteModal();
+  const ids = Array.from(bulkState.selectedIds);
+  await performBulkAction('delete', ids);
+}
+
+/**
+ * 执行批量操作（内部实现）
+ */
+async function performBulkAction(action, ids) {
 
   const btnId = `bulk${action.charAt(0).toUpperCase() + action.slice(1)}Btn`;
   const btn = document.getElementById(btnId);
@@ -352,6 +379,8 @@ window.toggleSelectAll = toggleSelectAll;
 window.togglePriorityLaneSelectAll = togglePriorityLaneSelectAll;
 window.clearBulkSelection = clearBulkSelection;
 window.executeBulkAction = executeBulkAction;
+window.closeBulkDeleteModal = closeBulkDeleteModal;
+window.confirmBulkDelete = confirmBulkDelete;
 window.updateBulkUI = updateBulkUI;
 window.updatePriorityLaneCheckboxes = updatePriorityLaneCheckboxes;
 window.bulkState = bulkState;
