@@ -1172,13 +1172,13 @@ html.dark .sort-mode-changes {
   bottom: 24px;
   left: 50%;
   transform: translateX(-50%) translateY(150%);
-  background: rgba(255, 255, 255, 0.95);
+  background: var(--theme-bulk-panel-bg);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: 1px solid var(--neutral-200);
+  border: 1px solid var(--theme-bulk-panel-border);
   padding: 12px 24px;
   border-radius: 16px;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1), 0 4px 10px rgba(0, 0, 0, 0.05);
+  box-shadow: var(--theme-bulk-panel-shadow);
   display: flex;
   align-items: center;
   gap: 16px;
@@ -1197,7 +1197,7 @@ html.dark .sort-mode-changes {
   align-items: center;
   gap: 8px;
   font-size: 14px;
-  color: var(--neutral-700);
+  color: var(--theme-bulk-text);
   font-weight: 500;
 }
 
@@ -1218,7 +1218,7 @@ html.dark .sort-mode-changes {
 .bulk-divider {
   width: 1px;
   height: 20px;
-  background: var(--neutral-300);
+  background: var(--theme-bulk-divider);
   margin: 0 4px;
 }
 
@@ -1230,23 +1230,23 @@ html.dark .sort-mode-changes {
 }
 
 .bulk-actions .btn-enable {
-  color: var(--success-600);
-  background: var(--success-50);
-  border-color: var(--success-200);
+  color: var(--success-400);
+  background: rgba(34, 197, 94, 0.15);
+  border-color: rgba(34, 197, 94, 0.3);
 }
 
 .bulk-actions .btn-enable:hover {
-  background: var(--success-100);
+  background: rgba(34, 197, 94, 0.25);
 }
 
 .bulk-actions .btn-disable {
-  color: var(--warning-700);
-  background: var(--warning-50);
-  border-color: var(--warning-200);
+  color: var(--warning-400);
+  background: rgba(245, 158, 11, 0.15);
+  border-color: rgba(245, 158, 11, 0.3);
 }
 
 .bulk-actions .btn-disable:hover {
-  background: var(--warning-100);
+  background: rgba(245, 158, 11, 0.25);
 }
 
 /* 小型加载动画 */
@@ -1276,36 +1276,4 @@ html.dark .sort-mode-changes {
   color: var(--theme-text-secondary);
 }
 
-.dashboard-theme #bulkActionBar {
-  background: rgba(30, 41, 59, 0.95);
-  border-color: var(--theme-border);
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
-}
-
-.dashboard-theme .bulk-info {
-  color: var(--theme-text-primary);
-}
-
-.dashboard-theme .bulk-divider {
-  background: var(--theme-border);
-}
-
-.dashboard-theme .bulk-actions .btn-enable {
-  background: rgba(34, 197, 94, 0.15);
-  color: var(--success-400);
-  border-color: rgba(34, 197, 94, 0.3);
-}
-
-.dashboard-theme .bulk-actions .btn-enable:hover {
-  background: rgba(34, 197, 94, 0.25);
-}
-
-.dashboard-theme .bulk-actions .btn-disable {
-  background: rgba(245, 158, 11, 0.15);
-  color: var(--warning-400);
-  border-color: rgba(245, 158, 11, 0.3);
-}
-
-.dashboard-theme .bulk-actions .btn-disable:hover {
-  background: rgba(245, 158, 11, 0.25);
-}
+/* 暗色主题下批量操作面板样式已通过主题变量统一，无需额外覆盖 */
