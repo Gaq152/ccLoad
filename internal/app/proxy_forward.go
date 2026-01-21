@@ -956,10 +956,14 @@ keyLoop:
 					ClientSecret string `json:"clientSecret"`
 				}
 				if err := sonic.Unmarshal([]byte(foundKey.IDToken), &idcInfo); err == nil {
-					// 判断 IdC 方式：1. 显式 authMethod 字段  2. 存在 startUrl（兼容旧数据）
+					// 判断 IdC 方式：
+					// 1. 显式 authMethod 字段
+					// 2. 存在 startUrl（兼容旧数据）
+					// 3. 自动推断：同时存在 clientId 和 clientSecret
 					isIdC := idcInfo.AuthMethod == KiroAuthMethodIdC ||
 						strings.EqualFold(idcInfo.AuthMethod, "idc") ||
-						idcInfo.StartUrl != ""
+						idcInfo.StartUrl != "" ||
+						(idcInfo.ClientID != "" && idcInfo.ClientSecret != "")
 					if isIdC {
 						kiroConfig.AuthType = KiroAuthMethodIdC
 						kiroConfig.ClientID = idcInfo.ClientID
