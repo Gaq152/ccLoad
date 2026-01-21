@@ -3,8 +3,8 @@
  * 负责通过 SSE 异步批量查询渠道用量并渐进式更新 UI
  */
 const QuotaBatchManager = {
-  // SSE 连接
-  eventSource: null,
+  // 流读取器
+  reader: null,
 
   // 状态
   isRunning: false,
@@ -90,36 +90,116 @@ const QuotaBatchManager = {
     this.statusCard.classList.add('active');
     this.updateProgress(0, 0, '正在连接...');
 
-    // 建立 SSE 连接
+    // 使用 fetch + ReadableStream 替代 EventSource（支持认证）
     const url = `/admin/quota/fetch-all?concurrency=${concurrency}`;
-    this.eventSource = new EventSource(url);
+    const token = localStorage.getItem('ccload_token');
 
-    // 监听连接成功事件
-    this.eventSource.addEventListener('connected', (e) => {
-      const data = JSON.parse(e.data);
-      this.totalCount = data.total || 0;
-      this.updateProgress(0, this.totalCount, `准备查询 ${this.totalCount} 个渠道...`);
-      console.log(`[QuotaBatch] 连接成功，总数: ${this.totalCount}`);
-    });
-
-    // 监听用量查询结果
-    this.eventSource.addEventListener('quota', (e) => {
-      const result = JSON.parse(e.data);
-      this.handleResult(result);
-    });
-
-    // 监听完成事件
-    this.eventSource.addEventListener('done', (e) => {
-      const data = JSON.parse(e.data);
-      console.log(`[QuotaBatch] 批量查询完成:`, data);
-      this.finish(false);
-    });
-
-    // 监听错误
-    this.eventSource.onerror = (e) => {
-      console.error('[QuotaBatch] SSE 错误:', e);
+    if (!token) {
+      console.error('[QuotaBatch] 未找到认证 Token');
       this.finish(true);
-    };
+      return;
+    }
+
+    try {
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'text/event-stream'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      // 保存 reader 引用以便取消
+      this.reader = reader;
+
+      // 读取流数据
+      const readStream = async () => {
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+
+            if (done) {
+              console.log('[QuotaBatch] 流结束');
+              this.finish(false);
+              break;
+            }
+
+            // 解码数据并添加到缓冲区
+            buffer += decoder.decode(value, { stream: true });
+
+            // 处理完整的 SSE 消息
+            const lines = buffer.split('\n\n');
+            buffer = lines.pop() || ''; // 保留不完整的消息
+
+            for (const line of lines) {
+              if (!line.trim()) continue;
+              this.parseSSEMessage(line);
+            }
+          }
+        } catch (error) {
+          console.error('[QuotaBatch] 读取流错误:', error);
+          this.finish(true);
+        }
+      };
+
+      readStream();
+    } catch (error) {
+      console.error('[QuotaBatch] 连接失败:', error);
+      this.finish(true);
+    }
+  },
+
+  /**
+   * 解析 SSE 消息
+   * @param {string} message - SSE 消息文本
+   */
+  parseSSEMessage(message) {
+    const lines = message.split('\n');
+    let eventType = 'message';
+    let data = '';
+
+    for (const line of lines) {
+      if (line.startsWith('event:')) {
+        eventType = line.substring(6).trim();
+      } else if (line.startsWith('data:')) {
+        data = line.substring(5).trim();
+      }
+    }
+
+    if (!data) return;
+
+    try {
+      const parsedData = JSON.parse(data);
+
+      switch (eventType) {
+        case 'connected':
+          this.totalCount = parsedData.total || 0;
+          this.updateProgress(0, this.totalCount, `准备查询 ${this.totalCount} 个渠道...`);
+          console.log(`[QuotaBatch] 连接成功，总数: ${this.totalCount}`);
+          break;
+
+        case 'quota':
+          this.handleResult(parsedData);
+          break;
+
+        case 'done':
+          console.log(`[QuotaBatch] 批量查询完成:`, parsedData);
+          this.finish(false);
+          break;
+
+        default:
+          console.warn('[QuotaBatch] 未知事件类型:', eventType);
+      }
+    } catch (error) {
+      console.error('[QuotaBatch] 解析 SSE 数据失败:', error, data);
+    }
   },
 
   /**
@@ -302,9 +382,14 @@ const QuotaBatchManager = {
    * @param {boolean} hasError - 是否有错误
    */
   finish(hasError = false) {
-    if (this.eventSource) {
-      this.eventSource.close();
-      this.eventSource = null;
+    // 取消流读取
+    if (this.reader) {
+      try {
+        this.reader.cancel();
+      } catch (e) {
+        console.warn('[QuotaBatch] 取消流读取失败:', e);
+      }
+      this.reader = null;
     }
 
     this.isRunning = false;
