@@ -43,9 +43,18 @@ func ParseKiroAuthConfig(raw string) *KiroAuthConfig {
 		return nil
 	}
 
-	// 设置默认认证类型
+	// 兼容处理：如果没有设置 AuthType，尝试读取 AuthMethod
+	if config.AuthType == "" && config.AuthMethod != "" {
+		config.AuthType = config.AuthMethod
+	}
+
+	// 自动推断：如果存在 ClientID 和 ClientSecret，则认为是 IdC 模式
 	if config.AuthType == "" {
-		config.AuthType = KiroAuthMethodSocial
+		if config.ClientID != "" && config.ClientSecret != "" {
+			config.AuthType = KiroAuthMethodIdC
+		} else {
+			config.AuthType = KiroAuthMethodSocial // 默认回退到 Social
+		}
 	}
 
 	// IdC 方式需要额外字段
