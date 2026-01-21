@@ -76,67 +76,80 @@ async function editChannel(id) {
 
   editingChannelId = id;
 
+  // 性能优化：先打开弹窗，再异步加载数据
   document.getElementById('modalTitle').textContent = '编辑渠道';
   document.getElementById('channelName').value = channel.name;
-
-  // 加载端点列表
-  if (typeof loadEndpointsFromServer === 'function') {
-    await loadEndpointsFromServer(id, channel.url);
-  } else {
-    document.getElementById('channelUrl').value = channel.url;
-  }
-
-  // 编辑模式显示"测速"按钮
-  document.getElementById('manageEndpointsBtn').style.display = 'inline-flex';
-
-  let apiKeys = [];
-  try {
-    apiKeys = await fetchDataWithAuth(`/admin/channels/${id}/keys`) || [];
-  } catch (e) {
-    console.error('获取API Keys失败', e);
-  }
-
-  const now = Date.now();
-  currentChannelKeyCooldowns = apiKeys.map((apiKey, index) => {
-    const cooldownUntilMs = (apiKey.cooldown_until || 0) * 1000;
-    const remainingMs = Math.max(0, cooldownUntilMs - now);
-    return {
-      key_index: index,
-      cooldown_remaining_ms: remainingMs
-    };
-  });
-
-  inlineKeyTableData = apiKeys.map(k => k.api_key || k);
-  if (inlineKeyTableData.length === 0) {
-    inlineKeyTableData = [''];
-    currentChannelKeyCooldowns = [];
-  }
-
-  inlineKeyVisible = true;
-  document.getElementById('inlineEyeIcon').style.display = 'none';
-  document.getElementById('inlineEyeOffIcon').style.display = 'block';
-  renderInlineKeyTable();
-
-  const channelType = channel.channel_type || 'anthropic';
-  await window.ChannelTypeManager.renderChannelTypeRadios('channelTypeRadios', channelType);
-  const keyStrategy = channel.key_strategy || 'sequential';
-  const strategyRadio = document.querySelector(`input[name="keyStrategy"][value="${keyStrategy}"]`);
-  if (strategyRadio) {
-    strategyRadio.checked = true;
-  }
   document.getElementById('channelPriority').value = channel.priority;
   document.getElementById('channelModels').value = channel.models.join(',');
   document.getElementById('channelEnabled').checked = channel.enabled;
 
-  const modelRedirects = channel.model_redirects || {};
-  redirectTableData = jsonToRedirectTable(modelRedirects);
-  renderRedirectTable();
+  // 立即显示弹窗（提升响应速度）
+  document.getElementById('channelModal').classList.add('show');
 
-  // 加载用量监控配置
-  loadQuotaConfig(channel.quota_config);
+  // 显示加载状态
+  const modalContent = document.querySelector('#channelModal .modal-body');
+  if (modalContent) {
+    modalContent.style.opacity = '0.6';
+    modalContent.style.pointerEvents = 'none';
+  }
 
-  // 初始化渠道类型相关 UI（Codex OAuth 区块）
-  initChannelTypeEventListener();
+  // 异步加载数据
+  try {
+    // 加载端点列表
+    if (typeof loadEndpointsFromServer === 'function') {
+      await loadEndpointsFromServer(id, channel.url);
+    } else {
+      document.getElementById('channelUrl').value = channel.url;
+    }
+
+    // 编辑模式显示"测速"按钮
+    document.getElementById('manageEndpointsBtn').style.display = 'inline-flex';
+
+    let apiKeys = [];
+    try {
+      apiKeys = await fetchDataWithAuth(`/admin/channels/${id}/keys`) || [];
+    } catch (e) {
+      console.error('获取API Keys失败', e);
+    }
+
+    const now = Date.now();
+    currentChannelKeyCooldowns = apiKeys.map((apiKey, index) => {
+      const cooldownUntilMs = (apiKey.cooldown_until || 0) * 1000;
+      const remainingMs = Math.max(0, cooldownUntilMs - now);
+      return {
+        key_index: index,
+        cooldown_remaining_ms: remainingMs
+      };
+    });
+
+    inlineKeyTableData = apiKeys.map(k => k.api_key || k);
+    if (inlineKeyTableData.length === 0) {
+      inlineKeyTableData = [''];
+      currentChannelKeyCooldowns = [];
+    }
+
+    inlineKeyVisible = true;
+    document.getElementById('inlineEyeIcon').style.display = 'none';
+    document.getElementById('inlineEyeOffIcon').style.display = 'block';
+    renderInlineKeyTable();
+
+    const channelType = channel.channel_type || 'anthropic';
+    await window.ChannelTypeManager.renderChannelTypeRadios('channelTypeRadios', channelType);
+    const keyStrategy = channel.key_strategy || 'sequential';
+    const strategyRadio = document.querySelector(`input[name="keyStrategy"][value="${keyStrategy}"]`);
+    if (strategyRadio) {
+      strategyRadio.checked = true;
+    }
+
+    const modelRedirects = channel.model_redirects || {};
+    redirectTableData = jsonToRedirectTable(modelRedirects);
+    renderRedirectTable();
+
+    // 加载用量监控配置
+    loadQuotaConfig(channel.quota_config);
+
+    // 初始化渠道类型相关 UI（Codex OAuth 区块）
+    initChannelTypeEventListener();
 
   // OAuth 渠道（Codex/Gemini）：根据预设类型设置 UI
   if (channelType === 'codex' || channelType === 'gemini') {
@@ -621,30 +634,31 @@ function updateChannelCardDOM(id, updates) {
   if (!card) return;
 
   if ('enabled' in updates) {
-    const statusBadge = card.querySelector('.channel-status');
+    // 状态徽章在 .col-status 下的 .col-value 元素
+    const statusBadge = card.querySelector('.col-status .col-value');
     const toggleBtn = card.querySelector('.channel-action-btn[data-action="toggle"]');
 
     if (updates.enabled) {
       card.classList.remove('channel-disabled');
       if (statusBadge) {
         statusBadge.textContent = '已启用';
-        statusBadge.className = 'channel-status status-enabled';
+        statusBadge.className = 'col-value status-enabled';
       }
       if (toggleBtn) {
         toggleBtn.dataset.enabled = 'true';
         toggleBtn.title = '禁用渠道';
-        toggleBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg> 禁用';
+        toggleBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>';
       }
     } else {
       card.classList.add('channel-disabled');
       if (statusBadge) {
         statusBadge.textContent = '已禁用';
-        statusBadge.className = 'channel-status status-disabled';
+        statusBadge.className = 'col-value status-disabled';
       }
       if (toggleBtn) {
         toggleBtn.dataset.enabled = 'false';
         toggleBtn.title = '启用渠道';
-        toggleBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg> 启用';
+        toggleBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>';
       }
     }
   }
@@ -654,129 +668,148 @@ async function copyChannel(id, name) {
   const channel = channels.find(c => c.id === id);
   if (!channel) return;
 
+  // 性能优化：立即显示弹窗，提升响应速度
   const copiedName = generateCopyName(name);
 
   editingChannelId = null;
   currentChannelKeyCooldowns = [];
   document.getElementById('modalTitle').textContent = '复制渠道';
   document.getElementById('channelName').value = copiedName;
-
-  // 获取源渠道的端点列表并复制
-  let endpointUrls = [channel.url]; // 默认使用渠道URL
-  try {
-    const data = await fetchDataWithAuth(`/admin/channels/${id}/endpoints`);
-    // 兼容新旧响应格式: data 可能是数组或 {endpoints, auto_select_endpoint}
-    const endpoints = Array.isArray(data) ? data : (data?.endpoints || []);
-    if (endpoints.length > 0) {
-      // 确保 active 端点在首位（保持原渠道的 active 优先级）
-      const sorted = [...endpoints].sort((a, b) => {
-        if (a.is_active && !b.is_active) return -1;
-        if (!a.is_active && b.is_active) return 1;
-        return (a.sort_order || 0) - (b.sort_order || 0);
-      });
-      endpointUrls = sorted.map(ep => ep.url);
-    }
-  } catch (e) {
-    console.error('获取源渠道端点失败，使用默认URL', e);
-  }
-
-  // 设置端点（使用完整的端点列表）
-  if (typeof setInlineEndpoints === 'function') {
-    setInlineEndpoints(endpointUrls);
-  } else {
-    document.getElementById('channelUrl').value = endpointUrls[0] || channel.url;
-  }
-
-  // 复制模式隐藏"测速"按钮（复制是新建操作）
-  document.getElementById('manageEndpointsBtn').style.display = 'none';
-
-  inlineKeyTableData = parseKeys(channel.api_key);
-  if (inlineKeyTableData.length === 0) {
-    inlineKeyTableData = [''];
-  }
-
-  inlineKeyVisible = true;
-  document.getElementById('inlineEyeIcon').style.display = 'none';
-  document.getElementById('inlineEyeOffIcon').style.display = 'block';
-  renderInlineKeyTable();
-
-  const channelType = channel.channel_type || 'anthropic';
-  const radioButton = document.querySelector(`input[name="channelType"][value="${channelType}"]`);
-  if (radioButton) {
-    radioButton.checked = true;
-  }
-  const keyStrategy = channel.key_strategy || 'sequential';
-  const strategyRadio = document.querySelector(`input[name="keyStrategy"][value="${keyStrategy}"]`);
-  if (strategyRadio) {
-    strategyRadio.checked = true;
-  }
   document.getElementById('channelPriority').value = channel.priority;
   document.getElementById('channelModels').value = channel.models.join(',');
   document.getElementById('channelEnabled').checked = true;
 
-  const modelRedirects = channel.model_redirects || {};
-  redirectTableData = jsonToRedirectTable(modelRedirects);
-  renderRedirectTable();
+  // 立即显示弹窗
+  document.getElementById('channelModal').classList.add('show');
 
-  // 初始化渠道类型相关 UI（Codex OAuth 区块）
-  initChannelTypeEventListener();
+  // 显示加载状态
+  const modalContent = document.querySelector('#channelModal .modal-body');
+  if (modalContent) {
+    modalContent.style.opacity = '0.6';
+    modalContent.style.pointerEvents = 'none';
+  }
 
-  // 复制时保留原有预设（Codex/Gemini/Anthropic）
-  const sourcePreset = channel.preset || 'custom';
-  if (channelType === 'codex' || channelType === 'gemini' || channelType === 'anthropic') {
-    const presetRadio = document.querySelector(`input[name="channelPreset"][value="${sourcePreset}"]`);
-    if (presetRadio) {
-      presetRadio.checked = true;
+  // 异步加载数据
+  try {
+    // 获取源渠道的端点列表并复制
+    let endpointUrls = [channel.url]; // 默认使用渠道URL
+    try {
+      const data = await fetchDataWithAuth(`/admin/channels/${id}/endpoints`);
+      // 兼容新旧响应格式: data 可能是数组或 {endpoints, auto_select_endpoint}
+      const endpoints = Array.isArray(data) ? data : (data?.endpoints || []);
+      if (endpoints.length > 0) {
+        // 确保 active 端点在首位（保持原渠道的 active 优先级）
+        const sorted = [...endpoints].sort((a, b) => {
+          if (a.is_active && !b.is_active) return -1;
+          if (!a.is_active && b.is_active) return 1;
+          return (a.sort_order || 0) - (b.sort_order || 0);
+        });
+        endpointUrls = sorted.map(ep => ep.url);
+      }
+    } catch (e) {
+      console.error('获取源渠道端点失败，使用默认URL', e);
     }
-  }
 
-  handleChannelTypeChange(channelType);
+    // 设置端点（使用完整的端点列表）
+    if (typeof setInlineEndpoints === 'function') {
+      setInlineEndpoints(endpointUrls);
+    } else {
+      document.getElementById('channelUrl').value = endpointUrls[0] || channel.url;
+    }
 
-  // 设置 OpenAI 兼容模式开关（Anthropic / Gemini自定义 / Codex自定义）
-  const openaiCompatCheckbox = document.getElementById('openaiCompatCheckbox');
-  if (openaiCompatCheckbox) {
-    openaiCompatCheckbox.checked = channel.openai_compat || false;
-  }
+    // 复制模式隐藏"测速"按钮（复制是新建操作）
+    document.getElementById('manageEndpointsBtn').style.display = 'none';
 
-  // OAuth 渠道：根据预设类型决定是否需要重新配置
-  if (channelType === 'codex' || channelType === 'gemini') {
-    if (sourcePreset === 'official') {
-      // 官方预设：清空 OAuth Token，需要重新授权
+    inlineKeyTableData = parseKeys(channel.api_key);
+    if (inlineKeyTableData.length === 0) {
+      inlineKeyTableData = [''];
+    }
+
+    inlineKeyVisible = true;
+    document.getElementById('inlineEyeIcon').style.display = 'none';
+    document.getElementById('inlineEyeOffIcon').style.display = 'block';
+    renderInlineKeyTable();
+
+    const channelType = channel.channel_type || 'anthropic';
+    const radioButton = document.querySelector(`input[name="channelType"][value="${channelType}"]`);
+    if (radioButton) {
+      radioButton.checked = true;
+    }
+    const keyStrategy = channel.key_strategy || 'sequential';
+    const strategyRadio = document.querySelector(`input[name="keyStrategy"][value="${keyStrategy}"]`);
+    if (strategyRadio) {
+      strategyRadio.checked = true;
+    }
+
+    const modelRedirects = channel.model_redirects || {};
+    redirectTableData = jsonToRedirectTable(modelRedirects);
+    renderRedirectTable();
+
+    // 初始化渠道类型相关 UI（Codex OAuth 区块）
+    initChannelTypeEventListener();
+
+    // 复制时保留原有预设（Codex/Gemini/Anthropic）
+    const sourcePreset = channel.preset || 'custom';
+    if (channelType === 'codex' || channelType === 'gemini' || channelType === 'anthropic') {
+      const presetRadio = document.querySelector(`input[name="channelPreset"][value="${sourcePreset}"]`);
+      if (presetRadio) {
+        presetRadio.checked = true;
+      }
+    }
+
+    handleChannelTypeChange(channelType);
+
+    // 设置 OpenAI 兼容模式开关（Anthropic / Gemini自定义 / Codex自定义）
+    const openaiCompatCheckbox = document.getElementById('openaiCompatCheckbox');
+    if (openaiCompatCheckbox) {
+      openaiCompatCheckbox.checked = channel.openai_compat || false;
+    }
+
+    // OAuth 渠道：根据预设类型决定是否需要重新配置
+    if (channelType === 'codex' || channelType === 'gemini') {
+      if (sourcePreset === 'official') {
+        // 官方预设：清空 OAuth Token，需要重新授权
+        updateCodexTokenUI(null);
+        updateGeminiTokenUI(null);
+        if (window.showWarning) {
+          showWarning(`${channelType === 'codex' ? 'Codex' : 'Gemini'} 官方预设复制后需要重新进行 OAuth 授权`);
+        }
+      } else {
+        // 自定义预设：API Key 已复制，无需额外操作
+        updateCodexTokenUI(null);
+        updateGeminiTokenUI(null);
+      }
+      updateKiroTokenUI(null);
+    } else if (channelType === 'anthropic' && sourcePreset === 'kiro') {
+      // Kiro 预设：清空 Token，需要重新配置
+      updateKiroTokenUI(null);
+      // 清空设备指纹，防止状态残留
+      const deviceFingerprintInput = document.getElementById('kiroDeviceFingerprint');
+      if (deviceFingerprintInput) {
+        deviceFingerprintInput.value = '';
+        updateKiroFingerprintStatus('');
+      }
       updateCodexTokenUI(null);
       updateGeminiTokenUI(null);
       if (window.showWarning) {
-        showWarning(`${channelType === 'codex' ? 'Codex' : 'Gemini'} 官方预设复制后需要重新进行 OAuth 授权`);
+        showWarning('Kiro 预设复制后需要重新配置 Token');
       }
     } else {
-      // 自定义预设：API Key 已复制，无需额外操作
       updateCodexTokenUI(null);
       updateGeminiTokenUI(null);
+      updateKiroTokenUI(null);
     }
-    updateKiroTokenUI(null);
-  } else if (channelType === 'anthropic' && sourcePreset === 'kiro') {
-    // Kiro 预设：清空 Token，需要重新配置
-    updateKiroTokenUI(null);
-    // 清空设备指纹，防止状态残留
-    const deviceFingerprintInput = document.getElementById('kiroDeviceFingerprint');
-    if (deviceFingerprintInput) {
-      deviceFingerprintInput.value = '';
-      updateKiroFingerprintStatus('');
+
+    // 添加 OAuth 回调消息监听
+    window.addEventListener('message', handleCodexOAuthMessage);
+
+  } finally {
+    // 恢复交互状态
+    if (modalContent) {
+      modalContent.style.opacity = '1';
+      modalContent.style.pointerEvents = 'auto';
     }
-    updateCodexTokenUI(null);
-    updateGeminiTokenUI(null);
-    if (window.showWarning) {
-      showWarning('Kiro 预设复制后需要重新配置 Token');
-    }
-  } else {
-    updateCodexTokenUI(null);
-    updateGeminiTokenUI(null);
-    updateKiroTokenUI(null);
   }
-
-  // 添加 OAuth 回调消息监听
-  window.addEventListener('message', handleCodexOAuthMessage);
-
-  document.getElementById('channelModal').classList.add('show');
 }
 
 function generateCopyName(originalName) {
