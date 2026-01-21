@@ -541,9 +541,30 @@ function renderChannels(channelsToRender = channels) {
         // 优先级标题（可点击折叠）
         const laneHeader = document.createElement('div');
         laneHeader.className = 'priority-header';
-        laneHeader.innerHTML = `<span class="priority-icon">⬆</span> 优先级: ${priority} <span class="priority-count">(${channelsInPriority.length})</span>`;
-        laneHeader.style.cursor = 'pointer';
-        laneHeader.addEventListener('click', () => togglePriorityLane(type, priority));
+
+        // 创建全选复选框
+        const selectAllCheckbox = document.createElement('input');
+        selectAllCheckbox.type = 'checkbox';
+        selectAllCheckbox.className = 'priority-select-all';
+        selectAllCheckbox.dataset.type = type;
+        selectAllCheckbox.dataset.priority = priority;
+        selectAllCheckbox.title = '全选此优先级的渠道';
+        selectAllCheckbox.style.cssText = 'width: 16px; height: 16px; cursor: pointer; accent-color: var(--primary-500); margin-right: 8px;';
+        selectAllCheckbox.addEventListener('click', (e) => {
+          e.stopPropagation(); // 阻止触发折叠
+        });
+        selectAllCheckbox.addEventListener('change', (e) => {
+          togglePriorityLaneSelectAll(type, priority, e.target.checked);
+        });
+
+        laneHeader.appendChild(selectAllCheckbox);
+
+        const headerText = document.createElement('span');
+        headerText.innerHTML = `<span class="priority-icon">⬆</span> 优先级: ${priority} <span class="priority-count">(${channelsInPriority.length})</span>`;
+        headerText.style.cursor = 'pointer';
+        headerText.addEventListener('click', () => togglePriorityLane(type, priority));
+        laneHeader.appendChild(headerText);
+
         priorityLane.appendChild(laneHeader);
 
         // 渲染卡片
