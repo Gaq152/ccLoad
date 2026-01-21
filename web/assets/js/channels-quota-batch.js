@@ -67,7 +67,7 @@ const QuotaBatchManager = {
    * 开始批量查询
    * @param {number} concurrency - 并发数（默认从设置读取）
    */
-  start(concurrency = null) {
+  async start(concurrency = null) {
     if (this.isRunning) {
       showToast('批量查询正在进行中', 'warning');
       return;
@@ -75,7 +75,7 @@ const QuotaBatchManager = {
 
     // 获取并发数配置
     if (concurrency === null) {
-      concurrency = this.getConcurrencySetting();
+      concurrency = await this.getConcurrencySetting();
     }
 
     // 重置状态
@@ -345,15 +345,19 @@ const QuotaBatchManager = {
 
   /**
    * 获取并发数配置
-   * @returns {number} 并发数
+   * @returns {Promise<number>} 并发数
    */
-  getConcurrencySetting() {
+  async getConcurrencySetting() {
     try {
-      const stored = localStorage.getItem('quota_batch_concurrency');
-      if (stored) {
-        const val = parseInt(stored);
-        if (val >= 1 && val <= 50) {
-          return val;
+      const resp = await fetchDataWithAuth('/admin/settings');
+      const settings = resp.settings || resp;
+      if (Array.isArray(settings)) {
+        const setting = settings.find(s => s.key === 'quota_batch_concurrency');
+        if (setting && setting.value) {
+          const val = parseInt(setting.value);
+          if (val >= 1 && val <= 50) {
+            return val;
+          }
         }
       }
     } catch (e) {
