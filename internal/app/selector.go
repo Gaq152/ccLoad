@@ -176,9 +176,9 @@ func (s *Server) filterByTokenChannels(channels []*modelpkg.Config, tokenID int6
 	// 获取令牌的渠道配置
 	cfg, exists := s.authService.GetTokenChannelConfig(tokenID)
 	if !exists || cfg == nil {
-		// 令牌配置不存在，默认允许所有渠道（降级处理）
-		log.Printf("[WARN] 令牌ID=%d的渠道配置不存在，使用默认全部允许", tokenID)
-		return channels
+		// 令牌配置不存在，拒绝所有渠道访问（fail-closed，安全优先）
+		log.Printf("[ERROR] 令牌ID=%d的渠道配置不存在，拒绝访问（fail-closed）", tokenID)
+		return []*modelpkg.Config{}
 	}
 
 	// AllChannels=true 表示允许所有渠道
