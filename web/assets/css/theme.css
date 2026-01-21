@@ -101,6 +101,13 @@
   /* 日志行背景色 */
   --theme-bg-row-error: rgba(242, 73, 92, 0.12);    /* 5xx: 浅红色 */
   --theme-bg-row-warning: rgba(242, 204, 12, 0.08); /* 4xx: 浅黄色 */
+
+  /* 批量操作面板 */
+  --theme-bulk-panel-bg: rgba(30, 41, 59, 0.98);
+  --theme-bulk-panel-border: rgba(71, 85, 105, 0.5);
+  --theme-bulk-panel-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+  --theme-bulk-text: rgba(255, 255,255, 0.95);
+  --theme-bulk-divider: rgba(148, 163, 184, 0.3);
 }
 
 /* === Light Mode === */
@@ -200,6 +207,13 @@
   /* 日志行背景色 */
   --theme-bg-row-error: rgba(239, 68, 68, 0.15);    /* 5xx: 浅红色 */
   --theme-bg-row-warning: rgba(245, 158, 11, 0.12); /* 4xx: 浅黄色 */
+
+  /* 批量操作面板 */
+  --theme-bulk-panel-bg: rgba(30, 41, 59, 0.98);
+  --theme-bulk-panel-border: rgba(71, 85, 105, 0.5);
+  --theme-bulk-panel-shadow: 0 10px 25px rgba(0, 0, 0, 0.2), 0 4px 10px rgba(0, 0, 0, 0.1);
+  --theme-bulk-text: rgba(255, 255, 255, 0.95);
+  --theme-bulk-divider: rgba(148, 163, 184, 0.3);
 }
 
 /* === 过渡动画 === */
