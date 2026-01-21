@@ -248,11 +248,32 @@ const QuotaManager = {
   },
 
   /**
-   * 获取渠道用量
+   * 获取渠道用量（通过请求队列）
    * @param {Object} channel - 渠道对象
    * @param {boolean} isManualRefresh - 是否为手动刷新（手动刷新时显示 toast）
    */
   async fetchQuota(channel, isManualRefresh = false) {
+    // 使用请求队列控制并发
+    if (window.QuotaRequestQueue) {
+      try {
+        await window.QuotaRequestQueue.add(channel, isManualRefresh);
+      } catch (error) {
+        // 错误已在队列中处理，这里只需要记录
+        console.error(`[QuotaManager] 队列任务失败 (channel=${channel.id}):`, error);
+      }
+    } else {
+      // 降级：如果队列未初始化，使用原有逻辑（不应该发生）
+      console.warn('[QuotaManager] QuotaRequestQueue 未初始化，使用降级逻辑');
+      await this.fetchQuotaDirect(channel, isManualRefresh);
+    }
+  },
+
+  /**
+   * 直接获取渠道用量（不通过队列，仅用于降级）
+   * @param {Object} channel - 渠道对象
+   * @param {boolean} isManualRefresh - 是否为手动刷新
+   */
+  async fetchQuotaDirect(channel, isManualRefresh = false) {
     const channelId = channel.id;
 
     try {
