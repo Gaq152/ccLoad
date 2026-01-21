@@ -483,7 +483,21 @@ function renderChannels(channelsToRender = channels) {
     // 类型头部
     const header = document.createElement('div');
     header.className = 'channel-group-header';
-    header.onclick = () => toggleChannelGroup(type);
+
+    // 创建类型全选复选框
+    const typeSelectAllCheckbox = document.createElement('input');
+    typeSelectAllCheckbox.type = 'checkbox';
+    typeSelectAllCheckbox.className = 'type-select-all';
+    typeSelectAllCheckbox.dataset.type = type;
+    typeSelectAllCheckbox.title = `全选 ${config.name} 类型的所有渠道`;
+    typeSelectAllCheckbox.style.cssText = 'width: 16px; height: 16px; cursor: pointer; accent-color: var(--primary-500); margin-right: 8px;';
+    typeSelectAllCheckbox.addEventListener('click', (e) => {
+      e.stopPropagation(); // 阻止触发折叠
+    });
+    typeSelectAllCheckbox.addEventListener('change', (e) => {
+      toggleTypeSelectAll(type, e.target.checked);
+    });
+
     header.innerHTML = `
       <div class="channel-group-left">
         <span class="channel-group-toggle">▼</span>
@@ -494,6 +508,19 @@ function renderChannels(channelsToRender = channels) {
         <span class="channel-group-count">${enabledCount}/${channelsInType.length} 启用</span>
       </div>
     `;
+
+    // 将复选框插入到 header 的第一个位置
+    const leftDiv = header.querySelector('.channel-group-left');
+    leftDiv.insertBefore(typeSelectAllCheckbox, leftDiv.firstChild);
+
+    // 为 header 的其他部分添加折叠点击事件（不包括复选框）
+    const toggleSpan = header.querySelector('.channel-group-toggle');
+    const badgeSpan = header.querySelector('.channel-group-badge');
+    const titleSpan = header.querySelector('.channel-group-title');
+    const statsDiv = header.querySelector('.channel-group-stats');
+    [toggleSpan, badgeSpan, titleSpan, statsDiv].forEach(el => {
+      if (el) el.addEventListener('click', () => toggleChannelGroup(type));
+    });
 
     // 类型内容区
     const content = document.createElement('div');
