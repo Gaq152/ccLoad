@@ -83,6 +83,67 @@ function toggleSelectAll(checked) {
   }
 
   updateBulkUI();
+  updatePriorityLaneCheckboxes();
+}
+
+/**
+ * 全选/取消全选优先级泳道内的渠道
+ * @param {string} type - 渠道类型
+ * @param {number} priority - 优先级
+ * @param {boolean} checked - 是否选中
+ */
+function togglePriorityLaneSelectAll(type, priority, checked) {
+  const lane = document.querySelector(`.priority-group[data-type="${type}"][data-priority="${priority}"]`);
+  if (!lane) return;
+
+  const cards = lane.querySelectorAll('.channel-card');
+  cards.forEach(card => {
+    const id = parseInt(card.dataset.channelId);
+    const checkbox = card.querySelector('.channel-checkbox');
+
+    if (checked) {
+      bulkState.selectedIds.add(id);
+      if (checkbox) checkbox.checked = true;
+    } else {
+      bulkState.selectedIds.delete(id);
+      if (checkbox) checkbox.checked = false;
+    }
+  });
+
+  if (checked && cards.length > 0) {
+    bulkState.lastCheckedId = parseInt(cards[cards.length - 1].dataset.channelId);
+  }
+
+  updateBulkUI();
+}
+
+/**
+ * 更新所有优先级泳道的全选复选框状态
+ */
+function updatePriorityLaneCheckboxes() {
+  document.querySelectorAll('.priority-select-all').forEach(checkbox => {
+    const type = checkbox.dataset.type;
+    const priority = checkbox.dataset.priority;
+    const lane = document.querySelector(`.priority-group[data-type="${type}"][data-priority="${priority}"]`);
+
+    if (lane) {
+      const cards = lane.querySelectorAll('.channel-card');
+      const selectedCount = Array.from(cards).filter(card =>
+        bulkState.selectedIds.has(parseInt(card.dataset.channelId))
+      ).length;
+
+      if (selectedCount === 0) {
+        checkbox.checked = false;
+        checkbox.indeterminate = false;
+      } else if (selectedCount === cards.length) {
+        checkbox.checked = true;
+        checkbox.indeterminate = false;
+      } else {
+        checkbox.checked = false;
+        checkbox.indeterminate = true;
+      }
+    }
+  });
 }
 
 /**
@@ -119,6 +180,9 @@ function updateBulkUI() {
       selectAllCheckbox.indeterminate = false;
     }
   }
+
+  // 更新优先级泳道的全选复选框
+  updatePriorityLaneCheckboxes();
 }
 
 /**
@@ -224,7 +288,9 @@ document.addEventListener('DOMContentLoaded', () => {
 // 导出到全局
 window.toggleChannelSelection = toggleChannelSelection;
 window.toggleSelectAll = toggleSelectAll;
+window.togglePriorityLaneSelectAll = togglePriorityLaneSelectAll;
 window.clearBulkSelection = clearBulkSelection;
 window.executeBulkAction = executeBulkAction;
 window.updateBulkUI = updateBulkUI;
+window.updatePriorityLaneCheckboxes = updatePriorityLaneCheckboxes;
 window.bulkState = bulkState;
