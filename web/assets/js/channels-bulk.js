@@ -118,6 +118,36 @@ function togglePriorityLaneSelectAll(type, priority, checked) {
 }
 
 /**
+ * 全选/取消全选某个渠道类型的所有渠道
+ * @param {string} type - 渠道类型
+ * @param {boolean} checked - 是否选中
+ */
+function toggleTypeSelectAll(type, checked) {
+  const typeGroup = document.querySelector(`.channel-type-group[data-type="${type}"]`);
+  if (!typeGroup) return;
+
+  const cards = typeGroup.querySelectorAll('.channel-card');
+  cards.forEach(card => {
+    const id = parseInt(card.dataset.channelId);
+    const checkbox = card.querySelector('.channel-checkbox');
+
+    if (checked) {
+      bulkState.selectedIds.add(id);
+      if (checkbox) checkbox.checked = true;
+    } else {
+      bulkState.selectedIds.delete(id);
+      if (checkbox) checkbox.checked = false;
+    }
+  });
+
+  if (checked && cards.length > 0) {
+    bulkState.lastCheckedId = parseInt(cards[cards.length - 1].dataset.channelId);
+  }
+
+  updateBulkUI();
+}
+
+/**
  * 更新所有优先级泳道的全选复选框状态
  */
 function updatePriorityLaneCheckboxes() {
@@ -128,6 +158,34 @@ function updatePriorityLaneCheckboxes() {
 
     if (lane) {
       const cards = lane.querySelectorAll('.channel-card');
+      const selectedCount = Array.from(cards).filter(card =>
+        bulkState.selectedIds.has(parseInt(card.dataset.channelId))
+      ).length;
+
+      if (selectedCount === 0) {
+        checkbox.checked = false;
+        checkbox.indeterminate = false;
+      } else if (selectedCount === cards.length) {
+        checkbox.checked = true;
+        checkbox.indeterminate = false;
+      } else {
+        checkbox.checked = false;
+        checkbox.indeterminate = true;
+      }
+    }
+  });
+}
+
+/**
+ * 更新所有渠道类型的全选复选框状态
+ */
+function updateTypeSelectAllCheckboxes() {
+  document.querySelectorAll('.type-select-all').forEach(checkbox => {
+    const type = checkbox.dataset.type;
+    const typeGroup = document.querySelector(`.channel-type-group[data-type="${type}"]`);
+
+    if (typeGroup) {
+      const cards = typeGroup.querySelectorAll('.channel-card');
       const selectedCount = Array.from(cards).filter(card =>
         bulkState.selectedIds.has(parseInt(card.dataset.channelId))
       ).length;
@@ -183,6 +241,9 @@ function updateBulkUI() {
 
   // 更新优先级泳道的全选复选框
   updatePriorityLaneCheckboxes();
+
+  // 更新渠道类型的全选复选框
+  updateTypeSelectAllCheckboxes();
 }
 
 /**
