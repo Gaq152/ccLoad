@@ -806,6 +806,8 @@ func initDefaultSettings(ctx context.Context, db *sql.DB, dialect Dialect) error
 		{"cooldown_fixed_interval", "30", "int", "固定冷却时间间隔(秒,仅fixed模式生效)", "30"},
 		{"auto_test_endpoints_interval", "300", "int", "后台自动测速端点间隔(秒,0=禁用)", "300"},
 		{"channel_load_balance", "true", "bool", "渠道负载均衡(同优先级+同预设随机打乱)", "true"},
+		{"quota_request_concurrency", "10", "int", "用量查询并发数(定时自动刷新,1-50)", "10"},
+		{"quota_batch_concurrency", "10", "int", "批量查询并发数(手动刷新,1-50)", "10"},
 	}
 
 	var query string

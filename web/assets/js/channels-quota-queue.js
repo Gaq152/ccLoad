@@ -16,20 +16,32 @@ const QuotaRequestQueue = {
    * 初始化队列
    */
   init() {
-    // 从 localStorage 读取并发数配置
+    // 从后端 API 读取并发数配置
+    this.loadConcurrencyFromAPI();
+
+    console.log(`[QuotaQueue] 初始化完成，并发数: ${this.concurrency}`);
+  },
+
+  /**
+   * 从后端 API 加载并发数配置
+   */
+  async loadConcurrencyFromAPI() {
     try {
-      const stored = localStorage.getItem('quota_request_concurrency');
-      if (stored) {
-        const val = parseInt(stored);
-        if (val >= 1 && val <= 50) {
-          this.concurrency = val;
+      const resp = await fetchDataWithAuth('/admin/settings');
+      const settings = resp.settings || resp;
+      if (Array.isArray(settings)) {
+        const setting = settings.find(s => s.key === 'quota_request_concurrency');
+        if (setting && setting.value) {
+          const val = parseInt(setting.value);
+          if (val >= 1 && val <= 50) {
+            this.concurrency = val;
+            console.log(`[QuotaQueue] 从后端加载并发数配置: ${val}`);
+          }
         }
       }
     } catch (e) {
-      console.warn('[QuotaQueue] 读取并发数配置失败:', e);
+      console.warn('[QuotaQueue] 加载并发数配置失败，使用默认值:', e);
     }
-
-    console.log(`[QuotaQueue] 初始化完成，并发数: ${this.concurrency}`);
   },
 
   /**
