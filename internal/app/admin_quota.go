@@ -310,57 +310,9 @@ func (s *Server) handleQuotaFetch(c *gin.Context) {
 		return
 	}
 
-	contentType := resp.Header.Get("Content-Type")
-
-	// 检测 acw_sc__v2 反爬挑战页面
-	if qc.ChallengeMode == "acw_sc__v2" && isAcwScV2Challenge(contentType, bodyBytes) {
-		// 调用外部服务获取动态 Cookie
-		challengeCookie, err := fetchChallengeCookie(qc.RequestURL)
-		if err != nil {
-			RespondErrorMsg(c, http.StatusBadGateway, "获取反爬 Cookie 失败: "+err.Error())
-			return
-		}
-
-		// 使用新 Cookie 重新构建请求
-		var retryBodyReader io.Reader
-		if method == "POST" && qc.RequestBody != "" {
-			retryBodyReader = bytes.NewBufferString(qc.RequestBody)
-		}
-
-		retryReq, err := http.NewRequestWithContext(ctx, method, qc.RequestURL, retryBodyReader)
-		if err != nil {
-			RespondErrorMsg(c, http.StatusInternalServerError, "failed to create retry request: "+err.Error())
-			return
-		}
-
-		// 复制原始请求头
-		retryReq.Header = req.Header.Clone()
-
-		// 合并动态 Cookie 到现有 Cookie
-		existingCookie := retryReq.Header.Get("Cookie")
-		if existingCookie != "" {
-			retryReq.Header.Set("Cookie", existingCookie+"; "+challengeCookie)
-		} else {
-			retryReq.Header.Set("Cookie", challengeCookie)
-		}
-
-		// 重新发送请求
-		retryResp, err := client.Do(retryReq)
-		if err != nil {
-			RespondErrorMsg(c, http.StatusBadGateway, "retry request failed: "+err.Error())
-			return
-		}
-		defer retryResp.Body.Close()
-
-		bodyBytes, err = readResponseBody(retryResp)
-		if err != nil {
-			RespondErrorMsg(c, http.StatusInternalServerError, "failed to read retry response: "+err.Error())
-			return
-		}
-
-		resp = retryResp
-		contentType = resp.Header.Get("Content-Type")
-	}
+	// 注意：acw_sc__v2 反爬挑战检测逻辑已废弃
+	// 当 ChallengeMode="acw_sc__v2" 时，在第 216 行已提前返回，使用外部服务方式处理
+	// 原有的本地挑战检测代码（第 316-363 行）已删除
 
 	// 提取响应头（只保留常用的）
 	respHeaders := make(map[string]string)
@@ -643,12 +595,19 @@ func validateQuotaURL(rawURL string) error {
 		if strings.HasPrefix(ipv4Part, "127.") ||
 			strings.HasPrefix(ipv4Part, "10.") ||
 			strings.HasPrefix(ipv4Part, "192.168.") ||
-			strings.HasPrefix(ipv4Part, "169.254.") ||
-			strings.HasPrefix(ipv4Part, "172.16.") || strings.HasPrefix(ipv4Part, "172.17.") ||
-			strings.HasPrefix(ipv4Part, "172.18.") || strings.HasPrefix(ipv4Part, "172.19.") ||
-			strings.HasPrefix(ipv4Part, "172.2") || strings.HasPrefix(ipv4Part, "172.30.") ||
-			strings.HasPrefix(ipv4Part, "172.31.") {
+			strings.HasPrefix(ipv4Part, "169.254.") {
 			return fmt.Errorf("IPv4-mapped private addresses not allowed")
+		}
+
+		// 检查 172.16.0.0/12 (172.16.x.x - 172.31.x.x)
+		if strings.HasPrefix(ipv4Part, "172.") {
+			parts := strings.Split(ipv4Part, ".")
+			if len(parts) >= 2 {
+				second, err := strconv.Atoi(parts[1])
+				if err == nil && second >= 16 && second <= 31 {
+					return fmt.Errorf("IPv4-mapped private addresses not allowed")
+				}
+			}
 		}
 	}
 

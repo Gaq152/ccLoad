@@ -547,3 +547,242 @@ func setupTestStore(t *testing.T) (storage.Store, func()) {
 
 	return store, cleanup
 }
+
+// ========== Token 渠道限制测试 ==========
+
+// tokenChannelConfigGetter 接口用于测试
+type tokenChannelConfigGetter interface {
+	GetTokenChannelConfig(tokenID int64) (*TokenChannelConfig, bool)
+}
+
+// mockAuthService 模拟 AuthService 用于测试
+type mockAuthService struct {
+	tokenConfigs map[int64]*TokenChannelConfig
+}
+
+func (m *mockAuthService) GetTokenChannelConfig(tokenID int64) (*TokenChannelConfig, bool) {
+	if m.tokenConfigs == nil {
+		return nil, false
+	}
+	cfg, exists := m.tokenConfigs[tokenID]
+	return cfg, exists
+}
+
+// testServer 用于测试的 Server 结构
+type testServer struct {
+	authService tokenChannelConfigGetter
+}
+
+func (s *testServer) filterByTokenChannels(channels []*model.Config, tokenID int64) []*model.Config {
+	if tokenID == 0 || len(channels) == 0 {
+		return channels
+	}
+
+	cfg, exists := s.authService.GetTokenChannelConfig(tokenID)
+	if !exists || cfg == nil {
+		return []*model.Config{}
+	}
+
+	if cfg.AllChannels {
+		return channels
+	}
+
+	allowedSet := make(map[int64]struct{}, len(cfg.ChannelIDs))
+	for _, id := range cfg.ChannelIDs {
+		allowedSet[id] = struct{}{}
+	}
+
+	filtered := make([]*model.Config, 0, len(channels))
+	for _, ch := range channels {
+		if _, allowed := allowedSet[ch.ID]; allowed {
+			filtered = append(filtered, ch)
+		}
+	}
+
+	return filtered
+}
+
+// TestFilterByTokenChannels_FailClosed 测试 fail-closed 策略
+func TestFilterByTokenChannels_FailClosed(t *testing.T) {
+	// 创建测试服务器
+	s := &testServer{
+		authService: &mockAuthService{
+			tokenConfigs: map[int64]*TokenChannelConfig{
+				// tokenID=1 有配置
+				1: {
+					AllChannels: false,
+					ChannelIDs:  []int64{10, 20},
+				},
+				// tokenID=2 没有配置（模拟配置缺失）
+			},
+		},
+	}
+
+	// 准备测试渠道
+	channels := []*model.Config{
+		{ID: 10, Name: "Channel-10"},
+		{ID: 20, Name: "Channel-20"},
+		{ID: 30, Name: "Channel-30"},
+		{ID: 40, Name: "Channel-40"},
+	}
+
+	t.Run("配置缺失-fail-closed", func(t *testing.T) {
+		// tokenID=2 配置不存在，应该返回空列表（fail-closed）
+		result := s.filterByTokenChannels(channels, 2)
+		if len(result) != 0 {
+			t.Errorf("配置缺失时应该返回空列表（fail-closed），实际返回了 %d 个渠道", len(result))
+		}
+	})
+
+	t.Run("配置存在-部分渠道", func(t *testing.T) {
+		// tokenID=1 只允许渠道 10 和 20
+		result := s.filterByTokenChannels(channels, 1)
+		if len(result) != 2 {
+			t.Errorf("期望返回 2 个渠道，实际返回了 %d 个", len(result))
+		}
+		// 验证返回的渠道ID
+		ids := make(map[int64]bool)
+		for _, ch := range result {
+			ids[ch.ID] = true
+		}
+		if !ids[10] || !ids[20] {
+			t.Error("返回的渠道不正确，应该包含渠道 10 和 20")
+		}
+		if ids[30] || ids[40] {
+			t.Error("返回的渠道不正确，不应该包含渠道 30 和 40")
+		}
+	})
+
+	t.Run("tokenID为0-不过滤", func(t *testing.T) {
+		// tokenID=0 表示没有令牌认证，应该返回所有渠道
+		result := s.filterByTokenChannels(channels, 0)
+		if len(result) != len(channels) {
+			t.Errorf("tokenID=0 时应该返回所有渠道，期望 %d 个，实际 %d 个", len(channels), len(result))
+		}
+	})
+
+	t.Run("空渠道列表", func(t *testing.T) {
+		// 输入空列表，应该返回空列表
+		result := s.filterByTokenChannels([]*model.Config{}, 1)
+		if len(result) != 0 {
+			t.Errorf("输入空列表时应该返回空列表，实际返回了 %d 个渠道", len(result))
+		}
+	})
+}
+
+// TestFilterByTokenChannels_AllChannels 测试 all_channels=true 的行为
+func TestFilterByTokenChannels_AllChannels(t *testing.T) {
+	s := &testServer{
+		authService: &mockAuthService{
+			tokenConfigs: map[int64]*TokenChannelConfig{
+				1: {
+					AllChannels: true,
+					ChannelIDs:  []int64{10}, // 即使配置了 ChannelIDs，也应该被忽略
+				},
+			},
+		},
+	}
+
+	channels := []*model.Config{
+		{ID: 10, Name: "Channel-10"},
+		{ID: 20, Name: "Channel-20"},
+		{ID: 30, Name: "Channel-30"},
+	}
+
+	t.Run("all_channels=true-忽略ChannelIDs", func(t *testing.T) {
+		result := s.filterByTokenChannels(channels, 1)
+		if len(result) != len(channels) {
+			t.Errorf("all_channels=true 时应该返回所有渠道，期望 %d 个，实际 %d 个", len(channels), len(result))
+		}
+	})
+}
+
+// TestFilterByTokenChannels_EmptyChannelIDs 测试 all_channels=false 且 channel_ids 为空
+func TestFilterByTokenChannels_EmptyChannelIDs(t *testing.T) {
+	s := &testServer{
+		authService: &mockAuthService{
+			tokenConfigs: map[int64]*TokenChannelConfig{
+				1: {
+					AllChannels: false,
+					ChannelIDs:  []int64{}, // 空列表
+				},
+			},
+		},
+	}
+
+	channels := []*model.Config{
+		{ID: 10, Name: "Channel-10"},
+		{ID: 20, Name: "Channel-20"},
+	}
+
+	t.Run("all_channels=false且channel_ids为空", func(t *testing.T) {
+		result := s.filterByTokenChannels(channels, 1)
+		if len(result) != 0 {
+			t.Errorf("channel_ids 为空时应该返回空列表，实际返回了 %d 个渠道", len(result))
+		}
+	})
+}
+
+// TestFilterByTokenChannels_NoMatchingChannels 测试令牌允许的渠道不在候选列表中
+func TestFilterByTokenChannels_NoMatchingChannels(t *testing.T) {
+	s := &testServer{
+		authService: &mockAuthService{
+			tokenConfigs: map[int64]*TokenChannelConfig{
+				1: {
+					AllChannels: false,
+					ChannelIDs:  []int64{100, 200}, // 这些渠道不在候选列表中
+				},
+			},
+		},
+	}
+
+	channels := []*model.Config{
+		{ID: 10, Name: "Channel-10"},
+		{ID: 20, Name: "Channel-20"},
+	}
+
+	t.Run("令牌允许的渠道不在候选列表", func(t *testing.T) {
+		result := s.filterByTokenChannels(channels, 1)
+		if len(result) != 0 {
+			t.Errorf("没有匹配的渠道时应该返回空列表，实际返回了 %d 个渠道", len(result))
+		}
+	})
+}
+
+// TestFilterByTokenChannels_PartialMatch 测试部分匹配的情况
+func TestFilterByTokenChannels_PartialMatch(t *testing.T) {
+	s := &testServer{
+		authService: &mockAuthService{
+			tokenConfigs: map[int64]*TokenChannelConfig{
+				1: {
+					AllChannels: false,
+					ChannelIDs:  []int64{10, 20, 100}, // 100 不在候选列表中
+				},
+			},
+		},
+	}
+
+	channels := []*model.Config{
+		{ID: 10, Name: "Channel-10"},
+		{ID: 20, Name: "Channel-20"},
+		{ID: 30, Name: "Channel-30"},
+	}
+
+	t.Run("部分匹配", func(t *testing.T) {
+		result := s.filterByTokenChannels(channels, 1)
+		if len(result) != 2 {
+			t.Errorf("期望返回 2 个匹配的渠道，实际返回了 %d 个", len(result))
+		}
+		// 验证返回的是渠道 10 和 20
+		ids := make(map[int64]bool)
+		for _, ch := range result {
+			ids[ch.ID] = true
+		}
+		if !ids[10] || !ids[20] {
+			t.Error("应该返回渠道 10 和 20")
+		}
+		if ids[30] || ids[100] {
+			t.Error("不应该返回渠道 30 和 100")
+		}
+	})
+}
