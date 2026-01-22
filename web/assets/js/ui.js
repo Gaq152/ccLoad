@@ -564,7 +564,6 @@
   <li><code>GET /public/summary</code> - 调用统计摘要</li>
   <li><code>GET /public/channel-types</code> - 渠道类型列表</li>
   <li><code>GET /public/models</code> - 支持的模型列表（按渠道类型分组，自动去重）</li>
-  <li><code>POST /v1/messages/count_tokens</code> - Token 计数（本地计算，三层降级）</li>
 </ul>
 
 <h3>🔑 认证方式</h3>
