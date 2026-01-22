@@ -7,6 +7,8 @@ import (
 	"context"
 	"log"
 	"math/rand/v2"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -62,12 +64,90 @@ func (s *Server) maybeShuffleChannels(channels []*modelpkg.Config) []*modelpkg.C
 	return channels
 }
 
+// configSupportsModel 检查渠道是否支持指定模型
+func (s *Server) configSupportsModel(cfg *modelpkg.Config, model string) bool {
+	if model == "*" {
+		return true
+	}
+	return cfg.SupportsModel(model)
+}
+
+// configSupportsModelWithDateFallback 检查渠道是否支持指定模型（支持日期后缀回退和模糊匹配）
+func (s *Server) configSupportsModelWithDateFallback(cfg *modelpkg.Config, model string) bool {
+	if s.configSupportsModel(cfg, model) {
+		return true
+	}
+	if model == "*" {
+		return false
+	}
+
+	// 日期后缀回退
+	if s.modelLookupStripDateSuffix {
+		// 请求带日期：claude-3-5-sonnet-20241022 -> claude-3-5-sonnet
+		if stripped, ok := stripTrailingYYYYMMDD(model); ok && stripped != model {
+			if cfg.SupportsModel(stripped) {
+				return true
+			}
+		}
+
+		// 请求无日期：claude-sonnet-4-5 -> claude-sonnet-4-5-20250929
+		for _, entry := range cfg.ModelEntries() {
+			if entry.Model == "" {
+				continue
+			}
+			if stripped, ok := stripTrailingYYYYMMDD(entry.Model); ok && stripped == model {
+				return true
+			}
+		}
+	}
+
+	// 模糊匹配：sonnet -> claude-sonnet-4-5-20250929
+	if s.modelFuzzyMatch {
+		if _, ok := cfg.FuzzyMatchModel(model); ok {
+			return true
+		}
+	}
+
+	return false
+}
+
+// stripTrailingYYYYMMDD 去除模型名称末尾的日期后缀（YYYYMMDD）
+func stripTrailingYYYYMMDD(model string) (string, bool) {
+	dash := strings.LastIndexByte(model, '-')
+	if dash < 0 {
+		return model, false
+	}
+	suffix := model[dash+1:]
+	if len(suffix) != 8 {
+		return model, false
+	}
+	for i := 0; i < len(suffix); i++ {
+		if suffix[i] < '0' || suffix[i] > '9' {
+			return model, false
+		}
+	}
+	year, _ := strconv.Atoi(suffix[:4])
+	month, _ := strconv.Atoi(suffix[4:6])
+	day, _ := strconv.Atoi(suffix[6:8])
+	if year < 2000 || year > 2100 {
+		return model, false
+	}
+	if month < 1 || month > 12 {
+		return model, false
+	}
+	lastDay := time.Date(year, time.Month(month)+1, 0, 0, 0, 0, 0, time.UTC).Day()
+	if day < 1 || day > lastDay {
+		return model, false
+	}
+	return model[:dash], true
+}
+
 // filterCooldownChannels 过滤掉冷却中的渠道
 // [INFO] 修复 (2025-12-09): 在渠道选择阶段就过滤冷却渠道，避免无效尝试
 // 过滤规则:
-//   1. 渠道级冷却 → 直接过滤
-//   2. 所有Key都在冷却 → 过滤
-//   3. 至少有一个Key可用 → 保留
+//  1. 渠道级冷却 → 直接过滤
+//  2. 所有Key都在冷却 → 过滤
+//  3. 至少有一个Key可用 → 保留
 func (s *Server) filterCooldownChannels(ctx context.Context, channels []*modelpkg.Config) ([]*modelpkg.Config, error) {
 	if len(channels) == 0 {
 		return channels, nil

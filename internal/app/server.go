@@ -50,6 +50,9 @@ type Server struct {
 	maxKeyRetries    int           // 单个渠道内最大Key重试次数
 	firstByteTimeout time.Duration // 上游首字节超时（流式请求）
 	nonStreamTimeout time.Duration // 非流式请求超时
+	// 模型匹配配置（启动时从数据库加载，修改后重启生效）
+	modelLookupStripDateSuffix bool // 未命中时去除末尾-YYYYMMDD日期后缀再匹配渠道（优先精确匹配）
+	modelFuzzyMatch            bool // 未命中时启用模糊匹配（子串匹配+版本排序）
 
 	// 登录速率限制器（用于传递给AuthService）
 	loginRateLimiter *util.LoginRateLimiter
@@ -59,11 +62,11 @@ type Server struct {
 	maxConcurrency int           // 最大并发数（默认1000）
 
 	// 后台服务
-	endpointTester   *EndpointTester        // 后台端点测速服务
-	cooldownService  *CooldownService       // 冷却事件 SSE 广播服务
-	activeReqManager *activeRequestManager  // 活跃请求管理器
-	monitorService   *MonitorService        // 请求监控服务
-	traceStore       *storage.TraceStore    // 追踪数据存储（独立数据库）
+	endpointTester   *EndpointTester       // 后台端点测速服务
+	cooldownService  *CooldownService      // 冷却事件 SSE 广播服务
+	activeReqManager *activeRequestManager // 活跃请求管理器
+	monitorService   *MonitorService       // 请求监控服务
+	traceStore       *storage.TraceStore   // 追踪数据存储（独立数据库）
 
 	// 优雅关闭机制
 	shutdownCh     chan struct{}  // 关闭信号channel
@@ -106,6 +109,17 @@ func NewServer(store storage.Store) *Server {
 	cooldownFixedInterval := configService.GetIntMin("cooldown_fixed_interval", 30, 1)
 	util.SetCooldownConfig(cooldownMode, cooldownFixedInterval)
 
+	// 模型匹配配置（启动时加载，修改后重启生效）
+	modelLookupStripDateSuffix := configService.GetBool("model_lookup_strip_date_suffix", true)
+	if modelLookupStripDateSuffix {
+		log.Print("[INFO] 已启用模型日期后缀回退匹配：未命中时忽略末尾-YYYYMMDD日期后缀进行匹配（优先精确匹配）")
+	}
+
+	modelFuzzyMatch := configService.GetBool("model_fuzzy_match", false)
+	if modelFuzzyMatch {
+		log.Print("[INFO] 已启用模型模糊匹配：未命中时进行子串匹配并按版本排序选择最新模型")
+	}
+
 	// 最大并发数保留环境变量读取（启动参数，不支持Web管理）
 	maxConcurrency := config.DefaultMaxConcurrency
 	if concEnv := os.Getenv("CCLOAD_MAX_CONCURRENCY"); concEnv != "" {
@@ -125,9 +139,11 @@ func NewServer(store storage.Store) *Server {
 		loginRateLimiter: util.NewLoginRateLimiter(),
 
 		// 运行时配置（启动时加载，修改后重启生效）
-		maxKeyRetries:    maxKeyRetries,
-		firstByteTimeout: firstByteTimeout,
-		nonStreamTimeout: nonStreamTimeout,
+		maxKeyRetries:              maxKeyRetries,
+		firstByteTimeout:           firstByteTimeout,
+		nonStreamTimeout:           nonStreamTimeout,
+		modelLookupStripDateSuffix: modelLookupStripDateSuffix,
+		modelFuzzyMatch:            modelFuzzyMatch,
 
 		// HTTP客户端
 		client: &http.Client{
@@ -181,8 +197,8 @@ func NewServer(store storage.Store) *Server {
 		store,
 		config.DefaultLogBufferSize,
 		config.DefaultLogWorkers,
-		logRetentionDays,      // 日志保留天数（启动时读取，修改后重启生效）
-		statsRetentionDays,    // 统计数据保留天数
+		logRetentionDays,   // 日志保留天数（启动时读取，修改后重启生效）
+		statsRetentionDays, // 统计数据保留天数
 		s.shutdownCh,
 		&s.isShuttingDown,
 		&s.wg,

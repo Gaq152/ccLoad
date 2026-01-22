@@ -1,6 +1,7 @@
 package model
 
 import (
+	"strings"
 	"time"
 )
 
@@ -11,7 +12,7 @@ type Config struct {
 	ChannelType    string            `json:"channel_type"` // 渠道类型: "anthropic" | "codex" | "gemini"，默认anthropic
 	URL            string            `json:"url"`
 	Priority       int               `json:"priority"`
-	SortOrder      int               `json:"sort_order"`   // 同优先级内的排序顺序（拖拽排序用）
+	SortOrder      int               `json:"sort_order"` // 同优先级内的排序顺序（拖拽排序用）
 	Models         []string          `json:"models"`
 	ModelRedirects map[string]string `json:"model_redirects,omitempty"` // 模型重定向映射：请求模型 -> 实际转发模型
 	Enabled        bool              `json:"enabled"`
@@ -126,14 +127,14 @@ type ChannelWithKeys struct {
 // QuotaConfig 渠道用量查询配置
 // 用于定期从外部API获取渠道的剩余额度/用量信息
 type QuotaConfig struct {
-	Enabled         bool              `json:"enabled"`           // 是否启用用量监控
-	RequestURL      string            `json:"request_url"`       // 请求URL
-	RequestMethod   string            `json:"request_method"`    // HTTP方法: GET/POST
-	RequestHeaders  map[string]string `json:"request_headers"`   // 请求头（如Authorization）
-	RequestBody     string            `json:"request_body"`      // POST请求体（可选）
-	ExtractorScript string            `json:"extractor_script"`  // JS提取器脚本（在前端执行）
-	IntervalSeconds int               `json:"interval_seconds"`  // 轮询间隔（秒），默认300
-	ChallengeMode   string            `json:"challenge_mode"`    // 反爬挑战模式: "" (无) | "acw_sc__v2" (anyrouter)
+	Enabled         bool              `json:"enabled"`          // 是否启用用量监控
+	RequestURL      string            `json:"request_url"`      // 请求URL
+	RequestMethod   string            `json:"request_method"`   // HTTP方法: GET/POST
+	RequestHeaders  map[string]string `json:"request_headers"`  // 请求头（如Authorization）
+	RequestBody     string            `json:"request_body"`     // POST请求体（可选）
+	ExtractorScript string            `json:"extractor_script"` // JS提取器脚本（在前端执行）
+	IntervalSeconds int               `json:"interval_seconds"` // 轮询间隔（秒），默认300
+	ChallengeMode   string            `json:"challenge_mode"`   // 反爬挑战模式: "" (无) | "acw_sc__v2" (anyrouter)
 }
 
 // GetIntervalSeconds 返回轮询间隔，默认300秒（5分钟）
@@ -157,4 +158,179 @@ type ChannelSortUpdate struct {
 	ID        int64
 	Priority  int
 	SortOrder int
+}
+
+// ModelEntry 模型条目（用于模糊匹配）
+type ModelEntry struct {
+	Model string
+}
+
+// SupportsModel 检查渠道是否支持指定模型
+func (c *Config) SupportsModel(model string) bool {
+	for _, m := range c.Models {
+		if m == model {
+			return true
+		}
+	}
+	return false
+}
+
+// ModelEntries 返回模型条目列表（用于模糊匹配）
+func (c *Config) ModelEntries() []ModelEntry {
+	entries := make([]ModelEntry, len(c.Models))
+	for i, m := range c.Models {
+		entries[i] = ModelEntry{Model: m}
+	}
+	return entries
+}
+
+// FuzzyMatchModel 模糊匹配模型名称
+// 当精确匹配失败时，查找包含 query 子串的模型，按版本排序返回最新的
+// 返回 (匹配到的模型名, 是否匹配成功)
+func (c *Config) FuzzyMatchModel(query string) (string, bool) {
+	if query == "" {
+		return "", false
+	}
+
+	queryLower := strings.ToLower(query)
+	var matches []string
+
+	for _, model := range c.Models {
+		if strings.Contains(strings.ToLower(model), queryLower) {
+			matches = append(matches, model)
+		}
+	}
+
+	if len(matches) == 0 {
+		return "", false
+	}
+	if len(matches) == 1 {
+		return matches[0], true
+	}
+
+	// 多个匹配：按版本排序，取最新
+	sortModelsByVersion(matches)
+	return matches[0], true
+}
+
+// sortModelsByVersion 按版本排序模型列表（最新优先）
+// 排序优先级：1.日期后缀 2.版本数字 3.字典序
+func sortModelsByVersion(models []string) {
+	for i := 0; i < len(models)-1; i++ {
+		for j := i + 1; j < len(models); j++ {
+			if compareModelVersion(models[i], models[j]) < 0 {
+				models[i], models[j] = models[j], models[i]
+			}
+		}
+	}
+}
+
+// compareModelVersion 比较两个模型版本
+// 返回 >0 表示 a 更新，<0 表示 b 更新，0 表示相同
+func compareModelVersion(a, b string) int {
+	// 1. 日期后缀优先（YYYYMMDD）
+	dateA := extractDateSuffix(a)
+	dateB := extractDateSuffix(b)
+	if dateA != dateB {
+		if dateA > dateB {
+			return 1
+		}
+		return -1
+	}
+
+	// 2. 版本数字序列比较
+	verA := extractVersionNumbers(a)
+	verB := extractVersionNumbers(b)
+	maxLen := len(verA)
+	if len(verB) > maxLen {
+		maxLen = len(verB)
+	}
+	for i := 0; i < maxLen; i++ {
+		va, vb := 0, 0
+		if i < len(verA) {
+			va = verA[i]
+		}
+		if i < len(verB) {
+			vb = verB[i]
+		}
+		if va != vb {
+			return va - vb
+		}
+	}
+
+	// 3. 兜底：字典序
+	if a > b {
+		return 1
+	} else if a < b {
+		return -1
+	}
+	return 0
+}
+
+// extractDateSuffix 提取模型名称末尾的日期后缀（YYYYMMDD）
+// 返回日期字符串，无日期返回空串
+func extractDateSuffix(model string) string {
+	// 查找最后一个分隔符
+	lastDash := strings.LastIndexByte(model, '-')
+	lastDot := strings.LastIndexByte(model, '.')
+	lastSep := lastDash
+	if lastDot > lastSep {
+		lastSep = lastDot
+	}
+	if lastSep < 0 {
+		return ""
+	}
+
+	suffix := model[lastSep+1:]
+	if len(suffix) != 8 {
+		return ""
+	}
+
+	// 验证是否全数字
+	for i := 0; i < len(suffix); i++ {
+		if suffix[i] < '0' || suffix[i] > '9' {
+			return ""
+		}
+	}
+
+	// 简单验证年份范围
+	year := (int(suffix[0]-'0') * 1000) + (int(suffix[1]-'0') * 100) +
+		(int(suffix[2]-'0') * 10) + int(suffix[3]-'0')
+	if year < 2000 || year > 2100 {
+		return ""
+	}
+
+	return suffix
+}
+
+// extractVersionNumbers 提取模型名称中的版本数字
+// 例如：gpt-5.2 → [5,2], claude-sonnet-4-5-20250929 → [4,5]
+func extractVersionNumbers(model string) []int {
+	// 移除日期后缀避免干扰
+	if date := extractDateSuffix(model); date != "" {
+		model = model[:len(model)-len(date)-1]
+	}
+
+	var nums []int
+	var current int
+	inNumber := false
+
+	for i := 0; i < len(model); i++ {
+		c := model[i]
+		if c >= '0' && c <= '9' {
+			current = current*10 + int(c-'0')
+			inNumber = true
+		} else {
+			if inNumber {
+				nums = append(nums, current)
+				current = 0
+				inNumber = false
+			}
+		}
+	}
+	if inNumber {
+		nums = append(nums, current)
+	}
+
+	return nums
 }
