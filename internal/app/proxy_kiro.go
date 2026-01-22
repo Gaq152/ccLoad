@@ -105,7 +105,30 @@ func (s *Server) forwardKiroRequest(
 		isAWSEventStreamBinary(body)
 
 	if isAWSEventStream {
-		// 解析 AWS Event Stream 并转换为 Anthropic SSE 格式
+		// 检查是否为非流式请求
+		if !reqCtx.isStreaming {
+			// 非流式请求：解析 AWS Event Stream 并构建完整的 JSON 响应
+			jsonResp, inputTokens, outputTokens, err := ConvertKiroAWSEventStreamToJSON(body, reqCtx.originalModel, estimatedInputTokens)
+			if err != nil {
+				log.Printf("[ERROR] [Kiro] 非流式响应转换失败: %v", err)
+				return nil, duration, fmt.Errorf("convert kiro response to json: %w", err)
+			}
+
+			// 写入 JSON 响应
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write(jsonResp)
+
+			return &fwResult{
+				Status:       http.StatusOK,
+				Header:       resp.Header.Clone(),
+				Body:         jsonResp,
+				InputTokens:  inputTokens,
+				OutputTokens: outputTokens,
+			}, duration, nil
+		}
+
+		// 流式请求：解析 AWS Event Stream 并转换为 Anthropic SSE 格式
 		// 使用请求中的模型名称和估算的输入 token
 		parser, err := ProcessKiroAWSEventStream(ctx, body, w, reqCtx.originalModel, estimatedInputTokens)
 		if err != nil && err != io.EOF {
@@ -891,12 +914,12 @@ type kiroSSEParser struct {
 	messageStarted bool
 
 	// 思考块状态
-	inThinkingBlock     bool // 当前是否在 thinking 块内
-	thinkingBlockSent   bool // 是否已发送 thinking block start
+	inThinkingBlock      bool // 当前是否在 thinking 块内
+	thinkingBlockSent    bool // 是否已发送 thinking block start
 	thinkingBlockStopped bool // 是否已发送 thinking block stop
-	textBlockSent       bool // 是否已发送 text block start
-	textBlockStopped    bool // 是否已发送 text block stop
-	currentBlockIndex   int  // 当前 block 索引
+	textBlockSent        bool // 是否已发送 text block start
+	textBlockStopped     bool // 是否已发送 text block stop
+	currentBlockIndex    int  // 当前 block 索引
 
 	// 请求的模型名称
 	requestedModel string
@@ -918,6 +941,10 @@ type kiroSSEParser struct {
 	// 统计信息
 	outputTokens int
 	inputTokens  int
+
+	// 非流式响应收集（用于 stream: false）
+	fullText string        // 完整文本内容
+	toolUses []kiroToolUse // 工具调用列表
 }
 
 func newKiroSSEParser() *kiroSSEParser {
@@ -1292,4 +1319,182 @@ func getStringField(m map[string]any, key string) string {
 		return v
 	}
 	return ""
+}
+
+// ConvertKiroAWSEventStreamToJSON 将 Kiro AWS Event Stream 转换为 Anthropic JSON 响应
+// 用于非流式请求（stream: false）
+// 返回: (jsonResponse, inputTokens, outputTokens, error)
+func ConvertKiroAWSEventStreamToJSON(data []byte, requestedModel string, estimatedInputTokens int) ([]byte, int, int, error) {
+	// 创建解析器收集所有事件
+	parser := newKiroSSEParser()
+	if requestedModel != "" {
+		parser.requestedModel = requestedModel
+	}
+	parser.inputTokens = estimatedInputTokens
+
+	// 解析 AWS Event Stream
+	remaining := data
+	for len(remaining) > 0 {
+		frameLen, frame, rest := parseAWSEventStreamFrame(remaining)
+		if frameLen == 0 || frame == nil {
+			break
+		}
+		remaining = rest
+
+		// 解析 payload 为 JSON
+		var payload map[string]any
+		if err := sonic.Unmarshal(frame.Payload, &payload); err != nil {
+			log.Printf("[WARN] [Kiro] 无法解析 payload: %v", err)
+			continue
+		}
+
+		// 处理不同类型的事件
+		eventType := frame.Headers[":event-type"]
+		switch eventType {
+		case "contentBlockDelta":
+			handleKiroContentBlockDelta(payload, parser)
+		case "toolUseEvent":
+			handleKiroToolUseEventForJSON(payload, parser)
+		case "completionEvent":
+			// 完成事件，提取 token 信息
+			if completion, ok := payload["completion"].(map[string]any); ok {
+				if usage, ok := completion["usage"].(map[string]any); ok {
+					if outputTokens, ok := usage["outputTokens"].(float64); ok {
+						parser.outputTokens = int(outputTokens)
+					}
+				}
+			}
+		}
+	}
+
+	// 构建完整的 JSON 响应（类似 normal.json 格式）
+	content := make([]map[string]any, 0)
+
+	// 添加文本内容
+	if parser.fullText != "" {
+		content = append(content, map[string]any{
+			"type": "text",
+			"text": parser.fullText,
+		})
+	}
+
+	// 添加工具调用
+	for _, toolUse := range parser.toolUses {
+		content = append(content, map[string]any{
+			"type":  "tool_use",
+			"id":    toolUse.ID,
+			"name":  toolUse.Name,
+			"input": toolUse.Input,
+		})
+	}
+
+	// 确定 stop_reason
+	stopReason := "end_turn"
+	if len(parser.toolUses) > 0 {
+		stopReason = "tool_use"
+	}
+
+	// 构建响应对象
+	response := map[string]any{
+		"type":          "message",
+		"role":          "assistant",
+		"model":         parser.requestedModel,
+		"content":       content,
+		"stop_reason":   stopReason,
+		"stop_sequence": nil,
+		"usage": map[string]any{
+			"input_tokens":  parser.inputTokens,
+			"output_tokens": parser.outputTokens,
+		},
+	}
+
+	// 序列化为 JSON
+	jsonResp, err := sonic.Marshal(response)
+	if err != nil {
+		return nil, 0, 0, fmt.Errorf("marshal json response: %w", err)
+	}
+
+	return jsonResp, parser.inputTokens, parser.outputTokens, nil
+}
+
+// handleKiroToolUseEventForJSON 处理工具调用事件（用于非流式响应）
+func handleKiroToolUseEventForJSON(payload map[string]any, parser *kiroSSEParser) {
+	toolUseMap, ok := payload["toolUse"].(map[string]any)
+	if !ok {
+		return
+	}
+
+	toolUseId, _ := toolUseMap["toolUseId"].(string)
+	toolName, _ := toolUseMap["name"].(string)
+
+	// Claude Code 客户端需要 toolu_ 前缀
+	if strings.HasPrefix(toolUseId, "tooluse_") {
+		toolUseId = "toolu_" + strings.TrimPrefix(toolUseId, "tooluse_")
+	}
+
+	// 检查是否是停止事件
+	isStop := false
+	if status, ok := toolUseMap["status"].(string); ok && status == "COMPLETE" {
+		isStop = true
+	}
+
+	if isStop {
+		// 工具调用完成，不需要额外处理
+		return
+	}
+
+	// 提取 input delta
+	inputDelta, _ := toolUseMap["input"].(string)
+	if inputDelta == "" {
+		return
+	}
+
+	// 查找或创建工具调用记录
+	var toolUse *kiroToolUse
+	for i := range parser.toolUses {
+		if parser.toolUses[i].ID == toolUseId {
+			toolUse = &parser.toolUses[i]
+			break
+		}
+	}
+
+	if toolUse == nil {
+		// 创建新的工具调用记录
+		parser.toolUses = append(parser.toolUses, kiroToolUse{
+			ID:          toolUseId,
+			Name:        toolName,
+			InputBuffer: inputDelta,
+		})
+		toolUse = &parser.toolUses[len(parser.toolUses)-1]
+	} else {
+		// 追加 input delta
+		toolUse.InputBuffer += inputDelta
+	}
+
+	// 尝试解析完整的 input JSON
+	var inputObj map[string]any
+	if err := sonic.Unmarshal([]byte(toolUse.InputBuffer), &inputObj); err == nil {
+		toolUse.Input = inputObj
+	}
+}
+
+// kiroToolUse 工具调用记录
+type kiroToolUse struct {
+	ID          string
+	Name        string
+	InputBuffer string
+	Input       map[string]any
+}
+
+// handleKiroContentBlockDelta 处理内容块增量事件（用于非流式响应）
+func handleKiroContentBlockDelta(payload map[string]any, parser *kiroSSEParser) {
+	delta, ok := payload["delta"].(map[string]any)
+	if !ok {
+		return
+	}
+
+	// 提取文本内容
+	if text, ok := delta["text"].(string); ok && text != "" {
+		parser.fullText += text
+	}
 }

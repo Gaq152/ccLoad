@@ -130,6 +130,10 @@ func isStreamingRequest(path string, body []byte) bool {
 		Stream bool `json:"stream"`
 	}
 	_ = sonic.Unmarshal(body, &reqModel)
+
+	// 添加日志以调试compaction问题
+	log.Printf("[DEBUG] [isStreamingRequest] path=%s, stream=%v, bodyLen=%d", path, reqModel.Stream, len(body))
+
 	return reqModel.Stream
 }
 
