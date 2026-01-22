@@ -429,6 +429,7 @@ func (s *Server) SetupRoutes(r *gin.Engine) {
 	{
 		public.GET("/summary", s.HandlePublicSummary)
 		public.GET("/channel-types", s.HandleGetChannelTypes)
+		public.GET("/models", s.HandlePublicModels) // 获取所有渠道支持的模型列表
 	}
 
 	// 登录相关（公开访问）
