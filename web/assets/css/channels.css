@@ -1230,7 +1230,7 @@ html.dark .sort-mode-changes {
 }
 
 .bulk-actions .btn-enable {
-  color: var(--success-400);
+  color: var(--theme-success);
   background: rgba(34, 197, 94, 0.15);
   border-color: rgba(34, 197, 94, 0.3);
 }
@@ -1240,7 +1240,7 @@ html.dark .sort-mode-changes {
 }
 
 .bulk-actions .btn-disable {
-  color: var(--warning-400);
+  color: var(--theme-warning);
   background: rgba(245, 158, 11, 0.15);
   border-color: rgba(245, 158, 11, 0.3);
 }
