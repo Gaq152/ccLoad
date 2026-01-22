@@ -496,3 +496,92 @@ func addFloat64Ptr(a, b *float64) *float64 {
 	}
 	return &sum
 }
+
+// HandlePublicModels 获取所有渠道支持的模型列表（公开接口，无需认证）
+// GET /public/models
+//
+// 返回格式：
+//
+//	{
+//	  "models": [
+//	    {
+//	      "name": "claude-3-5-sonnet-20241022",
+//	      "channel_types": ["anthropic", "codex"]
+//	    },
+//	    {
+//	      "name": "gpt-4o",
+//	      "channel_types": ["openai"]
+//	    }
+//	  ]
+//	}
+func (s *Server) HandlePublicModels(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	// 获取所有启用的渠道配置
+	configs, err := s.store.ListConfigs(ctx)
+	if err != nil {
+		RespondError(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	// 使用 map 去重并收集每个模型支持的渠道类型
+	// key: 模型名称, value: 渠道类型集合
+	modelChannelTypes := make(map[string]map[string]struct{})
+
+	for _, cfg := range configs {
+		// 只统计启用的渠道
+		if !cfg.Enabled {
+			continue
+		}
+
+		channelType := cfg.GetChannelType()
+
+		for _, model := range cfg.Models {
+			if model == "" {
+				continue
+			}
+
+			// 初始化模型的渠道类型集合
+			if _, exists := modelChannelTypes[model]; !exists {
+				modelChannelTypes[model] = make(map[string]struct{})
+			}
+
+			// 添加渠道类型
+			modelChannelTypes[model][channelType] = struct{}{}
+		}
+	}
+
+	// 转换为响应格式
+	type ModelInfo struct {
+		Name         string   `json:"name"`
+		ChannelTypes []string `json:"channel_types"`
+	}
+
+	models := make([]ModelInfo, 0, len(modelChannelTypes))
+	for modelName, channelTypeSet := range modelChannelTypes {
+		// 将 set 转换为 slice
+		channelTypes := make([]string, 0, len(channelTypeSet))
+		for ct := range channelTypeSet {
+			channelTypes = append(channelTypes, ct)
+		}
+
+		models = append(models, ModelInfo{
+			Name:         modelName,
+			ChannelTypes: channelTypes,
+		})
+	}
+
+	// 按模型名称排序（可选，提供更好的可读性）
+	// 这里使用简单的冒泡排序
+	for i := 0; i < len(models)-1; i++ {
+		for j := i + 1; j < len(models); j++ {
+			if models[i].Name > models[j].Name {
+				models[i], models[j] = models[j], models[i]
+			}
+		}
+	}
+
+	RespondJSON(c, http.StatusOK, gin.H{
+		"models": models,
+	})
+}
