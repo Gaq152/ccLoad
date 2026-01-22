@@ -563,12 +563,50 @@ curl -X POST "http://localhost:8080/v1/messages/count_tokens?beta=true" \
 
 ### 公开接口
 
-#### 获取支持的模型列表
+以下接口无需认证，可直接访问：
 
-无需认证的公开接口，用于查询所有启用渠道支持的模型：
+#### 健康检查
 
 ```bash
-# 获取模型列表
+curl http://localhost:8080/health
+
+# 响应示例
+# {
+#   "status": "ok"
+# }
+```
+
+#### 统计摘要
+
+```bash
+curl http://localhost:8080/public/summary
+
+# 响应示例
+# {
+#   "total_requests": 1234,
+#   "success_requests": 1200,
+#   "error_requests": 34,
+#   "by_type": {
+#     "anthropic": { ... },
+#     "codex": { ... }
+#   }
+# }
+```
+
+#### 渠道类型列表
+
+```bash
+curl http://localhost:8080/public/channel-types
+
+# 响应示例
+# {
+#   "channel_types": ["anthropic", "codex", "gemini"]
+# }
+```
+
+#### 获取支持的模型列表
+
+```bash
 curl http://localhost:8080/public/models
 
 # 响应示例
