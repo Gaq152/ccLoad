@@ -221,15 +221,10 @@ html {
   transition: background-color 0.3s ease;
 }
 
+/* 移除全局通配符过渡，避免大量DOM元素导致性能卡顿
 html.theme-transition,
-html.theme-transition *,
-html.theme-transition *::before,
-html.theme-transition *::after {
-  transition: background-color 0.3s ease,
-              border-color 0.3s ease,
-              color 0.3s ease,
-              box-shadow 0.3s ease !important;
-}
+html.theme-transition *, ... { ... } 
+*/
 
 /* === 主题切换按钮样式 === */
 .theme-toggle {
