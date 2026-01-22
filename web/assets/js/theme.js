@@ -49,10 +49,9 @@ const ThemeManager = (() => {
   function applyTheme(theme, animate = false) {
     const root = document.documentElement;
 
-    if (animate) {
-      root.classList.add('theme-transition');
-      setTimeout(() => root.classList.remove('theme-transition'), 300);
-    }
+    // 移除 theme-transition 类添加逻辑
+    // 性能优化：避免 600+ 渠道场景下触发全页通配符过渡导致的严重卡顿
+    // 仅保留 html 标签的背景色过渡和 View Transitions API
 
     if (theme === 'light') {
       root.setAttribute(THEME_ATTR, 'light');
