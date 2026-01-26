@@ -17,6 +17,60 @@ function parseExpiresAt(raw) {
   return 0;
 }
 
+// 焦点管理：保存打开模态框前的焦点元素
+let previousFocusElement = null;
+
+/**
+ * 设置模态框焦点到第一个可聚焦元素
+ * @param {HTMLElement} modal - 模态框元素
+ */
+function setModalFocus(modal) {
+  const focusableElements = modal.querySelectorAll(
+    'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+  );
+  if (focusableElements.length > 0) {
+    focusableElements[0].focus();
+  }
+}
+
+/**
+ * 显示模态框并管理焦点
+ * @param {string} modalId - 模态框ID
+ */
+function showModalWithFocus(modalId) {
+  const modal = document.getElementById(modalId);
+  if (!modal) return;
+
+  // 保存当前焦点
+  previousFocusElement = document.activeElement;
+
+  // 显示模态框
+  modal.classList.add('show');
+  modal.setAttribute('aria-hidden', 'false');
+
+  // 设置焦点到第一个可聚焦元素
+  setTimeout(() => setModalFocus(modal), 100);
+}
+
+/**
+ * 关闭模态框并恢复焦点
+ * @param {string} modalId - 模态框ID
+ */
+function closeModalWithFocus(modalId) {
+  const modal = document.getElementById(modalId);
+  if (!modal) return;
+
+  // 隐藏模态框
+  modal.classList.remove('show');
+  modal.setAttribute('aria-hidden', 'true');
+
+  // 恢复焦点
+  if (previousFocusElement && typeof previousFocusElement.focus === 'function') {
+    previousFocusElement.focus();
+  }
+  previousFocusElement = null;
+}
+
 function showAddModal() {
   editingChannelId = null;
   currentChannelKeyCooldowns = [];
@@ -67,7 +121,8 @@ function showAddModal() {
   window.addEventListener('message', handleCodexOAuthMessage);
   window.addEventListener('message', handleGeminiOAuthMessage);
 
-  document.getElementById('channelModal').classList.add('show');
+  // 使用焦点管理显示模态框
+  showModalWithFocus('channelModal');
 }
 
 async function editChannel(id) {
@@ -84,7 +139,7 @@ async function editChannel(id) {
   document.getElementById('channelEnabled').checked = channel.enabled;
 
   // 立即显示弹窗（提升响应速度）
-  document.getElementById('channelModal').classList.add('show');
+  showModalWithFocus('channelModal');
 
   // 显示加载状态
   const modalContent = document.querySelector('#channelModal .modal-body');
@@ -327,7 +382,8 @@ async function editChannel(id) {
 }
 
 function closeModal() {
-  document.getElementById('channelModal').classList.remove('show');
+  // 使用焦点管理关闭模态框
+  closeModalWithFocus('channelModal');
   editingChannelId = null;
 
   // 移除 OAuth 回调消息监听

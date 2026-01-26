@@ -53,19 +53,19 @@
             <!-- 渠道类型筛选 -->
             <div class="filter-group">
               <label class="filter-label">渠道类型</label>
-              <select id="channelTypeFilter" class="filter-select" style="min-width: 120px;">
+              <select id="channelTypeFilter" class="filter-select" aria-controls="channels-container" aria-label="按渠道类型筛选" style="min-width: 120px;">
                 <!-- 动态加载渠道类型选项 -->
               </select>
             </div>
 
             <div class="">
               <label class="filter-label">渠道ID</label>
-              <input type="text" id="idFilter" class="filter-input" placeholder="输入ID..." style="max-width: 100px;">
+              <input type="text" id="idFilter" class="filter-input" aria-controls="channels-container" aria-label="按渠道ID筛选" placeholder="输入ID..." style="max-width: 100px;">
             </div>
 
             <div class="filter-group">
               <label class="filter-label">状态</label>
-              <select id="statusFilter" class="filter-select" style="min-width: 100px;">
+              <select id="statusFilter" class="filter-select" aria-controls="channels-container" aria-label="按状态筛选" style="min-width: 100px;">
                 <option value="all">所有状态</option>
                 <option value="enabled">已启用</option>
                 <option value="disabled">已禁用</option>
@@ -75,15 +75,15 @@
 
             <div class="filter-group">
               <label class="filter-label">模型</label>
-              <select id="modelFilter" class="filter-select" style="min-width: 100px;">
+              <select id="modelFilter" class="filter-select" aria-controls="channels-container" aria-label="按模型筛选" style="min-width: 100px;">
                 <option value="all">所有模型</option>
               </select>
             </div>
              <div class="filter-group">
               <label class="filter-label">搜索渠道</label>
               <div style="position: relative; flex: 1; min-width: 140px;">
-                <input type="text" id="searchInput" class="filter-input" placeholder="输入渠道名称..." style="padding-right: 36px;">
-                <button id="clearSearchBtn" type="button" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--neutral-500); cursor: pointer; font-size: 14px; padding: 2px; opacity: 0; transition: opacity 0.2s; border-radius: 3px;" title="清空搜索" onmouseover="this.style.background='var(--neutral-100)'" onmouseout="this.style.background='none'">
+                <input type="text" id="searchInput" class="filter-input" aria-controls="channels-container" aria-label="搜索渠道名称" placeholder="输入渠道名称..." style="padding-right: 36px;">
+                <button id="clearSearchBtn" type="button" aria-label="清空搜索" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--neutral-500); cursor: pointer; font-size: 14px; padding: 2px; opacity: 0; transition: opacity 0.2s; border-radius: 3px;" title="清空搜索" onmouseover="this.style.background='var(--neutral-100)'" onmouseout="this.style.background='none'">
                   ✕
                 </button>
               </div>
@@ -97,7 +97,7 @@
               </span>
               <span class="timer-text">--:--</span>
             </div>
-            <div class="filter-info" id="filterInfo"><span id="filteredCount">0</span> / <span id="totalCount">0</span> 个渠道
+            <div class="filter-info" role="status" aria-live="polite" aria-atomic="true" id="filterInfo"><span id="filteredCount">0</span> / <span id="totalCount">0</span> 个渠道
             </div>
             <!-- 排序模式按钮 -->
             <button type="button" id="sortModeBtn" class="btn btn-secondary btn-sm" onclick="enterSortMode()" title="进入排序模式，拖拽调整渠道优先级和顺序">
@@ -142,19 +142,19 @@
   </div>
 
   <!-- 添加/编辑渠道模态框 -->
-  <div id="channelModal" class="modal">
+  <div id="channelModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
     <div class="modal-content">
       <div class="modal-header">
         <h2 class="modal-title" id="modalTitle">添加渠道</h2>
-        <button class="close-btn" onclick="closeModal()">&times;</button>
+        <button class="close-btn" onclick="closeModal()" aria-label="关闭对话框">&times;</button>
       </div>
       <form id="channelForm" onsubmit="saveChannel(event)">
         <div class="form-group">
           <!-- 渠道名称、类型和策略全部在一行 -->
           <div style="display: flex; gap: 12px; align-items: center; justify-content: space-between;">
             <div style="display: flex; align-items: center; gap: 8px; flex: 0 0 auto;">
-              <label class="form-label" style="margin: 0; white-space: nowrap;">渠道名称 *</label>
-              <input type="text" id="channelName" class="form-input" required maxlength="20" style="width: 200px;" placeholder="最多20字符">
+              <label class="form-label" style="margin: 0; white-space: nowrap;">渠道名称 <span aria-label="必填">*</span></label>
+              <input type="text" id="channelName" class="form-input" required maxlength="20" aria-required="true" aria-invalid="false" style="width: 200px;" placeholder="最多20字符">
             </div>
 
             <div style="display: flex; align-items: center; gap: 20px;">
@@ -687,9 +687,9 @@ function(response) {
   </div>
 
   <!-- 删除确认模态框 -->
-  <div id="deleteModal" class="modal">
+  <div id="deleteModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="deleteModalTitle">
     <div class="modal-content confirm-modal">
-      <h2 class="modal-title">确认删除</h2>
+      <h2 class="modal-title" id="deleteModalTitle">确认删除</h2>
       <p>确定要删除渠道 "<span id="deleteChannelName"></span>" 吗？</p>
       <p style="color: var(--error-600); font-size: 0.875rem;">此操作不可恢复！</p>
       <div class="confirm-actions">
@@ -700,9 +700,9 @@ function(response) {
   </div>
 
   <!-- 批量删除确认模态框 -->
-  <div id="bulkDeleteModal" class="modal">
+  <div id="bulkDeleteModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="bulkDeleteModalTitle">
     <div class="modal-content confirm-modal">
-      <h2 class="modal-title">确认删除</h2>
+      <h2 class="modal-title" id="bulkDeleteModalTitle">确认删除</h2>
       <p>确定要删除选中的 <span id="bulkDeleteCount"></span> 个渠道吗？</p>
       <p style="color: var(--error-600); font-size: 0.875rem;">此操作不可恢复！</p>
       <div class="confirm-actions">
@@ -713,11 +713,11 @@ function(response) {
   </div>
 
   <!-- 测试渠道模态框 -->
-  <div id="testModal" class="modal">
+  <div id="testModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="testModalTitle">
     <div class="modal-content test-modal-content">
       <div class="modal-header">
-        <h2 class="modal-title">测试渠道 - <span id="testChannelName"></span></h2>
-        <button class="close-btn" onclick="closeTestModal()">&times;</button>
+        <h2 class="modal-title" id="testModalTitle">测试渠道 - <span id="testChannelName"></span></h2>
+        <button class="close-btn" onclick="closeTestModal()" aria-label="关闭对话框">&times;</button>
       </div>
       <div class="form-group">
         <label class="form-label" for="testChannelType">渠道类型</label>
@@ -798,12 +798,12 @@ function(response) {
   </div>
 
   <!-- Key导入模态框 -->
-  <div id="keyImportModal" class="modal">
+  <div id="keyImportModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="keyImportModalTitle">
     <div class="modal-content" style="max-width: 600px;">
       <div class="modal-header">
-        <h2 class="modal-title">批量导入 API Keys</h2>
-        <button class="close-btn" onclick="closeKeyImportModal()" style="width: 28px; height: 28px; border-radius: 50%; border: none; background: var(--neutral-100); color: var(--neutral-600); cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: center; justify-content: center; padding: 0;" onmouseover="this.style.background='var(--neutral-200)'" onmouseout="this.style.background='var(--neutral-100)'">
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <h2 class="modal-title" id="keyImportModalTitle">批量导入 API Keys</h2>
+        <button class="close-btn" onclick="closeKeyImportModal()" aria-label="关闭对话框" style="width: 28px; height: 28px; border-radius: 50%; border: none; background: var(--neutral-100); color: var(--neutral-600); cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: center; justify-content: center; padding: 0;" onmouseover="this.style.background='var(--neutral-200)'" onmouseout="this.style.background='var(--neutral-100)'">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
             <path d="M10.5 3.5L3.5 10.5M3.5 3.5L10.5 10.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
         </button>
@@ -1107,11 +1107,11 @@ function(response) {
   </template>
 
   <!-- 端点管理弹窗 -->
-  <div id="endpointModal" class="modal">
+  <div id="endpointModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="endpointModalTitle">
     <div class="modal-content" style="max-width: 600px;">
       <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
         <div style="display: flex; align-items: center; gap: 12px;">
-          <h3 style="margin: 0; font-size: 1.1rem;"><span id="endpointCount">0</span> 个端点</h3>
+          <h3 style="margin: 0; font-size: 1.1rem;" id="endpointModalTitle"><span id="endpointCount">0</span> 个端点</h3>
           <label style="display: flex; align-items: center; gap: 6px; font-size: 0.875rem; cursor: pointer;">
             <input type="checkbox" id="autoSelectEndpoint" style="width: 16px; height: 16px;">
             <span>自动选择</span>
