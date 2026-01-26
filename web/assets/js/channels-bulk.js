@@ -304,6 +304,8 @@ async function confirmBulkDelete() {
  * 执行批量操作（内部实现）
  */
 async function performBulkAction(action, ids) {
+  // 保存当前滚动位置
+  const scrollPosition = window.scrollY || document.documentElement.scrollTop;
 
   const btnId = `bulk${action.charAt(0).toUpperCase() + action.slice(1)}Btn`;
   const btn = document.getElementById(btnId);
@@ -349,6 +351,10 @@ async function performBulkAction(action, ids) {
       invalidateChannelsCache();
     }
     await loadChannels('all', true);  // 强制刷新
+
+    // 恢复滚动位置
+    window.scrollTo(0, scrollPosition);
+
     clearBulkSelection();
 
   } catch (err) {
