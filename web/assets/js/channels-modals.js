@@ -643,6 +643,9 @@ async function confirmDelete() {
   if (!deletingChannelId) return;
 
   try {
+    // 保存当前滚动位置
+    const scrollPosition = window.scrollY || document.documentElement.scrollTop;
+
     const res = await fetchAPIWithAuth(`/admin/channels/${deletingChannelId}`, {
       method: 'DELETE'
     });
@@ -654,6 +657,10 @@ async function confirmDelete() {
     closeDeleteModal();
     clearChannelsCache();
     await loadChannels(filters.channelType);
+
+    // 恢复滚动位置
+    window.scrollTo(0, scrollPosition);
+
     if (window.showSuccess) showSuccess('渠道已删除');
   } catch (e) {
     console.error('删除渠道失败', e);
@@ -708,7 +715,7 @@ function updateChannelCardDOM(id, updates) {
       }
       if (toggleBtn) {
         toggleBtn.dataset.enabled = 'true';
-        toggleBtn.title = '禁用渠道';
+        toggleBtn.setAttribute('aria-label', '禁用渠道');
         toggleBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>';
       }
     } else {
@@ -719,7 +726,7 @@ function updateChannelCardDOM(id, updates) {
       }
       if (toggleBtn) {
         toggleBtn.dataset.enabled = 'false';
-        toggleBtn.title = '启用渠道';
+        toggleBtn.setAttribute('aria-label', '启用渠道');
         toggleBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>';
       }
     }
