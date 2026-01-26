@@ -1277,3 +1277,371 @@ html.dark .sort-mode-changes {
 }
 
 /* 暗色主题下批量操作面板样式已通过主题变量统一，无需额外覆盖 */
+
+/* ============================================================================
+ * 筛选栏响应式布局优化（2025-01新增 - P0优先级）
+ * 解决 F12 调试状态下的横向滚动条和布局适配问题
+ * ============================================================================ */
+
+/* 筛选栏容器 */
+.filter-bar {
+  margin-bottom: var(--space-4);
+  background: var(--card-bg);
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+}
+
+/* 筛选控件容器 - 关键修复：允许换行 */
+.filter-controls {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  flex-wrap: wrap; /* 允许换行，不再横向滚动 */
+  overflow-x: visible; /* 移除横向滚动 */
+}
+
+/* 筛选组 - 弹性布局 */
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1 1 auto; /* 允许根据内容自动调整大小 */
+  min-width: 140px; /* 基准值，但在 flex 容器中会更有弹性 */
+}
+
+/* ID 筛选组（较短） */
+.filter-group:has(#idFilter) {
+  flex: 0 1 100px;
+  min-width: 100px;
+}
+
+/* 搜索框组（较长） */
+.filter-group:has(#searchInput) {
+  flex: 1 1 180px;
+  min-width: 180px;
+}
+
+/* 筛选标签 */
+.filter-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--neutral-600);
+  margin-bottom: 2px;
+}
+
+/* 筛选选择框 */
+.filter-select {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--radius-base);
+  background-color: var(--input-bg);
+  color: var(--text-main);
+  font-size: 14px;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.filter-select:hover {
+  border-color: var(--neutral-300);
+}
+
+.filter-select:focus {
+  outline: none;
+  border-color: var(--primary-500);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+/* 筛选输入框 */
+.filter-input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--radius-base);
+  background-color: var(--input-bg);
+  color: var(--text-main);
+  font-size: 14px;
+  transition: all 0.2s ease;
+}
+
+.filter-input:hover {
+  border-color: var(--neutral-300);
+}
+
+.filter-input:focus {
+  outline: none;
+  border-color: var(--primary-500);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.filter-input::placeholder {
+  color: var(--neutral-400);
+}
+
+/* 筛选信息显示 */
+.filter-info {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 12px;
+  background: var(--neutral-50);
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--radius-base);
+  font-size: 13px;
+  color: var(--neutral-600);
+  white-space: nowrap;
+}
+
+.filter-info #filteredCount {
+  font-weight: 600;
+  color: var(--primary-600);
+}
+
+.filter-info #totalCount {
+  font-weight: 600;
+  color: var(--neutral-700);
+}
+
+/* 响应式：中等屏幕（平板/F12 开启状态） */
+@media (max-width: 1200px) {
+  .filter-controls {
+    gap: var(--space-3);
+  }
+  
+  .filter-group {
+    min-width: 120px;
+  }
+  
+  .filter-group:has(#searchInput) {
+    flex: 1 1 160px;
+    min-width: 160px;
+  }
+}
+
+/* 响应式：小屏幕（移动端） */
+@media (max-width: 768px) {
+  .filter-bar {
+    padding: var(--space-3);
+  }
+  
+  .filter-controls {
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+  
+  .filter-group,
+  .filter-group:has(#idFilter),
+  .filter-group:has(#searchInput) {
+    flex: 1 1 100%;
+    min-width: unset;
+    width: 100%;
+  }
+  
+  .filter-info {
+    width: 100%;
+    justify-content: center;
+  }
+  
+  .header-checkbox-wrapper {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* 暗色主题适配 */
+html.dark .filter-bar {
+  background: var(--card-bg);
+  border-color: var(--neutral-700);
+}
+
+html.dark .filter-label {
+  color: var(--neutral-400);
+}
+
+html.dark .filter-select,
+html.dark .filter-input {
+  background-color: var(--input-bg);
+  border-color: var(--neutral-700);
+  color: var(--text-main);
+}
+
+html.dark .filter-select:hover,
+html.dark .filter-input:hover {
+  border-color: var(--neutral-600);
+}
+
+html.dark .filter-select:focus,
+html.dark .filter-input:focus {
+  border-color: var(--primary-500);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+}
+
+html.dark .filter-info {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--neutral-700);
+  color: var(--neutral-400);
+}
+
+html.dark .filter-info #filteredCount {
+  color: var(--primary-400);
+}
+
+html.dark .filter-info #totalCount {
+  color: var(--neutral-300);
+}
+
+/* ============================================================================
+ * 容器查询（Container Queries）- 现代 CSS 特性（2025-01新增 - P0优先级）
+ * 让卡片内部布局根据自身宽度而非整个窗口宽度进行适配
+ * ============================================================================ */
+
+/* 渠道容器启用容器查询 */
+#channels-container {
+  container-type: inline-size;
+  container-name: channels;
+}
+
+/* 分组内容也启用容器查询 */
+.channel-group-content {
+  container-type: inline-size;
+  container-name: channel-group;
+}
+
+/* 优先级分组启用容器查询 */
+.priority-group {
+  container-type: inline-size;
+  container-name: priority-group;
+}
+
+/* 容器查询：当容器宽度小于 600px 时 */
+@container channels (max-width: 600px),
+@container channel-group (max-width: 600px),
+@container priority-group (max-width: 600px) {
+  .channel-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-3);
+  }
+  
+  .channel-col {
+    width: 100% !important;
+    max-width: 100%;
+  }
+  
+  .col-actions {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+  
+  .channel-stats-inline {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
+/* 容器查询：当容器宽度在 600px-900px 之间时 */
+@container channels (min-width: 600px) and (max-width: 900px),
+@container channel-group (min-width: 600px) and (max-width: 900px),
+@container priority-group (min-width: 600px) and (max-width: 900px) {
+  .channel-row {
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-3);
+  }
+  
+  .col-name {
+    width: auto;
+    flex: 1 1 200px;
+  }
+  
+  .col-url {
+    width: auto;
+    flex: 1 1 180px;
+  }
+  
+  .col-stats {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  
+  .col-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+}
+
+/* 降级支持：对于不支持容器查询的浏览器，使用媒体查询作为后备 */
+@supports not (container-type: inline-size) {
+  @media (max-width: 600px) {
+    .channel-row {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: var(--space-3);
+    }
+    
+    .channel-col {
+      width: 100% !important;
+      max-width: 100%;
+    }
+  }
+  
+  @media (min-width: 600px) and (max-width: 900px) {
+    .channel-row {
+      flex-wrap: wrap;
+      gap: var(--space-2) var(--space-3);
+    }
+    
+    .col-name,
+    .col-url {
+      width: auto;
+      flex: 1 1 180px;
+    }
+  }
+}
+
+/* ============================================================================
+ * 长列表性能优化（2025-01新增 - P2优先级）
+ * 使用 content-visibility 跳过非视口内容的渲染
+ * ============================================================================ */
+
+/* 渠道卡片性能优化 */
+.glass-card {
+  content-visibility: auto; /* 浏览器自动管理渲染 */
+  contain-intrinsic-size: auto 200px; /* 预估高度，避免滚动条跳动 */
+}
+
+/* 日志表格行性能优化 */
+.log-row {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 60px;
+}
+
+/* 令牌卡片性能优化 */
+.token-card {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 150px;
+}
+
+/* 优先级分组性能优化 */
+.priority-group {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 300px;
+}
+
+/* 渠道类型分组性能优化 */
+.channel-type-group {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 400px;
+}
+
+/* 注意：content-visibility 会影响搜索功能（Ctrl+F），
+   如果需要支持页内搜索，可以在搜索激活时临时禁用 */
+body.search-active .glass-card,
+body.search-active .log-row,
+body.search-active .token-card {
+  content-visibility: visible;
+}
+
+
+

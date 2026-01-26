@@ -292,3 +292,116 @@ textarea::selection {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ============================================================================
+ * 骨架屏加载状态（2025-01新增 - P1优先级）
+ * 统一的加载占位符样式，用于列表、卡片、表格等场景
+ * ============================================================================ */
+
+/* 骨架屏基础样式 */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--neutral-100) 0%,
+    var(--neutral-200) 50%,
+    var(--neutral-100) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmerBg 1.5s ease-in-out infinite;
+  border-radius: var(--radius-base);
+  position: relative;
+  overflow: hidden;
+}
+
+/* 骨架屏文本行 */
+.skeleton-text {
+  height: 1em;
+  margin-bottom: 0.5em;
+}
+
+.skeleton-text:last-child {
+  margin-bottom: 0;
+}
+
+.skeleton-text.short {
+  width: 60%;
+}
+
+.skeleton-text.medium {
+  width: 80%;
+}
+
+.skeleton-text.long {
+  width: 100%;
+}
+
+/* 骨架屏标题 */
+.skeleton-title {
+  height: 1.5em;
+  width: 40%;
+  margin-bottom: 1em;
+}
+
+/* 骨架屏卡片 */
+.skeleton-card {
+  padding: var(--space-4);
+  background: var(--card-bg);
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--radius-lg);
+  margin-bottom: var(--space-4);
+}
+
+/* 骨架屏表格行 */
+.skeleton-row {
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--card-bg);
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--radius-base);
+  margin-bottom: var(--space-2);
+}
+
+.skeleton-row .skeleton {
+  flex: 1;
+  height: 1.2em;
+}
+
+/* 骨架屏圆形（用于头像等） */
+.skeleton-circle {
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+}
+
+/* 骨架屏按钮 */
+.skeleton-button {
+  height: 36px;
+  width: 100px;
+  border-radius: var(--radius-base);
+}
+
+/* 暗色主题适配 */
+html.dark .skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.05) 0%,
+    rgba(255, 255, 255, 0.1) 50%,
+    rgba(255, 255, 255, 0.05) 100%
+  );
+  background-size: 200% 100%;
+}
+
+html.dark .skeleton-card,
+html.dark .skeleton-row {
+  background: var(--card-bg);
+  border-color: var(--neutral-700);
+}
+
+/* 骨架屏容器（用于包裹多个骨架屏元素） */
+.skeleton-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+

@@ -938,3 +938,85 @@ window.ChannelTypeManager = App.channel;
   window.getRpmColor = getRpmColor;
   window.toggleResponse = toggleResponse;
 })();
+
+// ============================================================
+// 响应式布局优化 - 窗口大小变化监听（2025-01新增）
+// 解决 F12 开启/关闭时的布局适配问题
+// ============================================================
+(function() {
+  // 处理窗口大小变化
+  function handleResize() {
+    // 触发 ECharts 图表重绘（如果存在）
+    if (window.myChart && typeof window.myChart.resize === 'function') {
+      window.myChart.resize();
+    }
+    
+    // 触发其他需要响应窗口变化的组件
+    // 可以在这里添加更多需要响应的逻辑
+    
+    // 触发自定义事件，供其他模块监听
+    window.dispatchEvent(new CustomEvent('app:resize', {
+      detail: {
+        width: window.innerWidth,
+        height: window.innerHeight
+      }
+    }));
+  }
+  
+  // 使用防抖优化性能（200ms）
+  const debouncedResize = App.util.debounce(handleResize, 200);
+  
+  // 监听窗口大小变化
+  window.addEventListener('resize', debouncedResize);
+  
+  // 导出到全局（供其他模块使用）
+  window.handleAppResize = handleResize;
+})();
+
+// ============================================================
+// 搜索状态管理（2025-01新增）
+// 配合 content-visibility 优化，确保页面内搜索功能正常工作
+// ============================================================
+(function() {
+  // 初始化搜索状态管理
+  function initSearchStateManagement() {
+    const searchInput = document.getElementById('searchInput');
+    if (!searchInput) return;
+    
+    // 搜索框获得焦点时，标记为搜索激活状态
+    searchInput.addEventListener('focus', function() {
+      document.body.classList.add('search-active');
+    });
+    
+    // 搜索框失去焦点时，如果没有搜索内容则移除激活状态
+    searchInput.addEventListener('blur', function() {
+      if (!searchInput.value.trim()) {
+        document.body.classList.remove('search-active');
+      }
+    });
+    
+    // 搜索内容变化时，保持激活状态
+    searchInput.addEventListener('input', function() {
+      if (searchInput.value.trim()) {
+        document.body.classList.add('search-active');
+      } else {
+        document.body.classList.remove('search-active');
+      }
+    });
+    
+    // 清空搜索按钮点击时，移除激活状态
+    const clearSearchBtn = document.getElementById('clearSearchBtn');
+    if (clearSearchBtn) {
+      clearSearchBtn.addEventListener('click', function() {
+        document.body.classList.remove('search-active');
+      });
+    }
+  }
+  
+  // DOM 加载完成后初始化
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initSearchStateManagement);
+  } else {
+    initSearchStateManagement();
+  }
+})();

@@ -10,8 +10,8 @@
   --theme-bg-body: #111217;
   --theme-bg-card: #181b1f;
   --theme-bg-panel: #1f2226;
-  --theme-bg-input: rgba(0, 0, 0, 0.2);
-  --theme-bg-input-focus: rgba(0, 0, 0, 0.3);
+  --theme-bg-input: rgba(255, 255, 255, 0.05); /* 优化：提升对比度，从 rgba(0,0,0,0.2) 改为半透明白色 */
+  --theme-bg-input-focus: rgba(255, 255, 255, 0.08); /* 优化：聚焦时更明显 */
   --theme-bg-hover: rgba(255, 255, 255, 0.05);
   --theme-bg-active: rgba(255, 255, 255, 0.1);
 
