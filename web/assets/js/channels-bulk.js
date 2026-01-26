@@ -371,9 +371,24 @@ async function performBulkAction(action, ids) {
 document.addEventListener('DOMContentLoaded', () => {
   const container = document.getElementById('channels-container');
   if (container) {
+    // 监听复选框的 change 事件
     container.addEventListener('change', (e) => {
       if (e.target.classList.contains('channel-checkbox')) {
         toggleChannelSelection(e.target.dataset.id, e.target.checked);
+      }
+    });
+
+    // 监听复选框容器的点击事件，扩大可点击区域
+    container.addEventListener('click', (e) => {
+      const checkboxCol = e.target.closest('.col-checkbox');
+      if (checkboxCol) {
+        const checkbox = checkboxCol.querySelector('.channel-checkbox');
+        if (checkbox && e.target !== checkbox) {
+          // 切换复选框状态
+          checkbox.checked = !checkbox.checked;
+          // 触发 change 事件
+          checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+        }
       }
     });
   }

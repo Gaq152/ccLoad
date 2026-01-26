@@ -1137,6 +1137,18 @@ html.dark .sort-mode-changes {
   align-items: center;
   justify-content: center;
   padding-left: 4px;
+  cursor: pointer; /* 整个列可点击 */
+  user-select: none; /* 防止文本选择 */
+}
+
+/* 鼠标悬停时的视觉反馈 */
+.col-checkbox:hover {
+  background-color: var(--neutral-100);
+  border-radius: 4px;
+}
+
+html.dark .col-checkbox:hover {
+  background-color: var(--neutral-700);
 }
 
 .channel-checkbox {
@@ -1157,6 +1169,15 @@ html.dark .sort-mode-changes {
   border: 1px solid var(--neutral-200);
   border-radius: 6px;
   height: 38px;
+  cursor: pointer; /* 整个区域可点击 */
+  user-select: none; /* 防止文本选择 */
+  transition: background-color 0.2s, border-color 0.2s;
+}
+
+/* 鼠标悬停时的视觉反馈 */
+.header-checkbox-wrapper:hover {
+  background-color: var(--neutral-50);
+  border-color: var(--primary-300);
 }
 
 .header-checkbox-label {
@@ -1270,6 +1291,11 @@ html.dark .sort-mode-changes {
 .dashboard-theme .header-checkbox-wrapper {
   background: var(--theme-bg-secondary);
   border-color: var(--theme-border);
+}
+
+.dashboard-theme .header-checkbox-wrapper:hover {
+  background-color: var(--neutral-700);
+  border-color: var(--primary-400);
 }
 
 .dashboard-theme .header-checkbox-label {
