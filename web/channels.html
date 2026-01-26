@@ -16,6 +16,16 @@
   <link rel="stylesheet" href="/web/assets/css/channels-quota-batch.css">
 </head>
 <body class="dashboard-theme">
+  <!-- 自动测速倒计时组件 - 固定在右上角 -->
+  <div class="auto-test-timer-badge" id="autoTestTimer" title="下次自动测速倒计时" style="display: none;">
+    <span class="timer-icon">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M9.5 1.5L3 9H8.5L6.5 14.5L13 7H7.5L9.5 1.5Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </span>
+    <span class="timer-text">--:--</span>
+  </div>
+
   <div class="app-container">
     <main class="main-content">
       <div class="content-area">
@@ -87,15 +97,6 @@
                   ✕
                 </button>
               </div>
-            </div>
-            <!-- 自动测速倒计时组件 -->
-            <div class="filter-timer" id="autoTestTimer" title="下次自动测速倒计时" style="display: none;">
-              <span class="timer-icon">
-                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M9.5 1.5L3 9H8.5L6.5 14.5L13 7H7.5L9.5 1.5Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-              </span>
-              <span class="timer-text">--:--</span>
             </div>
             <div class="filter-info" role="status" aria-live="polite" aria-atomic="true" id="filterInfo"><span id="filteredCount">0</span> / <span id="totalCount">0</span> 个渠道
             </div>

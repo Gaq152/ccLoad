@@ -455,7 +455,94 @@
       to { transform: rotate(360deg); }
     }
 
-/* 自动测速倒计时组件 */
+/* 自动测速倒计时组件 - 右上角固定徽章 */
+.auto-test-timer-badge {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 1000;
+
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+
+  background: var(--primary-50);
+  border: 1px solid var(--primary-200);
+  border-radius: 24px;
+
+  color: var(--primary-600);
+  font-size: 13px;
+  font-weight: 500;
+
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
+  transition: all 0.3s ease;
+  cursor: default;
+}
+
+.auto-test-timer-badge:hover {
+  background: var(--primary-100);
+  border-color: var(--primary-300);
+  box-shadow: 0 6px 16px rgba(59, 130, 246, 0.25);
+  transform: translateY(-2px);
+}
+
+.auto-test-timer-badge .timer-icon {
+  display: flex;
+  align-items: center;
+  animation: pulse 2s infinite;
+}
+
+.auto-test-timer-badge .timer-text {
+  font-family: var(--font-family-mono, monospace);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+
+/* 测速中状态 */
+.auto-test-timer-badge.testing {
+  background: var(--warning-50, #fffbeb);
+  border-color: var(--warning-200, #fde68a);
+  color: var(--warning-600, #d97706);
+  box-shadow: 0 4px 12px rgba(217, 119, 6, 0.15);
+}
+
+.auto-test-timer-badge.testing:hover {
+  box-shadow: 0 6px 16px rgba(217, 119, 6, 0.25);
+}
+
+/* 暗色主题适配 */
+html.dark .auto-test-timer-badge {
+  background: var(--primary-900);
+  border-color: var(--primary-700);
+  color: var(--primary-300);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+html.dark .auto-test-timer-badge:hover {
+  background: var(--primary-800);
+  border-color: var(--primary-600);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+}
+
+html.dark .auto-test-timer-badge.testing {
+  background: rgba(217, 119, 6, 0.2);
+  border-color: var(--warning-600);
+  color: var(--warning-400);
+}
+
+/* 移动端适配 */
+@media (max-width: 768px) {
+  .auto-test-timer-badge {
+    top: 10px;
+    right: 10px;
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+}
+
+/* 旧的筛选栏内倒计时样式（保留以防其他地方使用） */
 .filter-timer {
   display: flex;
   align-items: center;
