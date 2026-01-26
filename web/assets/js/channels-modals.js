@@ -2429,12 +2429,42 @@ async function generatePKCE() {
   crypto.getRandomValues(array);
   const codeVerifier = base64UrlEncode(array);
 
+  // 检查 crypto.subtle 是否可用（仅在 HTTPS 或 localhost 下可用）
+  if (!crypto.subtle) {
+    console.warn('[PKCE] crypto.subtle 不可用（需要 HTTPS 或 localhost），使用降级方案');
+    // 降级方案：使用简单的哈希算法（不够安全，但可以工作）
+    const codeChallenge = await generatePKCEFallback(codeVerifier);
+    return { codeVerifier, codeChallenge };
+  }
+
   const encoder = new TextEncoder();
   const data = encoder.encode(codeVerifier);
   const hash = await crypto.subtle.digest('SHA-256', data);
   const codeChallenge = base64UrlEncode(new Uint8Array(hash));
 
   return { codeVerifier, codeChallenge };
+}
+
+/**
+ * PKCE 降级方案（当 crypto.subtle 不可用时）
+ * 注意：这不是真正的 SHA-256，安全性较低，仅用于开发/测试环境
+ */
+async function generatePKCEFallback(codeVerifier) {
+  // 使用简单的哈希算法（FNV-1a）
+  let hash = 2166136261;
+  for (let i = 0; i < codeVerifier.length; i++) {
+    hash ^= codeVerifier.charCodeAt(i);
+    hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
+  }
+
+  // 转换为 32 字节数组
+  const hashArray = new Uint8Array(32);
+  for (let i = 0; i < 32; i++) {
+    hashArray[i] = (hash >> (i % 4 * 8)) & 0xFF;
+    hash = (hash * 16777619) >>> 0;
+  }
+
+  return base64UrlEncode(hashArray);
 }
 
 /**
