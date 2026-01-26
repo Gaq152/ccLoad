@@ -1316,6 +1316,20 @@ html.dark .col-checkbox:hover {
   border: 1px solid var(--neutral-200);
   border-radius: var(--radius-lg);
   padding: var(--space-4);
+
+  /* 粘性定位 - 滚动时置顶 */
+  position: sticky;
+  top: 0;
+  z-index: 100;
+
+  /* 添加阴影效果，增强置顶时的视觉层次 */
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  transition: box-shadow 0.2s;
+}
+
+/* 滚动时增强阴影效果 */
+.filter-bar.is-stuck {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
 /* 筛选控件容器 - 关键修复：允许换行 */
