@@ -1,7 +1,7 @@
 /**
  * 筛选栏交互功能
  * - 滚动时添加 stuck 状态类
- * - 点击空白区域滚动到顶部
+ * - 显示/隐藏返回顶部按钮
  */
 
 (function() {
@@ -9,9 +9,10 @@
 
   document.addEventListener('DOMContentLoaded', () => {
     const filterBar = document.querySelector('.filter-bar');
+    const scrollToTopBtn = document.getElementById('scrollToTopBtn');
     if (!filterBar) return;
 
-    // 1. 监听滚动，添加/移除 stuck 状态类
+    // 1. 监听滚动，添加/移除 stuck 状态类，显示/隐藏返回顶部按钮
     let isStuck = false;
     const observer = new IntersectionObserver(
       ([entry]) => {
@@ -19,37 +20,25 @@
         if (shouldBeStuck !== isStuck) {
           isStuck = shouldBeStuck;
           filterBar.classList.toggle('is-stuck', isStuck);
+
+          // 显示/隐藏返回顶部按钮
+          if (scrollToTopBtn) {
+            scrollToTopBtn.style.display = isStuck ? 'inline-flex' : 'none';
+          }
         }
       },
       { threshold: [1], rootMargin: '-1px 0px 0px 0px' }
     );
     observer.observe(filterBar);
 
-    // 2. 点击空白区域滚动到顶部
-    filterBar.addEventListener('click', (e) => {
-      // 只在点击空白区域时触发（不是按钮、输入框等交互元素）
-      const isInteractiveElement = e.target.closest('button, input, select, label, a, .header-checkbox-wrapper');
-
-      // 只在筛选栏处于 stuck 状态（即已滚动）时才响应
-      if (!isInteractiveElement && isStuck) {
+    // 2. 返回顶部按钮点击事件
+    if (scrollToTopBtn) {
+      scrollToTopBtn.addEventListener('click', () => {
         window.scrollTo({
           top: 0,
           behavior: 'smooth'
         });
-      }
-    });
-
-    // 3. 添加视觉提示：鼠标悬停在空白区域时显示提示
-    filterBar.addEventListener('mousemove', (e) => {
-      const isInteractiveElement = e.target.closest('button, input, select, label, a, .header-checkbox-wrapper');
-
-      if (!isInteractiveElement && isStuck) {
-        filterBar.style.cursor = 'pointer';
-        filterBar.title = '点击空白区域返回顶部';
-      } else {
-        filterBar.style.cursor = '';
-        filterBar.title = '';
-      }
-    });
+      });
+    }
   });
 })();
