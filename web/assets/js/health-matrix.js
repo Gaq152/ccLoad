@@ -614,9 +614,13 @@ window.restoreChannel = function(id) {
 };
 
 // 恢复所有隐藏渠道（全局函数）
-window.restoreAllHidden = function() {
+window.restoreAllHidden = async function() {
   if (hiddenChannels.size === 0) return;
-  if (!confirm('确定要恢复所有隐藏渠道吗？')) return;
+  if (!await showConfirm({
+    title: '恢复确认',
+    message: '确定要恢复所有隐藏渠道吗？',
+    type: 'warning'
+  })) return;
 
   hiddenChannels.clear();
   saveHiddenChannels();

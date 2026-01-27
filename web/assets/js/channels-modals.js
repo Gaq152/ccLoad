@@ -423,7 +423,7 @@ async function saveChannel(event) {
       if (window.showError) {
         showError('请先配置 Kiro Token');
       } else {
-        alert('请先配置 Kiro Token');
+        showAlert('请先配置 Kiro Token');
       }
       return;
     }
@@ -474,7 +474,7 @@ async function saveChannel(event) {
       if (window.showError) {
         showError(`请先完成 ${channelLabel} OAuth 授权`);
       } else {
-        alert(`请先完成 ${channelLabel} OAuth 授权`);
+        showAlert(`请先完成 ${channelLabel} OAuth 授权`);
       }
       return;
     }
@@ -501,7 +501,7 @@ async function saveChannel(event) {
       if (window.showError) {
         showError('请至少添加一个 API Key');
       } else {
-        alert('请至少添加一个 API Key');
+        showAlert('请至少添加一个 API Key');
       }
       return;
     }
@@ -509,7 +509,7 @@ async function saveChannel(event) {
     // 其他渠道：使用标准 API Key 列表
     validKeys = inlineKeyTableData.filter(k => k && k.trim());
     if (validKeys.length === 0) {
-      alert('请至少添加一个有效的API Key');
+      showAlert('请至少添加一个有效的API Key');
       return;
     }
   }
@@ -1097,7 +1097,7 @@ async function fetchModelsFromAPI() {
     if (window.showError) {
       showError('请先填写API URL');
     } else {
-      alert('请先填写API URL');
+      showAlert('请先填写API URL');
     }
     return;
   }
@@ -1122,7 +1122,7 @@ async function fetchModelsFromAPI() {
       if (window.showError) {
         showError('请先完成 Codex OAuth 授权');
       } else {
-        alert('请先完成 Codex OAuth 授权');
+        showAlert('请先完成 Codex OAuth 授权');
       }
       return;
     }
@@ -1141,7 +1141,7 @@ async function fetchModelsFromAPI() {
       if (window.showError) {
         showError('请先完成 Gemini OAuth 授权');
       } else {
-        alert('请先完成 Gemini OAuth 授权');
+        showAlert('请先完成 Gemini OAuth 授权');
       }
       return;
     }
@@ -1158,7 +1158,7 @@ async function fetchModelsFromAPI() {
     if (window.showSuccess) {
       showSuccess(`已填充 ${kiroModels.length} 个 Kiro 支持的模型`);
     } else {
-      alert(`已填充 ${kiroModels.length} 个 Kiro 支持的模型`);
+      showAlert(`已填充 ${kiroModels.length} 个 Kiro 支持的模型`);
     }
     return;
   } else {
@@ -1170,7 +1170,7 @@ async function fetchModelsFromAPI() {
       if (window.showError) {
         showError('请至少添加一个API Key');
       } else {
-        alert('请至少添加一个API Key');
+        showAlert('请至少添加一个API Key');
       }
       return;
     }
@@ -1217,7 +1217,7 @@ async function fetchModelsFromAPI() {
     if (window.showSuccess) {
       showSuccess(`成功获取 ${data.models.length} 个模型 (${source})`);
     } else {
-      alert(`成功获取 ${data.models.length} 个模型 (${source})`);
+      showAlert(`成功获取 ${data.models.length} 个模型 (${source})`);
     }
 
   } catch (error) {
@@ -1228,7 +1228,7 @@ async function fetchModelsFromAPI() {
     if (window.showError) {
       showError('获取模型列表失败: ' + error.message);
     } else {
-      alert('获取模型列表失败: ' + error.message);
+      showAlert('获取模型列表失败: ' + error.message);
     }
   } finally {
     modelsTextarea.disabled = false;
@@ -2272,9 +2272,10 @@ async function startCodexOAuth() {
 
   // 如果不是 localhost:1455，提示用户手动复制 code
   if (!isLocalhost1455) {
-    alert(
+    showAlert(
       '注意：授权成功后，浏览器会跳转到 localhost:1455（可能无法访问）。\n\n' +
-      '请从地址栏复制 code=xxx 后面的值，然后回来粘贴到"手动输入授权码"中。'
+      '请从地址栏复制 code=xxx 后面的值，然后回来粘贴到"手动输入授权码"中。',
+      'warning'
     );
   }
 
@@ -2724,9 +2725,10 @@ async function startGeminiOAuth() {
 
   // 如果不是通过 localhost 访问，提示用户需要手动复制 code
   if (!isLocalhost) {
-    alert(
+    showAlert(
       `注意：授权成功后，浏览器会跳转到 localhost:${currentPort}（可能无法访问）。\n\n` +
-      '请从地址栏复制 code=xxx 后面的值，然后回来粘贴到"手动输入授权码"中。'
+      '请从地址栏复制 code=xxx 后面的值，然后回来粘贴到"手动输入授权码"中。',
+      'warning'
     );
   }
 

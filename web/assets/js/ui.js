@@ -142,7 +142,11 @@
      * 注销登录
      */
     logout: async function() {
-      if (!confirm('确定要注销吗？')) return;
+      if (!await showConfirm({
+        title: '注销确认',
+        message: '确定要注销吗？',
+        type: 'warning'
+      })) return;
 
       const token = localStorage.getItem('ccload_token');
       // 先清理本地，避免 UI 闪烁
@@ -671,6 +675,91 @@
         const cancelBtn = modal.querySelector('.btn-secondary');
         if (cancelBtn) cancelBtn.focus();
       });
+    },
+
+    /**
+     * 显示提示弹窗（替代原生 alert）
+     * @param {string|Object} options - 提示内容或配置选项
+     * @param {string} options.title - 标题（默认"提示"）
+     * @param {string} options.message - 提示内容
+     * @param {string} options.buttonText - 按钮文本（默认"确定"）
+     * @param {string} options.type - 类型: 'info' | 'warning' | 'error' | 'success'（默认 'info'）
+     * @returns {Promise<void>} - 用户点击确定后 resolve
+     */
+    showAlert: function(options) {
+      return new Promise((resolve) => {
+        const { h } = App.ui;
+
+        // 兼容直接传字符串
+        if (typeof options === 'string') {
+          options = { message: options };
+        }
+
+        const title = options.title || '提示';
+        const message = options.message || '';
+        const buttonText = options.buttonText || '确定';
+        const type = options.type || 'info';
+
+        // 移除可能已存在的提示框
+        const existing = document.getElementById('alert-dialog-modal');
+        if (existing) existing.remove();
+
+        // 根据类型设置按钮样式和图标
+        let btnClass = 'btn btn-primary';
+        let icon = 'ℹ️';
+        if (type === 'error') {
+          btnClass = 'btn btn-danger';
+          icon = '❌';
+        } else if (type === 'warning') {
+          btnClass = 'btn btn-warning';
+          icon = '⚠️';
+        } else if (type === 'success') {
+          btnClass = 'btn btn-success';
+          icon = '✅';
+        }
+
+        const modal = h('div', { id: 'alert-dialog-modal', class: 'modal show' }, [
+          h('div', { class: 'modal-content confirm-modal' }, [
+            h('h2', { class: 'modal-title' }, `${icon} ${title}`),
+            h('p', {
+              style: 'margin: 20px 0; color: var(--neutral-600); white-space: pre-wrap;'
+            }, message),
+            h('div', { class: 'confirm-actions', style: 'justify-content: center;' }, [
+              h('button', {
+                class: btnClass,
+                onclick: () => {
+                  modal.remove();
+                  resolve();
+                }
+              }, buttonText)
+            ])
+          ])
+        ]);
+
+        // 点击背景关闭
+        modal.addEventListener('click', (e) => {
+          if (e.target === modal) {
+            modal.remove();
+            resolve();
+          }
+        });
+
+        // ESC 键或 Enter 键关闭
+        const handleKey = (e) => {
+          if (e.key === 'Escape' || e.key === 'Enter') {
+            modal.remove();
+            resolve();
+            document.removeEventListener('keydown', handleKey);
+          }
+        };
+        document.addEventListener('keydown', handleKey);
+
+        document.body.appendChild(modal);
+
+        // 自动聚焦按钮
+        const btn = modal.querySelector('button');
+        if (btn) btn.focus();
+      });
     }
   };
 
@@ -832,6 +921,7 @@ window.showSuccess = (msg) => App.ui.showToast(msg, 'success');
 window.showError = (msg) => App.ui.showToast(msg, 'error');
 window.showWarning = (msg) => App.ui.showToast(msg, 'warning');
 window.showConfirm = App.ui.showConfirm;
+window.showAlert = App.ui.showAlert;
 window.pauseBackgroundAnimation = App.ui.pauseBackgroundAnimation;
 window.resumeBackgroundAnimation = App.ui.resumeBackgroundAnimation;
 window.setButtonLoading = App.ui.setButtonLoading;

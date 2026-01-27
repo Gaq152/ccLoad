@@ -420,10 +420,14 @@ const QuotaBatchManager = {
   /**
    * 取消批量查询
    */
-  cancel() {
+  async cancel() {
     if (!this.isRunning) return;
 
-    if (confirm('确定要停止批量查询吗？')) {
+    if (await showConfirm({
+      title: '停止确认',
+      message: '确定要停止批量查询吗？',
+      type: 'warning'
+    })) {
       this.finish(true);
     }
   },

@@ -240,7 +240,11 @@ async function saveAllSettings() {
 }
 
 async function resetSetting(key) {
-  if (!confirm(`确定要重置 "${key}" 为默认值吗?`)) return;
+  if (!await showConfirm({
+    title: '重置确认',
+    message: `确定要重置 "${key}" 为默认值吗?`,
+    type: 'warning'
+  })) return;
 
   try {
     await fetchDataWithAuth(`/admin/settings/${key}/reset`, { method: 'POST' });

@@ -260,7 +260,11 @@ async function deleteSelectedModels() {
   const selected = getSelectedModels();
   if (selected.length === 0) return showError('请先选择要删除的模型');
 
-  if (!confirm(`是否删除选择的 ${selected.map(s => s.model).join(', ')}？`)) return;
+  if (!await showConfirm({
+    title: '删除确认',
+    message: `是否删除选择的 ${selected.map(s => s.model).join(', ')}？`,
+    type: 'danger'
+  })) return;
 
   try {
     await fetchDataWithAuth(`/admin/channels/${selectedChannel.id}/models`, {
