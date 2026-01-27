@@ -2263,8 +2263,7 @@ async function startCodexOAuth() {
     clientId: 'app_EMoamEEZ73f0CkXaXp7hrann',
     redirectUri: FIXED_REDIRECT_URI, // 必须固定！
     scope: 'openid profile email offline_access',
-    response_type: 'code',
-    code_challenge_method: 'S256'
+    response_type: 'code'
   };
 
   // 检查当前是否运行在 localhost:1455
@@ -2279,18 +2278,12 @@ async function startCodexOAuth() {
     );
   }
 
-  // 生成 PKCE
-  const { codeVerifier, codeChallenge } = await generatePKCE();
-  localStorage.setItem('codex_oauth_verifier', codeVerifier);
-
-  // 构建 URL
+  // 构建 URL（不使用 PKCE，避免跨域问题）
   const params = new URLSearchParams({
     client_id: config.clientId,
     redirect_uri: config.redirectUri,
     response_type: config.response_type,
     scope: config.scope,
-    code_challenge: codeChallenge,
-    code_challenge_method: config.code_challenge_method,
     state: Math.random().toString(36).substring(2)
   });
 
@@ -2321,12 +2314,6 @@ async function handleCodexOAuthMessage(event) {
  * 用 Code 换取 Token
  */
 async function exchangeCodeForToken(code) {
-  const codeVerifier = localStorage.getItem('codex_oauth_verifier');
-  if (!codeVerifier) {
-    if (window.showError) showError('找不到 PKCE Verifier，请重新授权');
-    return;
-  }
-
   const startBtn = document.getElementById('startCodexOAuthBtn');
   const originalText = startBtn.textContent;
   startBtn.disabled = true;
@@ -2336,12 +2323,13 @@ async function exchangeCodeForToken(code) {
     // redirect_uri 必须与授权请求时使用的完全一致（固定值）
     const FIXED_REDIRECT_URI = 'http://localhost:1455/auth/callback';
 
+    // 不使用 PKCE，只发送 code 和 client_id
     const body = new URLSearchParams({
       grant_type: 'authorization_code',
       code: code,
       redirect_uri: FIXED_REDIRECT_URI,
-      client_id: 'app_EMoamEEZ73f0CkXaXp7hrann',
-      code_verifier: codeVerifier
+      client_id: 'app_EMoamEEZ73f0CkXaXp7hrann'
+      // 移除 code_verifier
     });
 
     // 通过后端代理请求
