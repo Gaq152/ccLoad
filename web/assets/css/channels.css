@@ -1247,6 +1247,7 @@ html.dark .sort-mode-changes {
   padding-left: 4px;
   cursor: pointer; /* 整个列可点击 */
   user-select: none; /* 防止文本选择 */
+  align-self: stretch; /* 修复：填满行高以扩大点击区域 */
 }
 
 /* 鼠标悬停时的视觉反馈 */

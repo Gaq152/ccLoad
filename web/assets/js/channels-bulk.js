@@ -446,6 +446,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (checkboxCol) {
         const checkbox = checkboxCol.querySelector('.channel-checkbox');
         if (checkbox && e.target !== checkbox) {
+          e.preventDefault(); // 防止默认行为
           // 切换复选框状态
           checkbox.checked = !checkbox.checked;
           // 触发 change 事件
