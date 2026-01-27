@@ -105,6 +105,7 @@
       const code = urlParams.get('code');
       const error = urlParams.get('error');
       const errorDesc = urlParams.get('error_description');
+      const state = urlParams.get('state');
 
       const icon = document.getElementById('icon');
       const title = document.getElementById('title');
@@ -115,10 +116,22 @@
       // 检测是 Codex 还是 Gemini（根据 scope 判断）
       const scope = urlParams.get('scope') || '';
       let provider = 'unknown';
+      let codeVerifier = null;
+
       if (scope.includes('googleapis.com') || scope.includes('userinfo.email')) {
         provider = 'gemini';
-      } else if (scope.includes('openai') || urlParams.get('state')?.includes('codex')) {
+      } else if (scope.includes('openai') || state) {
         provider = 'codex';
+        // 尝试从 state 中提取 code_verifier
+        if (state) {
+          try {
+            const stateData = JSON.parse(atob(state));
+            codeVerifier = stateData.verifier;
+            provider = stateData.provider || 'codex';
+          } catch (e) {
+            console.warn('无法解析 state:', e);
+          }
+        }
       }
 
       if (error) {
@@ -157,11 +170,18 @@
 
       if (window.opener) {
         try {
-          window.opener.postMessage({
+          const messageData = {
             code: code,
             provider: provider,
             source: 'oauth_callback'
-          }, '*');
+          };
+
+          // 如果是 Codex 且有 code_verifier，一起传递
+          if (provider === 'codex' && codeVerifier) {
+            messageData.codeVerifier = codeVerifier;
+          }
+
+          window.opener.postMessage(messageData, '*');
           messageSent = true;
 
           // 延迟关闭窗口
