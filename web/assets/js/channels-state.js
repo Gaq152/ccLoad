@@ -16,6 +16,7 @@ let filters = {
   search: '',
   id: '',
   channelType: 'all',
+  priority: 'all',
   status: 'all',
   model: 'all'
 };

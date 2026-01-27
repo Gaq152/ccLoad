@@ -1424,7 +1424,7 @@ html.dark .col-checkbox:hover {
 /* 筛选控件容器 - 关键修复：允许换行 */
 .filter-controls {
   display: flex;
-  gap: var(--space-2);
+  gap: 12px; /* 统一间距为 12px */
   align-items: flex-end; /* 底部对齐，确保所有输入框在同一基线 */
   flex-wrap: wrap; /* 允许换行，不再横向滚动 */
   overflow-x: visible; /* 移除横向滚动 */
@@ -1435,38 +1435,44 @@ html.dark .col-checkbox:hover {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  flex: 1 1 auto; /* 允许根据内容自动调整大小 */
-  min-width: 140px; /* 基准值，但在 flex 容器中会更有弹性 */
+  flex: 0 0 auto; /* 不自动伸缩，使用固定宽度 */
+  min-width: 120px; /* 基准最小宽度 */
 }
 
 /* ID 筛选组（较短） */
 .filter-group:has(#idFilter) {
-  flex: 0 1 100px;
+  width: 100px;
   min-width: 100px;
 }
 
 /* 渠道类型筛选组（适中） */
 .filter-group:has(#channelTypeFilter) {
-  flex: 0 1 120px;
+  width: 120px;
   min-width: 120px;
-}
-
-/* 模型筛选组（适中） */
-.filter-group:has(#modelFilter) {
-  flex: 0 1 140px;
-  min-width: 140px;
-}
-
-/* 状态筛选组（较短） */
-.filter-group:has(#statusFilter) {
-  flex: 0 1 110px;
-  min-width: 110px;
 }
 
 /* 搜索框组（较长） */
 .filter-group:has(#searchInput) {
-  flex: 1 1 180px;
-  min-width: 180px;
+  width: 200px;
+  min-width: 200px;
+}
+
+/* 优先级筛选组（适中） */
+.filter-group:has(#priorityFilter) {
+  width: 120px;
+  min-width: 120px;
+}
+
+/* 状态筛选组（较短） */
+.filter-group:has(#statusFilter) {
+  width: 110px;
+  min-width: 110px;
+}
+
+/* 模型筛选组（适中） */
+.filter-group:has(#modelFilter) {
+  width: 140px;
+  min-width: 140px;
 }
 
 /* 筛选标签 */

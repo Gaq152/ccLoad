@@ -5,6 +5,7 @@ async function loadChannels(type = 'all', forceRefresh = false) {
       channels = channelsCache[type];
       window.channels = channels; // 暴露到全局
       updateModelOptions();
+      updatePriorityOptions();
       filterChannels();
       return;
     }
@@ -17,6 +18,7 @@ async function loadChannels(type = 'all', forceRefresh = false) {
     window.channels = channels; // 暴露到全局供 QuotaManager 等使用
 
     updateModelOptions();
+    updatePriorityOptions();
     filterChannels();
 
     // 初始化用量管理器（轮询获取启用用量监控的渠道数据）

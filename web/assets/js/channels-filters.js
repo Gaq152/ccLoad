@@ -28,6 +28,12 @@ function filterChannels() {
       }
     }
 
+    if (filters.priority !== 'all') {
+      if (channel.priority !== parseInt(filters.priority)) {
+        return false;
+      }
+    }
+
     if (filters.status !== 'all') {
       if (filters.status === 'enabled' && !channel.enabled) return false;
       if (filters.status === 'disabled' && channel.enabled) return false;
@@ -82,19 +88,40 @@ function updateModelOptions() {
       channel.models.forEach(model => modelSet.add(model));
     }
   });
-  
+
   const modelFilter = document.getElementById('modelFilter');
   const currentValue = modelFilter.value;
   modelFilter.innerHTML = '<option value="all">所有模型</option>';
-  
+
   Array.from(modelSet).sort().forEach(model => {
     const option = document.createElement('option');
     option.value = model;
     option.textContent = model;
     modelFilter.appendChild(option);
   });
-  
+
   modelFilter.value = currentValue;
+}
+
+// Update priority filter options
+function updatePriorityOptions() {
+  const prioritySet = new Set();
+  channels.forEach(channel => {
+    prioritySet.add(channel.priority);
+  });
+
+  const priorityFilter = document.getElementById('priorityFilter');
+  const currentValue = priorityFilter.value;
+  priorityFilter.innerHTML = '<option value="all">所有优先级</option>';
+
+  Array.from(prioritySet).sort((a, b) => b - a).forEach(priority => {
+    const option = document.createElement('option');
+    option.value = priority;
+    option.textContent = priority;
+    priorityFilter.appendChild(option);
+  });
+
+  priorityFilter.value = currentValue;
 }
 
 // Setup filter event listeners
@@ -131,6 +158,12 @@ function setupFilterListeners() {
 
   document.getElementById('statusFilter').addEventListener('change', (e) => {
     filters.status = e.target.value;
+    if (typeof saveChannelsFilters === 'function') saveChannelsFilters();
+    filterChannels();
+  });
+
+  document.getElementById('priorityFilter').addEventListener('change', (e) => {
+    filters.priority = e.target.value;
     if (typeof saveChannelsFilters === 'function') saveChannelsFilters();
     filterChannels();
   });
