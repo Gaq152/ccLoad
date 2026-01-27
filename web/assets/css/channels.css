@@ -886,16 +886,26 @@ html.dark .channel-group-count {
 
 /* 允许 Tooltip 溢出渠道卡片（仅限渠道管理页面） */
 #channels-container .glass-card {
-  overflow: visible;
+  overflow: visible !important; /* 使用 !important 确保覆盖全局样式 */
 }
 
 #channels-container .channel-row {
-  overflow: visible;
+  overflow: visible !important;
 }
 
 /* 分组内容也需要允许溢出 */
 .channel-group-content {
-  overflow: visible;
+  overflow: visible !important;
+}
+
+/* 优先级分组也需要允许溢出 */
+.priority-group {
+  overflow: visible !important;
+}
+
+/* 渠道类型分组也需要允许溢出 */
+.channel-type-group {
+  overflow: visible !important;
 }
 
 /* 通用图标按钮 */
@@ -946,7 +956,7 @@ html.dark .channel-group-count {
   visibility: hidden;
   transition: opacity 0.2s;
   pointer-events: none;
-  z-index: 100;
+  z-index: 10000; /* 提高 z-index 确保在所有元素之上 */
 }
 
 .btn-icon:hover::after,
