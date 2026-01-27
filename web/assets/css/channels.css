@@ -1423,7 +1423,7 @@ html.dark .col-checkbox:hover {
 .filter-controls {
   display: flex;
   gap: var(--space-2);
-  align-items: center;
+  align-items: flex-end; /* 底部对齐，确保所有输入框在同一基线 */
   flex-wrap: wrap; /* 允许换行，不再横向滚动 */
   overflow-x: visible; /* 移除横向滚动 */
 }
@@ -1460,12 +1460,14 @@ html.dark .col-checkbox:hover {
 /* 筛选选择框 */
 .filter-select {
   width: 100%;
+  height: 38px; /* 固定高度，确保对齐 */
   padding: 8px 12px;
   border: 1px solid var(--neutral-200);
   border-radius: var(--radius-base);
   background-color: var(--input-bg);
   color: var(--text-main);
   font-size: 14px;
+  line-height: 1.5;
   transition: all 0.2s ease;
   cursor: pointer;
 }
@@ -1483,13 +1485,16 @@ html.dark .col-checkbox:hover {
 /* 筛选输入框 */
 .filter-input {
   width: 100%;
+  height: 38px; /* 固定高度，与 select 保持一致 */
   padding: 8px 12px;
   border: 1px solid var(--neutral-200);
   border-radius: var(--radius-base);
   background-color: var(--input-bg);
   color: var(--text-main);
   font-size: 14px;
+  line-height: 1.5;
   transition: all 0.2s ease;
+  box-sizing: border-box; /* 确保 padding 不影响总高度 */
 }
 
 .filter-input:hover {
@@ -1511,6 +1516,7 @@ html.dark .col-checkbox:hover {
   display: flex;
   align-items: center;
   gap: 4px;
+  height: 38px; /* 与输入框保持一致的高度 */
   padding: 8px 12px;
   background: var(--neutral-50);
   border: 1px solid var(--neutral-200);
@@ -1518,6 +1524,7 @@ html.dark .col-checkbox:hover {
   font-size: 13px;
   color: var(--neutral-600);
   white-space: nowrap;
+  box-sizing: border-box;
 }
 
 .filter-info #filteredCount {
