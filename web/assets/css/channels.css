@@ -882,6 +882,7 @@ html.dark .channel-group-count {
   gap: 4px;
   overflow: visible !important;
   position: relative;
+  z-index: 20; /* 确保 Tooltip 位于其他列内容之上 */
 }
 
 /* 允许 Tooltip 溢出渠道卡片（仅限渠道管理页面） */
@@ -1792,8 +1793,10 @@ html.dark .filter-info #totalCount {
 /* 渠道管理页面的卡片需要允许 tooltip 溢出 */
 #channels-container .glass-card {
   overflow: visible !important;
-  /* content-visibility 会影响 overflow，需要特殊处理 */
   contain: none !important;
+  /* content-visibility: auto 会隐式应用 strict containment，导致 overflow: visible 失效 */
+  /* 必须显式强制为 visible 以允许 tooltip 溢出显示 */
+  content-visibility: visible !important;
 }
 
 /* 日志表格行性能优化 */
