@@ -1443,6 +1443,24 @@ html.dark .col-checkbox:hover {
   min-width: 100px;
 }
 
+/* 渠道类型筛选组（适中） */
+.filter-group:has(#channelTypeFilter) {
+  flex: 0 1 120px;
+  min-width: 120px;
+}
+
+/* 模型筛选组（适中） */
+.filter-group:has(#modelFilter) {
+  flex: 0 1 140px;
+  min-width: 140px;
+}
+
+/* 状态筛选组（较短） */
+.filter-group:has(#statusFilter) {
+  flex: 0 1 110px;
+  min-width: 110px;
+}
+
 /* 搜索框组（较长） */
 .filter-group:has(#searchInput) {
   flex: 1 1 180px;
