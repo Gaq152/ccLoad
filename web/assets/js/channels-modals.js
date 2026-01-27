@@ -2718,13 +2718,14 @@ async function startGeminiOAuth() {
   const { codeVerifier, codeChallenge } = await generatePKCE();
   localStorage.setItem('gemini_oauth_verifier', codeVerifier);
 
-  // 检查当前是否运行在 localhost:8080
-  const isLocalhost8080 = window.location.hostname === 'localhost' && window.location.port === '8080';
+  // 检查当前是否通过 localhost 访问
+  const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+  const currentPort = window.location.port || '80';
 
-  // 如果不是 localhost:8080，提示用户手动复制 code
-  if (!isLocalhost8080) {
+  // 如果不是通过 localhost 访问，提示用户需要手动复制 code
+  if (!isLocalhost) {
     alert(
-      '注意：授权成功后，浏览器会跳转到 localhost:8080（可能无法访问）。\n\n' +
+      `注意：授权成功后，浏览器会跳转到 localhost:${currentPort}（可能无法访问）。\n\n` +
       '请从地址栏复制 code=xxx 后面的值，然后回来粘贴到"手动输入授权码"中。'
     );
   }
