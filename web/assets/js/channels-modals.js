@@ -2263,7 +2263,8 @@ async function startCodexOAuth() {
     clientId: 'app_EMoamEEZ73f0CkXaXp7hrann',
     redirectUri: FIXED_REDIRECT_URI, // 必须固定！
     scope: 'openid profile email offline_access',
-    response_type: 'code'
+    response_type: 'code',
+    code_challenge_method: 'S256'
   };
 
   // 检查当前是否运行在 localhost:1455
@@ -2278,13 +2279,26 @@ async function startCodexOAuth() {
     );
   }
 
-  // 构建 URL（不使用 PKCE，避免跨域问题）
+  // 生成 PKCE（OpenAI 强制要求）
+  const { codeVerifier, codeChallenge } = await generatePKCE();
+
+  // 将 code_verifier 编码到 state 参数中（解决跨域 localStorage 问题）
+  const stateData = {
+    random: Math.random().toString(36).substring(2),
+    verifier: codeVerifier,
+    provider: 'codex'
+  };
+  const state = btoa(JSON.stringify(stateData));
+
+  // 构建 URL
   const params = new URLSearchParams({
     client_id: config.clientId,
     redirect_uri: config.redirectUri,
     response_type: config.response_type,
     scope: config.scope,
-    state: Math.random().toString(36).substring(2)
+    code_challenge: codeChallenge,
+    code_challenge_method: config.code_challenge_method,
+    state: state
   });
 
   const fullUrl = `${config.authorizeUrl}?${params.toString()}`;
@@ -2307,13 +2321,19 @@ async function handleCodexOAuthMessage(event) {
   // 检查 provider 避免与 Gemini OAuth 冲突
   if (!data || !data.code || data.provider === 'gemini') return;
 
-  await exchangeCodeForToken(data.code);
+  // 从 postMessage 中获取 code_verifier
+  await exchangeCodeForToken(data.code, data.codeVerifier);
 }
 
 /**
  * 用 Code 换取 Token
  */
-async function exchangeCodeForToken(code) {
+async function exchangeCodeForToken(code, codeVerifier) {
+  if (!codeVerifier) {
+    if (window.showError) showError('找不到 PKCE Verifier，请重新授权');
+    return;
+  }
+
   const startBtn = document.getElementById('startCodexOAuthBtn');
   const originalText = startBtn.textContent;
   startBtn.disabled = true;
@@ -2323,13 +2343,12 @@ async function exchangeCodeForToken(code) {
     // redirect_uri 必须与授权请求时使用的完全一致（固定值）
     const FIXED_REDIRECT_URI = 'http://localhost:1455/auth/callback';
 
-    // 不使用 PKCE，只发送 code 和 client_id
     const body = new URLSearchParams({
       grant_type: 'authorization_code',
       code: code,
       redirect_uri: FIXED_REDIRECT_URI,
-      client_id: 'app_EMoamEEZ73f0CkXaXp7hrann'
-      // 移除 code_verifier
+      client_id: 'app_EMoamEEZ73f0CkXaXp7hrann',
+      code_verifier: codeVerifier
     });
 
     // 通过后端代理请求
@@ -2357,7 +2376,6 @@ async function exchangeCodeForToken(code) {
       tokenData.account_id = extractAccountIdFromToken(tokenData.access_token);
 
       updateCodexTokenUI(tokenData);
-      localStorage.removeItem('codex_oauth_verifier');
 
       if (window.showSuccess) showSuccess('授权成功！');
     } else {
@@ -2576,14 +2594,32 @@ async function submitManualCodexCode() {
     return;
   }
 
-  // 提取 code（支持粘贴完整 URL 或只粘贴 code 值）
+  // 提取 code 和 state（支持粘贴完整 URL 或只粘贴 code 值）
   let authCode = code;
+  let codeVerifier = null;
+
   if (code.includes('code=')) {
     const match = code.match(/code=([^&]+)/);
     authCode = match ? match[1] : code;
+
+    // 尝试从 URL 中提取 state 参数
+    const stateMatch = code.match(/state=([^&]+)/);
+    if (stateMatch) {
+      try {
+        const stateData = JSON.parse(atob(decodeURIComponent(stateMatch[1])));
+        codeVerifier = stateData.verifier;
+      } catch (e) {
+        console.warn('无法从 state 中提取 code_verifier:', e);
+      }
+    }
   }
 
-  await exchangeCodeForToken(authCode);
+  if (!codeVerifier) {
+    if (window.showError) showError('无法提取 code_verifier，请重新授权');
+    return;
+  }
+
+  await exchangeCodeForToken(authCode, codeVerifier);
   input.value = '';
 }
 
