@@ -2648,9 +2648,12 @@ const GEMINI_OAUTH_CONFIG = {
   // Gemini CLI 公开的 OAuth 凭证（非敏感，来自开源项目）
   clientId: '68125580' + '9395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com',
   clientSecret: 'GOCSPX-4uH' + 'gMPm-1o7Sk-geV6Cu5clXFsxl',
-  // 动态回调 URL（使用专门的回调页面）
+  // 固定使用 localhost 作为回调 URL（避免私有 IP 需要 device_id 的问题）
+  // 即使服务运行在其他 IP，浏览器重定向时 localhost 也会正确解析到当前主机
   get redirectUri() {
-    return window.location.origin + '/web/auth/callback.html';
+    // 使用当前端口，但主机名固定为 localhost
+    const port = window.location.port || (window.location.protocol === 'https:' ? '443' : '80');
+    return `http://localhost:${port}/web/auth/callback.html`;
   },
   scopes: 'https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile openid'
 };
