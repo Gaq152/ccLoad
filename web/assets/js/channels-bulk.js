@@ -7,8 +7,55 @@
 const bulkState = {
   selectedIds: new Set(),
   isShiftPressed: false,
-  lastCheckedId: null
+  lastCheckedId: null,
+
+  // 持久化相关
+  storageKey: 'ccload_bulk_selected_channels',
+
+  /**
+   * 从 localStorage 加载选中状态
+   */
+  loadFromStorage() {
+    try {
+      const stored = localStorage.getItem(this.storageKey);
+      if (stored) {
+        const ids = JSON.parse(stored);
+        this.selectedIds = new Set(ids);
+        console.log('[批量选择] 已恢复选中状态:', ids.length, '个渠道');
+      }
+    } catch (e) {
+      console.error('[批量选择] 加载状态失败:', e);
+    }
+  },
+
+  /**
+   * 保存选中状态到 localStorage
+   */
+  saveToStorage() {
+    try {
+      const ids = Array.from(this.selectedIds);
+      localStorage.setItem(this.storageKey, JSON.stringify(ids));
+    } catch (e) {
+      console.error('[批量选择] 保存状态失败:', e);
+    }
+  },
+
+  /**
+   * 清除持久化状态
+   */
+  clearStorage() {
+    try {
+      localStorage.removeItem(this.storageKey);
+    } catch (e) {
+      console.error('[批量选择] 清除状态失败:', e);
+    }
+  }
 };
+
+// 页面加载时恢复选中状态
+document.addEventListener('DOMContentLoaded', () => {
+  bulkState.loadFromStorage();
+});
 
 // 监听 Shift 键实现连选功能
 document.addEventListener('keydown', e => { if (e.key === 'Shift') bulkState.isShiftPressed = true; });
@@ -31,6 +78,9 @@ function toggleChannelSelection(id, checked) {
   } else {
     bulkState.selectedIds.delete(id);
   }
+
+  // 保存到 localStorage
+  bulkState.saveToStorage();
 
   updateBulkUI();
 }
@@ -82,6 +132,9 @@ function toggleSelectAll(checked) {
     bulkState.lastCheckedId = parseInt(visibleCards[visibleCards.length - 1].dataset.channelId);
   }
 
+  // 保存到 localStorage
+  bulkState.saveToStorage();
+
   updateBulkUI();
   updatePriorityLaneCheckboxes();
 }
@@ -114,6 +167,9 @@ function togglePriorityLaneSelectAll(type, priority, checked) {
     bulkState.lastCheckedId = parseInt(cards[cards.length - 1].dataset.channelId);
   }
 
+  // 保存到 localStorage
+  bulkState.saveToStorage();
+
   updateBulkUI();
 }
 
@@ -143,6 +199,9 @@ function toggleTypeSelectAll(type, checked) {
   if (checked && cards.length > 0) {
     bulkState.lastCheckedId = parseInt(cards[cards.length - 1].dataset.channelId);
   }
+
+  // 保存到 localStorage
+  bulkState.saveToStorage();
 
   updateBulkUI();
 }
@@ -252,6 +311,9 @@ function updateBulkUI() {
 function clearBulkSelection() {
   bulkState.selectedIds.clear();
   bulkState.lastCheckedId = null;
+
+  // 清除持久化状态
+  bulkState.clearStorage();
 
   // 取消所有 checkbox 选中状态
   document.querySelectorAll('.channel-checkbox').forEach(cb => cb.checked = false);
