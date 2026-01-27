@@ -234,7 +234,8 @@
 
     .col-quota .quota-countdown {
       font-size: 11px;
-      min-width: 40px;
+      width: 60px; /* 固定宽度 */
+      min-width: 60px;
       flex-shrink: 0;
       color: var(--neutral-500);
     }
@@ -691,7 +692,8 @@ html.dark .auto-test-timer-badge.testing {
   font-family: var(--font-family-mono, monospace);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-  min-width: 48px;
+  width: 60px; /* 固定宽度，避免内容变化时挤压其他元素 */
+  min-width: 60px;
   transition: all 0.2s ease;
 }
 
