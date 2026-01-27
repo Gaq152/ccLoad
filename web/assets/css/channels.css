@@ -458,7 +458,7 @@
 /* 自动测速倒计时组件 - 右上角固定徽章 */
 .auto-test-timer-badge {
   position: fixed;
-  top: 20px;
+  top: 74px; /* 导航栏高度 64px + 间距 10px */
   right: 20px;
   z-index: 1000;
 
@@ -1406,7 +1406,7 @@ html.dark .col-checkbox:hover {
 
   /* 粘性定位 - 滚动时置顶 */
   position: sticky;
-  top: 0;
+  top: 64px; /* 导航栏高度，避免重叠 */
   z-index: 100;
 
   /* 添加阴影效果，增强置顶时的视觉层次 */
