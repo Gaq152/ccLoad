@@ -2303,6 +2303,12 @@ async function startCodexOAuth() {
 
   const fullUrl = `${config.authorizeUrl}?${params.toString()}`;
 
+  // 调试：打印生成的 URL
+  console.log('[Codex OAuth] 授权 URL:', fullUrl);
+  console.log('[Codex OAuth] code_verifier:', codeVerifier);
+  console.log('[Codex OAuth] code_challenge:', codeChallenge);
+  console.log('[Codex OAuth] state:', state);
+
   // 打开新窗口
   const width = 600;
   const height = 700;
