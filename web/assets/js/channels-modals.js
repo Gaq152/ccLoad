@@ -2715,31 +2715,12 @@ function updateGeminiTokenUI(token) {
  * 开始 Gemini OAuth 流程
  */
 async function startGeminiOAuth() {
-  // 生成 PKCE
-  const { codeVerifier, codeChallenge } = await generatePKCE();
-  localStorage.setItem('gemini_oauth_verifier', codeVerifier);
-
-  // 检查当前是否通过 localhost 访问
-  const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-  const currentPort = window.location.port || '80';
-
-  // 如果不是通过 localhost 访问，提示用户需要手动复制 code
-  if (!isLocalhost) {
-    showAlert(
-      `注意：授权成功后，浏览器会跳转到 localhost:${currentPort}（可能无法访问）。\n\n` +
-      '请从地址栏复制 code=xxx 后面的值，然后回来粘贴到"手动输入授权码"中。',
-      'warning'
-    );
-  }
-
-  // 构建 URL
+  // 构建 URL（不使用 PKCE，避免跨域问题）
   const params = new URLSearchParams({
     client_id: GEMINI_OAUTH_CONFIG.clientId,
     redirect_uri: GEMINI_OAUTH_CONFIG.redirectUri,
     response_type: 'code',
     scope: GEMINI_OAUTH_CONFIG.scopes,
-    code_challenge: codeChallenge,
-    code_challenge_method: 'S256',
     access_type: 'offline',
     prompt: 'consent',
     state: Math.random().toString(36).substring(2)
@@ -2764,32 +2745,30 @@ async function handleGeminiOAuthMessage(event) {
   const data = event.data;
   if (!data || !data.code || data.provider !== 'gemini') return;
 
-  await exchangeGeminiCodeForToken(data.code);
+  // 传递 code 和 codeVerifier
+  await exchangeGeminiCodeForToken(data.code, data.codeVerifier);
 }
 
 /**
  * 用 Code 换取 Gemini Token
+ * @param {string} code - 授权码
+ * @param {string} codeVerifier - PKCE code_verifier（已移除 PKCE，此参数不再使用）
  */
-async function exchangeGeminiCodeForToken(code) {
-  const codeVerifier = localStorage.getItem('gemini_oauth_verifier');
-  if (!codeVerifier) {
-    if (window.showError) showError('找不到 PKCE Verifier，请重新授权');
-    return;
-  }
-
+async function exchangeGeminiCodeForToken(code, codeVerifier) {
   const startBtn = document.getElementById('startGeminiOAuthBtn');
   const originalText = startBtn.textContent;
   startBtn.disabled = true;
   startBtn.textContent = '获取 Token 中...';
 
   try {
+    // 不使用 PKCE，只发送 code 和 client_secret
     const body = new URLSearchParams({
       grant_type: 'authorization_code',
       code: code,
       redirect_uri: GEMINI_OAUTH_CONFIG.redirectUri,
       client_id: GEMINI_OAUTH_CONFIG.clientId,
-      client_secret: GEMINI_OAUTH_CONFIG.clientSecret,
-      code_verifier: codeVerifier
+      client_secret: GEMINI_OAUTH_CONFIG.clientSecret
+      // 移除 code_verifier
     });
 
     // 通过后端代理请求（避免 CORS）
