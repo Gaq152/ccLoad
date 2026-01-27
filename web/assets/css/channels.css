@@ -456,11 +456,11 @@
       to { transform: rotate(360deg); }
     }
 
-/* 自动测速倒计时组件 - 右上角固定徽章 */
+/* 自动测速倒计时组件 - 可拖拽悬浮徽章 */
 .auto-test-timer-badge {
   position: fixed;
-  top: 74px; /* 导航栏高度 64px + 间距 10px */
-  right: 20px;
+  top: 74px; /* 默认初始位置：导航栏下方 */
+  left: 20px; /* 默认在左侧，与 AI Proxy 标题对齐 */
   z-index: 1000;
 
   display: flex;
@@ -468,7 +468,7 @@
   gap: 8px;
   padding: 10px 16px;
 
-  background: var(--primary-50);
+  background: rgba(239, 246, 255, 1); /* 不透明的浅蓝色背景 */
   border: 1px solid var(--primary-200);
   border-radius: 24px;
 
@@ -477,15 +477,21 @@
   font-weight: 500;
 
   box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
-  transition: all 0.3s ease;
-  cursor: default;
+  transition: box-shadow 0.3s ease, transform 0.3s ease;
+  cursor: move; /* 拖拽光标 */
+  user-select: none; /* 防止拖拽时选中文本 */
 }
 
 .auto-test-timer-badge:hover {
-  background: var(--primary-100);
-  border-color: var(--primary-300);
   box-shadow: 0 6px 16px rgba(59, 130, 246, 0.25);
   transform: translateY(-2px);
+}
+
+/* 拖拽中状态 */
+.auto-test-timer-badge.dragging {
+  cursor: grabbing;
+  opacity: 0.8;
+  transition: none; /* 拖拽时禁用过渡动画 */
 }
 
 .auto-test-timer-badge .timer-icon {
@@ -503,7 +509,7 @@
 
 /* 测速中状态 */
 .auto-test-timer-badge.testing {
-  background: var(--warning-50, #fffbeb);
+  background: rgba(255, 251, 235, 1); /* 不透明的浅黄色背景 */
   border-color: var(--warning-200, #fde68a);
   color: var(--warning-600, #d97706);
   box-shadow: 0 4px 12px rgba(217, 119, 6, 0.15);
@@ -515,20 +521,18 @@
 
 /* 暗色主题适配 */
 html.dark .auto-test-timer-badge {
-  background: var(--primary-900);
+  background: rgba(30, 58, 138, 1); /* 不透明的深蓝色背景 */
   border-color: var(--primary-700);
   color: var(--primary-300);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
 html.dark .auto-test-timer-badge:hover {
-  background: var(--primary-800);
-  border-color: var(--primary-600);
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
 }
 
 html.dark .auto-test-timer-badge.testing {
-  background: rgba(217, 119, 6, 0.2);
+  background: rgba(120, 53, 15, 1); /* 不透明的深橙色背景 */
   border-color: var(--warning-600);
   color: var(--warning-400);
 }
@@ -537,7 +541,7 @@ html.dark .auto-test-timer-badge.testing {
 @media (max-width: 768px) {
   .auto-test-timer-badge {
     top: 10px;
-    right: 10px;
+    left: 10px;
     padding: 8px 12px;
     font-size: 12px;
   }
