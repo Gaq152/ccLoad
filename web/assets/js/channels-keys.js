@@ -346,19 +346,19 @@ function updateInlineKey(index, value) {
 
 async function testSingleKey(keyIndex) {
   if (!editingChannelId) {
-    alert('无法获取渠道ID');
+    showAlert('无法获取渠道ID');
     return;
   }
 
   const modelsInput = document.getElementById('channelModels');
   if (!modelsInput || !modelsInput.value.trim()) {
-    alert('请先配置支持的模型列表');
+    showAlert('请先配置支持的模型列表');
     return;
   }
 
   const models = modelsInput.value.split(',').map(m => m.trim()).filter(m => m);
   if (models.length === 0) {
-    alert('模型列表为空，请先配置支持的模型');
+    showAlert('模型列表为空，请先配置支持的模型');
     return;
   }
 
@@ -366,7 +366,7 @@ async function testSingleKey(keyIndex) {
   const apiKey = inlineKeyTableData[keyIndex];
 
   if (!apiKey || !apiKey.trim()) {
-    alert('API Key为空，无法测试');
+    showAlert('API Key为空，无法测试');
     return;
   }
 
@@ -455,13 +455,17 @@ async function refreshKeyCooldownStatus() {
   }
 }
 
-function deleteInlineKey(index) {
+async function deleteInlineKey(index) {
   if (inlineKeyTableData.length === 1) {
-    alert('至少需要保留一个API Key');
+    showAlert('至少需要保留一个API Key');
     return;
   }
 
-  if (confirm(`确定要删除第 ${index + 1} 个Key吗？`)) {
+  if (await showConfirm({
+    title: '删除确认',
+    message: `确定要删除第 ${index + 1} 个Key吗？`,
+    type: 'danger'
+  })) {
     const tableContainer = document.querySelector('#inlineKeyTableBody').closest('div[style*="max-height"]');
     const scrollTop = tableContainer ? tableContainer.scrollTop : 0;
 
@@ -542,16 +546,20 @@ function updateSelectAllCheckbox() {
                            visibleIndices.some(index => selectedKeyIndices.has(index));
 }
 
-function batchDeleteSelectedKeys() {
+async function batchDeleteSelectedKeys() {
   const count = selectedKeyIndices.size;
   if (count === 0) return;
 
   if (inlineKeyTableData.length - count < 1) {
-    alert('至少需要保留一个API Key');
+    showAlert('至少需要保留一个API Key');
     return;
   }
 
-  if (!confirm(`确定要删除选中的 ${count} 个Key吗？`)) {
+  if (!await showConfirm({
+    title: '批量删除确认',
+    message: `确定要删除选中的 ${count} 个Key吗？`,
+    type: 'danger'
+  })) {
     return;
   }
 
@@ -634,14 +642,14 @@ function confirmInlineKeyImport() {
   const input = textarea.value.trim();
 
   if (!input) {
-    alert('请输入至少一个API Key');
+    showAlert('请输入至少一个API Key');
     return;
   }
 
   const newKeys = parseKeys(input);
 
   if (newKeys.length === 0) {
-    alert('未能解析到有效的API Key，请检查格式');
+    showAlert('未能解析到有效的API Key，请检查格式');
     return;
   }
 

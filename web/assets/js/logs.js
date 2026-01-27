@@ -1242,7 +1242,11 @@
     async function deleteKeyFromLog(channelId, channelName, maskedApiKey) {
       if (!channelId || !maskedApiKey) return;
 
-      const confirmDel = confirm(`确定删除渠道"${channelName || ('#' + channelId)}"中的此Key (${maskedApiKey}) 吗？`);
+      const confirmDel = await showConfirm({
+        title: '删除确认',
+        message: `确定删除渠道"${channelName || ('#' + channelId)}"中的此Key (${maskedApiKey}) 吗？`,
+        type: 'danger'
+      });
       if (!confirmDel) return;
 
       try {
@@ -1252,7 +1256,7 @@
         const apiKeys = parseApiKeysFromChannel(channel);
         const keyIndex = findKeyIndexByMaskedKey(apiKeys, maskedApiKey);
         if (keyIndex === null) {
-          alert('未能匹配到该Key，请检查渠道配置。');
+          showAlert('未能匹配到该Key，请检查渠道配置。');
           return;
         }
 
@@ -1260,15 +1264,19 @@
         const delResult = await fetchAPIWithAuth(`/admin/channels/${channelId}/keys/${keyIndex}`, { method: 'DELETE' });
         if (!delResult.success) throw new Error(delResult.error || '删除失败');
 
-        alert(`已删除 Key #${keyIndex + 1} (${maskedApiKey})`);
+        showAlert(`已删除 Key #${keyIndex + 1} (${maskedApiKey})`);
 
         // 如果没有剩余Key，询问是否删除渠道
         if (delResult.data?.remaining_keys === 0) {
-          const delChannel = confirm('该渠道已无可用Key，是否删除整个渠道？');
+          const delChannel = await showConfirm({
+            title: '删除渠道',
+            message: '该渠道已无可用Key，是否删除整个渠道？',
+            type: 'danger'
+          });
           if (delChannel) {
             const chRes = await fetchAPIWithAuth(`/admin/channels/${channelId}`, { method: 'DELETE' });
             if (!chRes.success) throw new Error(chRes.error || '删除渠道失败');
-            alert('渠道已删除');
+            showAlert('渠道已删除');
           }
         }
 
@@ -1276,7 +1284,7 @@
         load();
       } catch (e) {
         console.error('删除Key失败', e);
-        alert(e.message || '删除Key失败');
+        showAlert(e.message || '删除Key失败');
       }
     }
 
