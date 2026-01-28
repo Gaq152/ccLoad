@@ -1994,9 +1994,9 @@ async function applyKiroQuotaTemplate(template) {
  */
 function getOfficialPresetLabel(type) {
   const labels = {
-    'codex': 'OpenAI 官方',
-    'anthropic': 'Anthropic 官方',
-    'gemini': 'Google 官方'
+    'codex': 'Codex 官方',
+    'anthropic': 'Claude 官方',
+    'gemini': 'Gemini 官方'
   };
   return labels[type] || '官方';
 }

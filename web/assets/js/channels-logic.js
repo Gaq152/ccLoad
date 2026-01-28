@@ -429,7 +429,7 @@
 
     // 类型显示名称和排序优先级
     const typeConfig = {
-      'anthropic': { name: 'Anthropic (Claude)', order: 1 },
+      'anthropic': { name: 'Claude', order: 1 },
       'codex': { name: 'Codex', order: 2 },
       'gemini': { name: 'Gemini', order: 3 }
     };

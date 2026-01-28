@@ -15,8 +15,8 @@ type ChannelTypeConfig struct {
 var ChannelTypes = []ChannelTypeConfig{
 	{
 		Value:        ChannelTypeAnthropic,
-		DisplayName:  "Claude Code",
-		Description:  "Claude Code兼容API",
+		DisplayName:  "Claude",
+		Description:  "Claude API（支持官方、Antigravity、Kiro 预设）",
 		PathPatterns: []string{"/v1/messages"},
 		MatchType:    MatchTypePrefix,
 	},
