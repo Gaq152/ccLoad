@@ -70,6 +70,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // 初始化渠道类型筛选器（替换原Tab逻辑）
   await initChannelTypeFilter(initialType);
+  await initChannelTypeTabs(initialType);
 
   await loadDefaultTestContent();
   await loadChannelStatsFields();
@@ -127,15 +128,86 @@ async function initChannelTypeFilter(initialType) {
     select.appendChild(option);
   });
 
-  // 绑定change事件
+  // 绑定change事件（同步到 Tab）
   select.addEventListener('change', (e) => {
     const type = e.target.value;
-    filters.channelType = type;
-    filters.model = 'all';
-    document.getElementById('modelFilter').value = 'all';
-    saveChannelsFilters();
-    loadChannels(type);
+    switchChannelType(type);
   });
+}
+
+// 初始化渠道类型 Tab 切换
+async function initChannelTypeTabs(initialType) {
+  const container = document.getElementById('channelTypeTabs');
+  if (!container) return;
+
+  const types = await window.ChannelTypeManager.getChannelTypes();
+
+  // 渠道类型图标映射
+  const typeIcons = {
+    'anthropic': '🟠', // Claude 橙色
+    'codex': '⚪',     // Codex 白色/灰色
+    'gemini': '🔷',    // Gemini 蓝色菱形
+    'openai': '🟢',    // OpenAI 绿色
+    'azure': '🔵',     // Azure 蓝色
+    'google': '🔴',    // Google 红色
+  };
+
+  // 添加"全部"Tab
+  const allTab = document.createElement('button');
+  allTab.className = 'channel-type-tab' + (initialType === 'all' ? ' active' : '');
+  allTab.dataset.type = 'all';
+  allTab.innerHTML = `
+    <span class="channel-type-tab-icon">📋</span>
+    <span>全部</span>
+  `;
+  allTab.addEventListener('click', () => switchChannelType('all'));
+  container.appendChild(allTab);
+
+  // 添加各渠道类型 Tab
+  types.forEach(type => {
+    const tab = document.createElement('button');
+    tab.className = 'channel-type-tab' + (type.value === initialType ? ' active' : '');
+    tab.dataset.type = type.value;
+    tab.title = type.description || type.display_name;
+
+    const icon = typeIcons[type.value] || '🔘';
+    tab.innerHTML = `
+      <span class="channel-type-tab-icon">${icon}</span>
+      <span>${type.display_name}</span>
+    `;
+
+    tab.addEventListener('click', () => switchChannelType(type.value));
+    container.appendChild(tab);
+  });
+}
+
+// 切换渠道类型（Tab 和下拉框同步）
+function switchChannelType(type) {
+  // 更新 Tab 激活状态
+  const tabs = document.querySelectorAll('.channel-type-tab');
+  tabs.forEach(tab => {
+    if (tab.dataset.type === type) {
+      tab.classList.add('active');
+    } else {
+      tab.classList.remove('active');
+    }
+  });
+
+  // 同步下拉框
+  const select = document.getElementById('channelTypeFilter');
+  if (select) {
+    select.value = type;
+  }
+
+  // 更新筛选器并加载渠道
+  filters.channelType = type;
+  filters.model = 'all';
+  const modelFilter = document.getElementById('modelFilter');
+  if (modelFilter) {
+    modelFilter.value = 'all';
+  }
+  saveChannelsFilters();
+  loadChannels(type);
 }
 
 document.addEventListener('keydown', (e) => {

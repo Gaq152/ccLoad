@@ -3914,3 +3914,96 @@ body.dashboard-theme .metric-label {
   border-color: rgba(0, 0, 0, 0.2);
   border-top-color: var(--neutral-600);
 }
+
+/* ===== 渠道类型 Tab 切换 ===== */
+.channel-type-tabs-container {
+  margin: var(--space-4) 0;
+  padding: 0 var(--space-6);
+}
+
+.channel-type-tabs {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  background: var(--glass-bg);
+  backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--glass-shadow);
+  overflow-x: auto;
+  scrollbar-width: none; /* Firefox */
+}
+
+.channel-type-tabs::-webkit-scrollbar {
+  display: none; /* Chrome/Safari */
+}
+
+.channel-type-tab {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border: none;
+  background: transparent;
+  color: var(--neutral-600);
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--timing-function);
+  white-space: nowrap;
+  position: relative;
+}
+
+.channel-type-tab:hover {
+  background: var(--neutral-100);
+  color: var(--neutral-900);
+}
+
+.channel-type-tab.active {
+  background: var(--primary-500);
+  color: white;
+  box-shadow: 0 2px 8px rgba(var(--primary-500-rgb), 0.3);
+}
+
+.channel-type-tab-icon {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+}
+
+/* 暗色模式适配 */
+body.dashboard-theme .channel-type-tabs {
+  background: var(--glass-bg);
+  border-color: var(--glass-border);
+}
+
+body.dashboard-theme .channel-type-tab {
+  color: var(--theme-text-muted);
+}
+
+body.dashboard-theme .channel-type-tab:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--theme-text-main);
+}
+
+body.dashboard-theme .channel-type-tab.active {
+  background: var(--primary-500);
+  color: white;
+}
+
+/* 响应式：移动端 */
+@media (max-width: 768px) {
+  .channel-type-tabs-container {
+    padding: 0 var(--space-4);
+  }
+
+  .channel-type-tab {
+    padding: var(--space-2) var(--space-3);
+    font-size: 13px;
+  }
+}
