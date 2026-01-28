@@ -2832,6 +2832,7 @@ function updateGeminiTokenUI(token) {
 
 /**
  * 开始 Gemini OAuth 流程
+ * 生成授权链接并显示在文本框中，不自动打开窗口
  */
 async function startGeminiOAuth() {
   // 构建 URL（不使用 PKCE，避免跨域问题）
@@ -2847,14 +2848,50 @@ async function startGeminiOAuth() {
 
   const fullUrl = `${GEMINI_OAUTH_CONFIG.authorizeUrl}?${params.toString()}`;
 
-  // 打开新窗口
-  const width = 600;
-  const height = 700;
-  const left = (window.screen.width - width) / 2;
-  const top = (window.screen.height - height) / 2;
-  window.open(fullUrl, 'gemini_oauth', `width=${width},height=${height},left=${left},top=${top}`);
+  // 显示链接区域并填充链接
+  const linkSection = document.getElementById('geminiOAuthLinkSection');
+  const linkInput = document.getElementById('geminiOAuthLinkInput');
+  if (linkSection && linkInput) {
+    linkInput.value = fullUrl;
+    linkSection.style.display = 'block';
+    // 自动选中链接方便复制
+    linkInput.select();
+  }
 
-  if (window.showSuccess) showSuccess('已打开 Google 授权窗口，请登录并授权');
+  if (window.showSuccess) showSuccess('授权链接已生成，请点击打开或复制');
+}
+
+/**
+ * 复制 Gemini OAuth 链接到剪贴板
+ */
+function copyGeminiOAuthLink() {
+  const linkInput = document.getElementById('geminiOAuthLinkInput');
+  if (!linkInput || !linkInput.value) {
+    if (window.showError) showError('没有可复制的链接');
+    return;
+  }
+
+  if (window.copyToClipboard) {
+    copyToClipboard(linkInput.value, '授权链接已复制');
+  } else {
+    // 降级方案
+    linkInput.select();
+    document.execCommand('copy');
+    if (window.showSuccess) showSuccess('授权链接已复制');
+  }
+}
+
+/**
+ * 在新标签页打开 Gemini OAuth 链接
+ */
+function openGeminiOAuthLink() {
+  const linkInput = document.getElementById('geminiOAuthLinkInput');
+  if (!linkInput || !linkInput.value) {
+    if (window.showError) showError('没有可打开的链接');
+    return;
+  }
+
+  window.open(linkInput.value, '_blank');
 }
 
 /**
