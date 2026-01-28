@@ -2252,6 +2252,7 @@ function updateCodexTokenUI(token) {
 
 /**
  * 开始 Codex OAuth 流程
+ * 生成授权链接并显示在文本框中，不自动打开窗口
  */
 async function startCodexOAuth() {
   // Codex CLI 的 OAuth 应用只注册了 localhost:1455 作为回调地址
@@ -2267,16 +2268,10 @@ async function startCodexOAuth() {
     code_challenge_method: 'S256'
   };
 
-  // 检查当前是否运行在 localhost:1455
-  const isLocalhost1455 = window.location.hostname === 'localhost' && window.location.port === '1455';
-
-  // 如果不是 localhost:1455，提示用户手动复制 code
-  if (!isLocalhost1455) {
-    showAlert(
-      '注意：授权成功后，浏览器会跳转到 localhost:1455（可能无法访问）。\n\n' +
-      '请从地址栏复制 code=xxx 后面的值，然后回来粘贴到"手动输入授权码"中。',
-      'warning'
-    );
+  const startBtn = document.getElementById('startCodexOAuthBtn');
+  if (startBtn) {
+    startBtn.disabled = true;
+    startBtn.textContent = '生成中...';
   }
 
   // 调用后端 API 生成 PKCE（使用标准 SHA-256，避免浏览器兼容性问题）
@@ -2297,6 +2292,10 @@ async function startCodexOAuth() {
   } catch (e) {
     console.error('[Codex OAuth] 生成 PKCE 失败:', e);
     if (window.showError) showError('生成 PKCE 失败: ' + e.message);
+    if (startBtn) {
+      startBtn.disabled = false;
+      startBtn.textContent = '🚀 开始 OAuth 授权';
+    }
     return;
   }
 
@@ -2327,14 +2326,56 @@ async function startCodexOAuth() {
   console.log('[Codex OAuth] code_challenge:', codeChallenge);
   console.log('[Codex OAuth] state:', state);
 
-  // 打开新窗口
-  const width = 600;
-  const height = 700;
-  const left = (window.screen.width - width) / 2;
-  const top = (window.screen.height - height) / 2;
-  window.open(fullUrl, 'codex_oauth', `width=${width},height=${height},left=${left},top=${top}`);
+  // 显示链接区域并填充链接
+  const linkSection = document.getElementById('codexOAuthLinkSection');
+  const linkInput = document.getElementById('codexOAuthLinkInput');
+  if (linkSection && linkInput) {
+    linkInput.value = fullUrl;
+    linkSection.style.display = 'block';
+    // 自动选中链接方便复制
+    linkInput.select();
+  }
 
-  if (window.showSuccess) showSuccess('已打开授权窗口，请登录并授权');
+  // 恢复按钮状态
+  if (startBtn) {
+    startBtn.disabled = false;
+    startBtn.textContent = '🚀 开始 OAuth 授权';
+  }
+
+  if (window.showSuccess) showSuccess('授权链接已生成，请点击打开或复制');
+}
+
+/**
+ * 复制 Codex OAuth 链接到剪贴板
+ */
+function copyCodexOAuthLink() {
+  const linkInput = document.getElementById('codexOAuthLinkInput');
+  if (!linkInput || !linkInput.value) {
+    if (window.showError) showError('没有可复制的链接');
+    return;
+  }
+
+  if (window.copyToClipboard) {
+    copyToClipboard(linkInput.value, '授权链接已复制');
+  } else {
+    // 降级方案
+    linkInput.select();
+    document.execCommand('copy');
+    if (window.showSuccess) showSuccess('授权链接已复制');
+  }
+}
+
+/**
+ * 在新标签页打开 Codex OAuth 链接
+ */
+function openCodexOAuthLink() {
+  const linkInput = document.getElementById('codexOAuthLinkInput');
+  if (!linkInput || !linkInput.value) {
+    if (window.showError) showError('没有可打开的链接');
+    return;
+  }
+
+  window.open(linkInput.value, '_blank');
 }
 
 /**
