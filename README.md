@@ -1,4 +1,4 @@
-# ccLoad - Claude Code / Codex / Gemini 多渠道 API 代理服务
+# ccLoad - Claude / Codex / Gemini 多渠道 API 代理服务
 
 [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8.svg)](https://golang.org)
 [![Gin](https://img.shields.io/badge/Gin-v1.10+-blue.svg)](https://github.com/gin-gonic/gin)
