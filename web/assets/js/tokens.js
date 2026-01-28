@@ -600,7 +600,7 @@
 
       // 渠道类型显示名称映射
       const typeNames = {
-        'anthropic': 'Anthropic',
+        'anthropic': 'Claude',
         'codex': 'Codex',
         'gemini': 'Gemini'
       };

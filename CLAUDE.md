@@ -128,3 +128,21 @@ web/
 - **Fail-Fast**: 配置错误直接 `log.Fatal()` 退出
 - **Context**: `defer cancel()` 必须无条件调用
 - **注释**: 中文注释，解释业务规则和边界情况
+
+## 命名约定
+
+### 渠道类型命名映射
+
+| 内部标识符 | 前端显示名 | 说明 |
+|-----------|-----------|------|
+| `anthropic` | Claude | Claude API 渠道（包含官方、Antigravity、Kiro 预设） |
+| `codex` | Codex | Codex CLI API 渠道 |
+| `gemini` | Gemini | Google Gemini CLI API 渠道 |
+
+**重要说明**：
+- `anthropic`、`claude`、`Claude Code` 指的是同一类型的渠道
+- 内部代码（数据库字段、API 参数、变量名）统一使用 `anthropic`
+- 前端用户界面、文档说明统一显示为 `Claude`
+- 预设标签命名规范：`Claude 官方`、`Codex 官方`、`Gemini 官方`
+
+**历史原因**：早期代码使用 `anthropic` 作为渠道类型标识符（对应 Anthropic 公司），后续为了用户体验统一将前端显示名改为 `Claude`（产品名称）。内部标识符保持不变以确保向后兼容。

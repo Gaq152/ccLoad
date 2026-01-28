@@ -540,7 +540,7 @@
       const docContent = `
 <p>本服务支持以下 AI 模型的 API 代理转发：</p>
 
-<h4>Claude (Anthropic)</h4>
+<h4>Claude</h4>
 <ul>
   <li><code>POST /v1/messages</code> - Claude Messages API</li>
   <li>支持流式响应、Prompt Caching</li>
