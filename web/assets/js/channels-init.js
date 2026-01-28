@@ -115,11 +115,11 @@ async function initChannelTypeTabs(initialType) {
 
   const types = await window.ChannelTypeManager.getChannelTypes();
 
-  // 渠道类型图标映射
+  // 渠道类型图标映射（使用 SVG 图标）
   const typeIcons = {
-    'anthropic': '🟠', // Claude 橙色
-    'codex': '⚪',     // Codex 白色/灰色
-    'gemini': '🔷',    // Gemini 蓝色菱形
+    'anthropic': '<img src="/web/assets/images/claude-icon.svg" alt="Claude" style="width: 16px; height: 16px;">',
+    'codex': '<img src="/web/assets/images/codex-icon.svg" alt="Codex" style="width: 16px; height: 16px;">',
+    'gemini': '<img src="/web/assets/images/gemini-icon.svg" alt="Gemini" style="width: 16px; height: 16px;">'
   };
 
   // 只添加各渠道类型 Tab，不添加"全部"
@@ -129,7 +129,7 @@ async function initChannelTypeTabs(initialType) {
     tab.dataset.type = type.value;
     tab.title = type.description || type.display_name;
 
-    const icon = typeIcons[type.value] || '🔘';
+    const icon = typeIcons[type.value] || '<span>🔘</span>';
     tab.innerHTML = `
       <span class="channel-type-tab-icon">${icon}</span>
       <span>${type.display_name}</span>
