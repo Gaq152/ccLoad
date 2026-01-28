@@ -1,6 +1,9 @@
 package app
 
 import (
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
 	"io"
 	"net/http"
 	"strings"
@@ -14,6 +17,36 @@ type OAuthTokenRequest struct {
 	TokenURL    string `json:"token_url"`
 	Body        string `json:"body"`
 	ContentType string `json:"content_type"`
+}
+
+// PKCEResponse PKCE 生成响应
+type PKCEResponse struct {
+	CodeVerifier  string `json:"code_verifier"`
+	CodeChallenge string `json:"code_challenge"`
+}
+
+// HandleGeneratePKCE 生成 PKCE 参数（使用后端 crypto 库，避免浏览器兼容性问题）
+func (s *Server) HandleGeneratePKCE(c *gin.Context) {
+	// 生成 32 字节随机数作为 code_verifier
+	verifierBytes := make([]byte, 32)
+	if _, err := rand.Read(verifierBytes); err != nil {
+		RespondErrorMsg(c, http.StatusInternalServerError, "生成随机数失败: "+err.Error())
+		return
+	}
+
+	// Base64 URL 编码（无填充）
+	codeVerifier := base64.RawURLEncoding.EncodeToString(verifierBytes)
+
+	// 计算 SHA-256 哈希
+	hash := sha256.Sum256([]byte(codeVerifier))
+
+	// Base64 URL 编码（无填充）
+	codeChallenge := base64.RawURLEncoding.EncodeToString(hash[:])
+
+	RespondJSON(c, http.StatusOK, PKCEResponse{
+		CodeVerifier:  codeVerifier,
+		CodeChallenge: codeChallenge,
+	})
 }
 
 // HandleOAuthToken 处理 OAuth token 交换（代理请求避免 CORS）

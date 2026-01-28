@@ -2279,8 +2279,26 @@ async function startCodexOAuth() {
     );
   }
 
-  // 生成 PKCE（OpenAI 强制要求）
-  const { codeVerifier, codeChallenge } = await generatePKCE();
+  // 调用后端 API 生成 PKCE（使用标准 SHA-256，避免浏览器兼容性问题）
+  let codeVerifier, codeChallenge;
+  try {
+    const pkceResult = await fetchAPIWithAuth('/admin/oauth/pkce', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+
+    if (!pkceResult.success || !pkceResult.data) {
+      throw new Error('生成 PKCE 失败');
+    }
+
+    codeVerifier = pkceResult.data.code_verifier;
+    codeChallenge = pkceResult.data.code_challenge;
+    console.log('[Codex OAuth] 后端生成 PKCE 成功');
+  } catch (e) {
+    console.error('[Codex OAuth] 生成 PKCE 失败:', e);
+    if (window.showError) showError('生成 PKCE 失败: ' + e.message);
+    return;
+  }
 
   // 将 code_verifier 编码到 state 参数中（解决跨域 localStorage 问题）
   const stateData = {
