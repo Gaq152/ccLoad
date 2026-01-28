@@ -33,8 +33,14 @@
         </header>
         <header class="mb-4">
           <div class="glass-card animate-slide-up" style="padding: var(--space-6);">
-            <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;">
+            <div class="header-with-tabs">
               <p class="page-subtitle" style="margin: 0;">配置API渠道、优先级和模型支持（<b>优先请求高优先级渠道，相同优先级则轮询调用</b>）</p>
+
+              <!-- 渠道类型 Tab 切换（移到 header 中间） -->
+              <div id="channelTypeTabs" class="channel-type-tabs-inline">
+                <!-- 动态加载渠道类型 Tab -->
+              </div>
+
               <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
                 <button id="exportCsvBtn" type="button" class="btn btn-secondary" style="padding: 8px 16px; font-size: 14px;" title="导出渠道列表为CSV">
                   导出 CSV
@@ -51,13 +57,6 @@
           </div>
         </header>
 
-        <!-- 渠道类型 Tab 切换 -->
-        <div class="channel-type-tabs-container">
-          <div id="channelTypeTabs" class="channel-type-tabs">
-            <!-- 动态加载渠道类型 Tab -->
-          </div>
-        </div>
-
         <!-- Sentinel 哨兵元素：用于检测 Filter Bar 是否进入吸顶状态 -->
         <div id="filter-bar-sentinel"></div>
         <!-- Filter Bar -->
@@ -67,14 +66,6 @@
             <div class="header-checkbox-wrapper" title="全选当前显示的渠道">
               <input type="checkbox" id="selectAllChannels" onchange="toggleSelectAll(this.checked)" style="width: 16px; height: 16px; cursor: pointer; accent-color: var(--primary-500);">
               <label for="selectAllChannels" class="header-checkbox-label">全选</label>
-            </div>
-
-            <!-- 渠道类型筛选 -->
-            <div class="filter-group">
-              <label class="filter-label">渠道类型</label>
-              <select id="channelTypeFilter" class="filter-select" aria-controls="channels-container" aria-label="按渠道类型筛选">
-                <!-- 动态加载渠道类型选项 -->
-              </select>
             </div>
 
             <div class="filter-group">

@@ -55,10 +55,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   await window.ChannelTypeManager.renderChannelTypeRadios('channelTypeRadios');
 
-  // 优先从 localStorage 恢复，其次检查 URL 参数，最后默认 all
+  // 优先从 localStorage 恢复，其次检查 URL 参数，最后默认 claude
   const savedFilters = loadChannelsFilters();
   const targetChannelType = await getTargetChannelType();
-  const initialType = targetChannelType || (savedFilters?.channelType) || 'all';
+  const initialType = targetChannelType || (savedFilters?.channelType) || 'anthropic';
 
   filters.channelType = initialType;
   if (savedFilters) {
@@ -68,8 +68,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('modelFilter').value = filters.model;
   }
 
-  // 初始化渠道类型筛选器（替换原Tab逻辑）
-  await initChannelTypeFilter(initialType);
+  // 初始化渠道类型 Tab（不包含"全部"选项）
   await initChannelTypeTabs(initialType);
 
   await loadDefaultTestContent();
@@ -109,33 +108,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 });
 
-// 初始化渠道类型筛选器
-async function initChannelTypeFilter(initialType) {
-  const select = document.getElementById('channelTypeFilter');
-  if (!select) return;
-
-  const types = await window.ChannelTypeManager.getChannelTypes();
-
-  // 添加"全部"选项
-  select.innerHTML = '<option value="all">全部</option>';
-  types.forEach(type => {
-    const option = document.createElement('option');
-    option.value = type.value;
-    option.textContent = type.display_name;
-    if (type.value === initialType) {
-      option.selected = true;
-    }
-    select.appendChild(option);
-  });
-
-  // 绑定change事件（同步到 Tab）
-  select.addEventListener('change', (e) => {
-    const type = e.target.value;
-    switchChannelType(type);
-  });
-}
-
-// 初始化渠道类型 Tab 切换
+// 初始化渠道类型 Tab 切换（不包含"全部"选项）
 async function initChannelTypeTabs(initialType) {
   const container = document.getElementById('channelTypeTabs');
   if (!container) return;
@@ -149,18 +122,7 @@ async function initChannelTypeTabs(initialType) {
     'gemini': '🔷',    // Gemini 蓝色菱形
   };
 
-  // 添加"全部"Tab
-  const allTab = document.createElement('button');
-  allTab.className = 'channel-type-tab' + (initialType === 'all' ? ' active' : '');
-  allTab.dataset.type = 'all';
-  allTab.innerHTML = `
-    <span class="channel-type-tab-icon">📋</span>
-    <span>全部</span>
-  `;
-  allTab.addEventListener('click', () => switchChannelType('all'));
-  container.appendChild(allTab);
-
-  // 添加各渠道类型 Tab
+  // 只添加各渠道类型 Tab，不添加"全部"
   types.forEach(type => {
     const tab = document.createElement('button');
     tab.className = 'channel-type-tab' + (type.value === initialType ? ' active' : '');
@@ -178,7 +140,7 @@ async function initChannelTypeTabs(initialType) {
   });
 }
 
-// 切换渠道类型（Tab 和下拉框同步）
+// 切换渠道类型（Tab 切换）
 function switchChannelType(type) {
   // 更新 Tab 激活状态
   const tabs = document.querySelectorAll('.channel-type-tab');
@@ -189,12 +151,6 @@ function switchChannelType(type) {
       tab.classList.remove('active');
     }
   });
-
-  // 同步下拉框
-  const select = document.getElementById('channelTypeFilter');
-  if (select) {
-    select.value = type;
-  }
 
   // 更新筛选器并加载渠道
   filters.channelType = type;
