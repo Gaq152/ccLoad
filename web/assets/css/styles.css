@@ -3915,41 +3915,38 @@ body.dashboard-theme .metric-label {
   border-top-color: var(--neutral-600);
 }
 
-/* ===== 渠道类型 Tab 切换 ===== */
-.channel-type-tabs-container {
-  margin: var(--space-4) 0;
-  padding: 0 var(--space-6);
+/* ===== 渠道类型 Tab 切换（内联在 header 中） ===== */
+.header-with-tabs {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
 }
 
-.channel-type-tabs {
+.channel-type-tabs-inline {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-2);
-  background: var(--glass-bg);
-  backdrop-filter: blur(16px) saturate(180%);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--glass-shadow);
-  overflow-x: auto;
-  scrollbar-width: none; /* Firefox */
-}
-
-.channel-type-tabs::-webkit-scrollbar {
-  display: none; /* Chrome/Safari */
+  padding: var(--space-1) var(--space-2);
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
 .channel-type-tab {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-2) var(--space-4);
+  padding: 6px 12px;
   border: none;
   background: transparent;
   color: var(--neutral-600);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   cursor: pointer;
   transition: all var(--duration-fast) var(--timing-function);
   white-space: nowrap;
@@ -3957,29 +3954,29 @@ body.dashboard-theme .metric-label {
 }
 
 .channel-type-tab:hover {
-  background: var(--neutral-100);
+  background: rgba(0, 0, 0, 0.05);
   color: var(--neutral-900);
 }
 
 .channel-type-tab.active {
   background: var(--primary-500);
   color: white;
-  box-shadow: 0 2px 8px rgba(var(--primary-500-rgb), 0.3);
+  box-shadow: 0 2px 6px rgba(var(--primary-500-rgb), 0.25);
 }
 
 .channel-type-tab-icon {
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 16px;
+  font-size: 14px;
 }
 
 /* 暗色模式适配 */
-body.dashboard-theme .channel-type-tabs {
-  background: var(--glass-bg);
-  border-color: var(--glass-border);
+body.dashboard-theme .channel-type-tabs-inline {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
 }
 
 body.dashboard-theme .channel-type-tab {
@@ -3987,7 +3984,7 @@ body.dashboard-theme .channel-type-tab {
 }
 
 body.dashboard-theme .channel-type-tab:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.08);
   color: var(--theme-text-main);
 }
 
@@ -3998,12 +3995,17 @@ body.dashboard-theme .channel-type-tab.active {
 
 /* 响应式：移动端 */
 @media (max-width: 768px) {
-  .channel-type-tabs-container {
-    padding: 0 var(--space-4);
+  .header-with-tabs {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .channel-type-tabs-inline {
+    justify-content: center;
   }
 
   .channel-type-tab {
-    padding: var(--space-2) var(--space-3);
-    font-size: 13px;
+    padding: 6px 10px;
+    font-size: 12px;
   }
 }
