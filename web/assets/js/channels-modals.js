@@ -2335,6 +2335,8 @@ async function handleCodexOAuthMessage(event) {
  * 用 Code 换取 Token
  */
 async function exchangeCodeForToken(code, codeVerifier) {
+  console.log('[Codex OAuth] exchangeCodeForToken 调用参数:', { code, codeVerifier });
+
   if (!codeVerifier) {
     if (window.showError) showError('找不到 PKCE Verifier，请重新授权');
     return;
@@ -2357,6 +2359,14 @@ async function exchangeCodeForToken(code, codeVerifier) {
       code_verifier: codeVerifier
     });
 
+    console.log('[Codex OAuth] 请求参数:', {
+      grant_type: 'authorization_code',
+      code: code,
+      redirect_uri: FIXED_REDIRECT_URI,
+      client_id: 'app_EMoamEEZ73f0CkXaXp7hrann',
+      code_verifier: codeVerifier
+    });
+
     // 通过后端代理请求
     const result = await fetchAPIWithAuth('/admin/oauth/token', {
       method: 'POST',
@@ -2368,10 +2378,14 @@ async function exchangeCodeForToken(code, codeVerifier) {
       })
     });
 
+    console.log('[Codex OAuth] 后端响应:', result);
+
     if (result.success && result.data) {
       // [FIX] 后端返回结构是 { data: "token_json_string", status_code: 200 }
       const tokenStr = result.data.data || result.data;
       let tokenData = typeof tokenStr === 'string' ? JSON.parse(tokenStr) : tokenStr;
+
+      console.log('[Codex OAuth] Token 数据:', tokenData);
 
       // 补充信息
       tokenData.type = 'oauth';
@@ -2595,6 +2609,8 @@ async function submitManualCodexCode() {
   const input = document.getElementById('codexManualCodeInput');
   const code = input?.value?.trim();
 
+  console.log('[Codex OAuth] 手动输入原始内容:', code);
+
   if (!code) {
     if (window.showError) showError('请输入授权码');
     return;
@@ -2607,16 +2623,29 @@ async function submitManualCodexCode() {
   if (code.includes('code=')) {
     const match = code.match(/code=([^&]+)/);
     authCode = match ? match[1] : code;
+    console.log('[Codex OAuth] 提取的 code:', authCode);
 
     // 尝试从 URL 中提取 state 参数
     const stateMatch = code.match(/state=([^&]+)/);
     if (stateMatch) {
+      const stateEncoded = stateMatch[1];
+      console.log('[Codex OAuth] 提取的 state (编码):', stateEncoded);
+
       try {
-        const stateData = JSON.parse(atob(decodeURIComponent(stateMatch[1])));
+        const stateDecoded = decodeURIComponent(stateEncoded);
+        console.log('[Codex OAuth] state (URL解码):', stateDecoded);
+
+        const stateData = JSON.parse(atob(stateDecoded));
+        console.log('[Codex OAuth] state (Base64解码):', stateData);
+
         codeVerifier = stateData.verifier;
+        console.log('[Codex OAuth] 提取的 code_verifier:', codeVerifier);
       } catch (e) {
+        console.error('[Codex OAuth] 解析 state 失败:', e);
         console.warn('无法从 state 中提取 code_verifier:', e);
       }
+    } else {
+      console.warn('[Codex OAuth] URL 中没有找到 state 参数');
     }
   }
 
@@ -2625,6 +2654,7 @@ async function submitManualCodexCode() {
     return;
   }
 
+  console.log('[Codex OAuth] 准备换取 Token:', { authCode, codeVerifier });
   await exchangeCodeForToken(authCode, codeVerifier);
   input.value = '';
 }
