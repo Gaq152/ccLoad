@@ -147,9 +147,6 @@ async function initChannelTypeTabs(initialType) {
     'anthropic': '🟠', // Claude 橙色
     'codex': '⚪',     // Codex 白色/灰色
     'gemini': '🔷',    // Gemini 蓝色菱形
-    'openai': '🟢',    // OpenAI 绿色
-    'azure': '🔵',     // Azure 蓝色
-    'google': '🔴',    // Google 红色
   };
 
   // 添加"全部"Tab
