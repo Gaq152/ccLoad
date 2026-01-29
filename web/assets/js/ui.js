@@ -1110,3 +1110,125 @@ window.ChannelTypeManager = App.channel;
     initSearchStateManagement();
   }
 })();
+
+// ============================================================
+// 全局 Tooltip 系统（2025-01新增）
+// 解决 content-visibility 与 overflow: visible 的冲突
+// 将 Tooltip 渲染在 body 根节点，不受卡片 overflow 限制
+// ============================================================
+(function() {
+  let tooltipEl = null;
+  let hideTimer = null;
+
+  function init() {
+    // 创建全局 Tooltip 元素
+    tooltipEl = document.createElement('div');
+    tooltipEl.className = 'global-tooltip';
+    document.body.appendChild(tooltipEl);
+
+    // 事件委托：监听所有带有 aria-label 的元素
+    document.addEventListener('mouseover', handleMouseOver);
+    document.addEventListener('mouseout', handleMouseOut);
+
+    // 添加样式
+    injectStyles();
+  }
+
+  function handleMouseOver(e) {
+    const target = e.target.closest('[aria-label]');
+    if (!target) return;
+
+    const text = target.getAttribute('aria-label');
+    if (!text) return;
+
+    // 清除隐藏定时器
+    clearTimeout(hideTimer);
+
+    // 设置内容并显示
+    tooltipEl.textContent = text;
+    tooltipEl.classList.add('visible');
+
+    // 计算位置（自动处理边界）
+    updatePosition(target);
+  }
+
+  function handleMouseOut(e) {
+    const target = e.target.closest('[aria-label]');
+    if (!target) return;
+
+    // 延迟隐藏，避免鼠标快速移动时闪烁
+    hideTimer = setTimeout(() => {
+      tooltipEl.classList.remove('visible');
+    }, 100);
+  }
+
+  function updatePosition(target) {
+    const rect = target.getBoundingClientRect();
+
+    // 等待下一帧获取 Tooltip 尺寸（内容已更新）
+    requestAnimationFrame(() => {
+      const tooltipRect = tooltipEl.getBoundingClientRect();
+
+      // 默认显示在上方，居中对齐
+      let top = rect.top - tooltipRect.height - 8;
+      let left = rect.left + (rect.width - tooltipRect.width) / 2;
+
+      // 防止溢出屏幕左侧
+      if (left < 10) left = 10;
+
+      // 防止溢出屏幕右侧
+      if (left + tooltipRect.width > window.innerWidth - 10) {
+        left = window.innerWidth - tooltipRect.width - 10;
+      }
+
+      // 如果上方空间不足，显示在下方
+      if (top < 10) {
+        top = rect.bottom + 8;
+      }
+
+      tooltipEl.style.transform = `translate(${left}px, ${top}px)`;
+    });
+  }
+
+  function injectStyles() {
+    const style = document.createElement('style');
+    style.textContent = `
+      .global-tooltip {
+        position: fixed;
+        top: 0;
+        left: 0;
+        z-index: 99999;
+        padding: 6px 10px;
+        background: rgba(20, 25, 35, 0.95);
+        color: white;
+        font-size: 12px;
+        font-weight: 500;
+        border-radius: 6px;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.15s ease;
+        white-space: nowrap;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        backdrop-filter: blur(8px);
+      }
+
+      .global-tooltip.visible {
+        opacity: 1;
+      }
+
+      /* 暗色模式适配 */
+      html[data-theme="light"] .global-tooltip {
+        background: rgba(20, 25, 35, 0.92);
+        border: 1px solid rgba(0, 0, 0, 0.1);
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  // DOM 加载完成后初始化
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();

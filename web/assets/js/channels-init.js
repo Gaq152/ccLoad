@@ -135,8 +135,60 @@ async function initChannelTypeTabs(initialType) {
       <span>${type.display_name}</span>
     `;
 
-    tab.addEventListener('click', () => switchChannelType(type.value));
+    tab.addEventListener('click', () => {
+      // 更新滑动指示器位置
+      updateTabIndicator(tab);
+      // 切换渠道类型
+      switchChannelType(type.value);
+    });
     container.appendChild(tab);
+  });
+
+  // 初始化滑动指示器位置
+  requestAnimationFrame(() => {
+    const activeTab = container.querySelector('.active');
+    if (activeTab) {
+      updateTabIndicator(activeTab, false); // 初始化时不使用动画
+    }
+  });
+
+  // 窗口缩放时修正指示器位置
+  window.addEventListener('resize', () => {
+    const activeTab = container.querySelector('.active');
+    if (activeTab) {
+      updateTabIndicator(activeTab, false);
+    }
+  });
+}
+
+// 更新 Tab 滑动指示器位置
+function updateTabIndicator(activeTab, animate = true) {
+  const container = activeTab.parentElement;
+  const indicator = container;
+
+  // 获取相对位置（减去容器的 padding-left: 4px）
+  const left = activeTab.offsetLeft;
+  const width = activeTab.offsetWidth;
+
+  // 临时禁用动画（用于初始化和窗口缩放）
+  if (!animate) {
+    indicator.style.setProperty('--indicator-transition', 'none');
+  }
+
+  // 应用变换到 ::before 伪元素
+  indicator.style.setProperty('--indicator-left', `${left}px`);
+  indicator.style.setProperty('--indicator-width', `${width}px`);
+
+  // 恢复动画
+  if (!animate) {
+    requestAnimationFrame(() => {
+      indicator.style.removeProperty('--indicator-transition');
+    });
+  }
+
+  // 更新 active 状态
+  container.querySelectorAll('.channel-type-tab').forEach(tab => {
+    tab.classList.toggle('active', tab === activeTab);
   });
 }
 
