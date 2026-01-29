@@ -86,10 +86,20 @@ const ThemeManager = (() => {
     const current = getCurrentTheme();
     const next = current === 'dark' ? 'light' : 'dark';
 
-    // 降级处理：浏览器不支持 View Transitions 或未传入事件对象
-    if (!document.startViewTransition || !event) {
+    // 性能检查：如果元素过多（600+ 渠道卡片），禁用复杂动画
+    // View Transitions 需要对整个页面截图，在大量 DOM 场景下会导致明显卡顿
+    const cardCount = document.querySelectorAll('.glass-card').length;
+    const isHeavyPage = cardCount > 200;
+
+    // 降级处理：浏览器不支持 View Transitions 或页面元素过多
+    if (!document.startViewTransition || !event || isHeavyPage) {
       localStorage.setItem(STORAGE_KEY, next);
       applyTheme(next, true);
+
+      // 如果是因为元素过多而降级，在控制台提示（仅开发环境）
+      if (isHeavyPage && console.debug) {
+        console.debug(`[Theme] 检测到 ${cardCount} 个卡片元素，已禁用 View Transition 动画以优化性能`);
+      }
       return;
     }
 

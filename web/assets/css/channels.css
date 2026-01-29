@@ -875,43 +875,17 @@ html.dark .channel-group-count {
  * 操作按钮图标化（2025-12新增）
  * ============================================================================ */
 
-/* 操作按钮容器 - 必须允许溢出以显示 Tooltip */
+/* 操作按钮容器（已使用全局 Tooltip 系统，无需 overflow: visible） */
 .col-actions {
   display: flex;
   align-items: center;
   gap: 4px;
-  overflow: visible !important;
   position: relative;
-  z-index: 20; /* 确保 Tooltip 位于其他列内容之上 */
 }
 
-/* 允许 Tooltip 溢出渠道卡片（仅限渠道管理页面） */
-#channels-container .glass-card {
-  overflow: visible !important; /* 使用 !important 确保覆盖全局样式 */
-  contain: none !important; /* 禁用 containment，允许内容溢出 */
-}
-
-#channels-container .channel-row {
-  overflow: visible !important;
-}
-
-/* 分组内容也需要允许溢出 */
-.channel-group-content {
-  overflow: visible !important;
-  contain: none !important;
-}
-
-/* 优先级分组也需要允许溢出 */
-.priority-group {
-  overflow: visible !important;
-  contain: none !important;
-}
-
-/* 渠道类型分组也需要允许溢出 */
-.channel-type-group {
-  overflow: visible !important;
-  contain: none !important;
-}
+/* 以下旧规则已被 1794-1802 行的新规则覆盖，保留注释供参考 */
+/* 旧规则：为了显示 Tooltip 而强制 overflow: visible，导致 content-visibility 失效 */
+/* 新方案：使用全局 Tooltip 系统，恢复 content-visibility 性能优化 */
 
 /* 通用图标按钮 */
 .btn-icon {
@@ -1791,13 +1765,14 @@ html.dark .filter-info #totalCount {
   contain-intrinsic-size: auto 200px; /* 预估高度，避免滚动条跳动 */
 }
 
-/* 渠道管理页面的卡片需要允许 tooltip 溢出 */
+/* 渠道管理页面的卡片：恢复性能优化（2025-01-29）
+ * 通过全局 Tooltip 系统解决了 overflow 限制，现在可以安全启用 content-visibility
+ * 这将让浏览器跳过视口外元素的渲染，极大提升 600+ 渠道场景的性能 */
 #channels-container .glass-card {
-  overflow: visible !important;
-  contain: none !important;
-  /* content-visibility: auto 会隐式应用 strict containment，导致 overflow: visible 失效 */
-  /* 必须显式强制为 visible 以允许 tooltip 溢出显示 */
-  content-visibility: visible !important;
+  content-visibility: auto !important;
+  contain-intrinsic-size: auto 200px;
+  contain: strict !important;
+  overflow: hidden !important;
 }
 
 /* 日志表格行性能优化 */

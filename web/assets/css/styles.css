@@ -3925,43 +3925,63 @@ body.dashboard-theme .metric-label {
 }
 
 .channel-type-tabs-inline {
+  position: relative; /* 为滑动指示器提供定位上下文 */
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-1) var(--space-2);
+  gap: var(--space-1); /* 减小间距，让 Tab 更紧凑 */
+  padding: 4px;
   background: rgba(255, 255, 255, 0.6);
   backdrop-filter: blur(8px);
   border: 1px solid rgba(0, 0, 0, 0.08);
   border-radius: var(--radius-lg);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  isolation: isolate; /* 建立新的层叠上下文 */
+}
+
+/* 滑动指示器（Sliding Pill） */
+.channel-type-tabs-inline::before {
+  content: '';
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 4px;
+  width: var(--indicator-width, 0);
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.05);
+  /* 关键：只对 transform 和 width 做动画，使用 GPU 加速 */
+  transition: var(--indicator-transition, transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1), width 0.4s cubic-bezier(0.2, 0.8, 0.2, 1));
+  transform: translateX(var(--indicator-left, 0));
+  pointer-events: none;
+  z-index: 1;
+  will-change: transform, width; /* 提示浏览器优化 */
 }
 
 .channel-type-tab {
+  position: relative;
   display: flex;
   align-items: center;
   gap: var(--space-2);
   padding: 6px 12px;
   border: none;
-  background: transparent;
+  background: transparent; /* 背景由滑动指示器提供 */
   color: var(--neutral-600);
   font-size: 13px;
   font-weight: 500;
-  border-radius: var(--radius-md);
   cursor: pointer;
-  transition: all var(--duration-fast) var(--timing-function);
+  border-radius: 8px;
+  transition: color 0.2s ease; /* 只对颜色做过渡 */
   white-space: nowrap;
-  position: relative;
+  z-index: 2; /* 确保文字在指示器上方 */
 }
 
 .channel-type-tab:hover {
-  background: rgba(0, 0, 0, 0.05);
   color: var(--neutral-900);
 }
 
 .channel-type-tab.active {
-  background: var(--primary-500);
-  color: white;
-  box-shadow: 0 2px 6px rgba(var(--primary-500-rgb), 0.25);
+  color: var(--primary-600);
+  font-weight: 600;
 }
 
 .channel-type-tab-icon {
@@ -3979,18 +3999,22 @@ body.dashboard-theme .channel-type-tabs-inline {
   border-color: rgba(255, 255, 255, 0.1);
 }
 
+/* 暗色模式的滑动指示器 */
+body.dashboard-theme .channel-type-tabs-inline::before {
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
 body.dashboard-theme .channel-type-tab {
   color: var(--theme-text-muted);
 }
 
 body.dashboard-theme .channel-type-tab:hover {
-  background: rgba(255, 255, 255, 0.08);
   color: var(--theme-text-main);
 }
 
 body.dashboard-theme .channel-type-tab.active {
-  background: var(--primary-500);
-  color: white;
+  color: var(--primary-400);
 }
 
 /* 响应式：移动端 */
