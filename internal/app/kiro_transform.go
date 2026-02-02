@@ -293,42 +293,21 @@ func buildKiroHistory(req map[string]any, messages []any, modelId string) []any 
 	var history []any
 
 	// 处理 system 消息
+	// 注意：thinking 配置通过顶层 inferenceConfiguration.thinking 传递，
+	// 不在 history 中添加 XML 标签，避免双重配置导致 Kiro API 返回 400 错误
 	systemContent := extractSystemContent(req)
 
-	// 处理 thinking 配置，生成前缀
-	thinkingPrefix := ""
-	if thinking, ok := req["thinking"].(map[string]any); ok {
-		if thinkingType, _ := thinking["type"].(string); thinkingType == "enabled" {
-			budgetTokens := 0
-			if bt, ok := thinking["budget_tokens"].(float64); ok {
-				budgetTokens = int(bt)
-			}
-			thinkingPrefix = fmt.Sprintf("<thinking_mode>enabled</thinking_mode><max_thinking_length>%d</max_thinking_length>", budgetTokens)
-		}
-	}
+	// 如果有系统消息，添加到历史
+	if systemContent != "" {
+		userMsg := KiroHistoryUserMessage{}
+		userMsg.UserInputMessage.Content = systemContent
+		userMsg.UserInputMessage.ModelId = modelId
+		userMsg.UserInputMessage.Origin = "AI_EDITOR"
+		history = append(history, userMsg)
 
-	// 如果有系统消息或 thinking 前缀，添加到历史
-	if systemContent != "" || thinkingPrefix != "" {
-		fullSystemContent := systemContent
-		if thinkingPrefix != "" && !strings.Contains(systemContent, "<thinking_mode>") {
-			if fullSystemContent != "" {
-				fullSystemContent = thinkingPrefix + "\n" + fullSystemContent
-			} else {
-				fullSystemContent = thinkingPrefix
-			}
-		}
-
-		if fullSystemContent != "" {
-			userMsg := KiroHistoryUserMessage{}
-			userMsg.UserInputMessage.Content = fullSystemContent
-			userMsg.UserInputMessage.ModelId = modelId
-			userMsg.UserInputMessage.Origin = "AI_EDITOR"
-			history = append(history, userMsg)
-
-			assistantMsg := KiroHistoryAssistantMessage{}
-			assistantMsg.AssistantResponseMessage.Content = "OK"
-			history = append(history, assistantMsg)
-		}
+		assistantMsg := KiroHistoryAssistantMessage{}
+		assistantMsg.AssistantResponseMessage.Content = "OK"
+		history = append(history, assistantMsg)
 	}
 
 	// 处理历史消息（除了最后一条）
