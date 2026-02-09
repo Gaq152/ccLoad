@@ -1669,26 +1669,24 @@ html.dark .filter-info #totalCount {
 }
 
 /* 容器查询：当容器宽度小于 600px 时 */
-@container channels (max-width: 600px),
-@container channel-group (max-width: 600px),
-@container priority-group (max-width: 600px) {
+@container (max-width: 600px) {
   .channel-row {
     flex-direction: column;
     align-items: flex-start;
     gap: var(--space-3);
   }
-  
+
   .channel-col {
     width: 100% !important;
     max-width: 100%;
   }
-  
+
   .col-actions {
     width: 100%;
     justify-content: flex-start;
     flex-wrap: wrap;
   }
-  
+
   .channel-stats-inline {
     width: 100%;
     justify-content: flex-start;
@@ -1696,29 +1694,27 @@ html.dark .filter-info #totalCount {
 }
 
 /* 容器查询：当容器宽度在 600px-900px 之间时 */
-@container channels (min-width: 600px) and (max-width: 900px),
-@container channel-group (min-width: 600px) and (max-width: 900px),
-@container priority-group (min-width: 600px) and (max-width: 900px) {
+@container (min-width: 600px) and (max-width: 900px) {
   .channel-row {
     flex-wrap: wrap;
     gap: var(--space-2) var(--space-3);
   }
-  
+
   .col-name {
     width: auto;
     flex: 1 1 200px;
   }
-  
+
   .col-url {
     width: auto;
     flex: 1 1 180px;
   }
-  
+
   .col-stats {
     width: 100%;
     justify-content: flex-start;
   }
-  
+
   .col-actions {
     width: 100%;
     justify-content: flex-end;
@@ -1770,7 +1766,7 @@ html.dark .filter-info #totalCount {
  * 这将让浏览器跳过视口外元素的渲染，极大提升 600+ 渠道场景的性能 */
 #channels-container .glass-card {
   content-visibility: auto !important;
-  contain-intrinsic-size: auto 200px;
+  contain-intrinsic-size: auto 30px; /* 调整为接近实际高度，避免卡片过高 */
   contain: strict !important;
   overflow: hidden !important;
 }
