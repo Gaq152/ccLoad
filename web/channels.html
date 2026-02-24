@@ -568,7 +568,7 @@
               </button>
             </div>
           </div>
-          <textarea id="channelModels" class="form-input" placeholder="claude-sonnet-4-5-20250929,claude-opus-4-5-20251205" required rows="2"></textarea>
+          <textarea id="channelModels" class="form-input" placeholder="claude-opus-4-6,claude-sonnet-4-6,claude-sonnet-4-5-20250929" required rows="2"></textarea>
         </div>
         <div class="form-group">
           <!-- 模型重定向标签行：包含标签和操作按钮 -->
@@ -1071,7 +1071,7 @@ function(response) {
           class="redirect-from-input"
           data-index="{{index}}"
           value="{{from}}"
-          placeholder="claude-opus-4"
+          placeholder="claude-opus-4-6"
           list="modelList"
           style="width: 100%; padding: 6px 10px; border: 1px solid var(--neutral-300); border-radius: 6px; font-size: 13px; font-family: 'Monaco', 'Menlo', 'Courier New', monospace; background: var(--input-bg); color: var(--text-main);"
         >
@@ -1082,7 +1082,7 @@ function(response) {
           class="redirect-to-input"
           data-index="{{index}}"
           value="{{to}}"
-          placeholder="claude-opus-4-20250514"
+          placeholder="claude-sonnet-4-6"
           list="modelList"
           style="width: 100%; padding: 6px 10px; border: 1px solid var(--neutral-300); border-radius: 6px; font-size: 13px; font-family: 'Monaco', 'Menlo', 'Courier New', monospace; background: var(--input-bg); color: var(--text-main);"
         >

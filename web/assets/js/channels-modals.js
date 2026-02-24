@@ -1149,6 +1149,8 @@ async function fetchModelsFromAPI() {
     // Kiro 预设：使用 refresh_token，模型列表是固定的
     // Kiro 不支持动态获取模型列表，直接填充支持的模型
     const kiroModels = [
+      'claude-opus-4-6',
+      'claude-sonnet-4-6',
       'claude-sonnet-4-20250514',
       'claude-3-5-sonnet-20241022',
       'claude-3-5-haiku-20241022'
