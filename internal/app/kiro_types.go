@@ -27,6 +27,8 @@ const (
 // KiroModelMap 模型映射表 (Anthropic 模型名 -> CodeWhisperer 模型 ID)
 var KiroModelMap = map[string]string{
 	// 完整模型名
+	"claude-opus-4-6":            "CLAUDE_OPUS_4_6_V1_0",
+	"claude-sonnet-4-6":          "CLAUDE_SONNET_4_6_V1_0",
 	"claude-opus-4-5-20251101":   "CLAUDE_OPUS_4_5_20251101_V1_0",
 	"claude-sonnet-4-5-20250929": "CLAUDE_SONNET_4_5_20250929_V1_0",
 	"claude-sonnet-4-20250514":   "CLAUDE_SONNET_4_20250514_V1_0",
