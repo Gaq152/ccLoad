@@ -7,13 +7,16 @@ require (
 	github.com/gin-gonic/gin v1.10.1
 	github.com/pkoukk/tiktoken-go v0.1.7
 	github.com/redis/go-redis/v9 v9.7.0
+	github.com/refraction-networking/utls v1.8.2
 	github.com/stretchr/testify v1.10.0
 	modernc.org/sqlite v1.38.2
 )
 
 require (
+	github.com/andybalholm/brotli v1.0.6 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dlclark/regexp2 v1.10.0 // indirect
+	github.com/klauspost/compress v1.17.4 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 )
 

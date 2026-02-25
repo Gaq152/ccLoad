@@ -40,7 +40,8 @@ type Server struct {
 	keySelector      *KeySelector          // Key选择器（多Key支持）
 	cooldownManager  *cooldown.Manager     // 统一冷却管理器
 	validatorManager *validator.Manager    // 渠道验证器管理器
-	client           *http.Client          // HTTP客户端
+	client     *http.Client // HTTP客户端（HTTP/2）
+	kiroClient *http.Client // Kiro 专用客户端（utls + HTTP/1.1）
 
 	// 异步统计（有界队列，避免每请求起goroutine）
 	tokenStatsCh        chan tokenStatsUpdate
@@ -133,6 +134,10 @@ func NewServer(store storage.Store) *Server {
 	transport := buildHTTPTransport(false)
 	log.Print("[INFO] HTTP/2已启用（头部压缩+多路复用，HTTPS自动协商）")
 
+	// 构建 Kiro 专用 Transport（utls 指纹伪装 + HTTP/1.1）
+	kiroTransport := buildKiroHTTPTransport()
+	log.Print("[INFO] Kiro TLS指纹伪装已启用（Chrome utls + HTTP/1.1）")
+
 	s := &Server{
 		store:            store,
 		configService:    configService,
@@ -149,6 +154,12 @@ func NewServer(store storage.Store) *Server {
 		client: &http.Client{
 			Transport: transport,
 			Timeout:   0, // 不设置全局超时，避免中断长时间任务
+		},
+
+		// Kiro 专用客户端（utls 指纹伪装 + HTTP/1.1）
+		kiroClient: &http.Client{
+			Transport: kiroTransport,
+			Timeout:   0,
 		},
 
 		// 并发控制：使用信号量限制最大并发请求数
