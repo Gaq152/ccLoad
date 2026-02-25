@@ -202,8 +202,8 @@ func (s *Server) ForwardKiroRequest(
 		}
 	}
 
-	// 发送请求
-	resp, err := s.client.Do(req)
+	// 发送请求（使用 Kiro 专用客户端，utls 指纹伪装）
+	resp, err := s.kiroClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("send request: %w", err)
 	}
@@ -1061,6 +1061,18 @@ func IsKiroTemporarilySuspended(errorBody []byte) bool {
 		strings.Contains(errorStr, "account suspended")
 }
 
+// IsKiroMonthlyQuotaExhausted 检测是否月度额度耗尽
+// AWS CodeWhisperer 在月度请求配额用完时返回 MONTHLY_REQUEST_COUNT 错误
+// 此错误需要等到下个计费周期才恢复，应直接禁用渠道而非短期冷却
+func IsKiroMonthlyQuotaExhausted(errorBody []byte) bool {
+	if len(errorBody) == 0 {
+		return false
+	}
+	errorStr := string(errorBody)
+	return strings.Contains(errorStr, "MONTHLY_REQUEST_COUNT") ||
+		strings.Contains(strings.ToLower(errorStr), "monthly request count")
+}
+
 // IsKiroContentLengthExceeds 检测是否是内容长度超限错误
 // CodeWhisperer 在上下文过长时会返回 CONTENT_LENGTH_EXCEEDS_THRESHOLD 错误
 // 参考 kiro2api: 需要将此错误映射为 Claude API 的 max_tokens stop_reason
@@ -1496,5 +1508,44 @@ func handleKiroContentBlockDelta(payload map[string]any, parser *kiroSSEParser) 
 	// 提取文本内容
 	if text, ok := delta["text"].(string); ok && text != "" {
 		parser.fullText += text
+	}
+}
+
+// ============================================================================
+// Kiro 渠道永久禁用（额度耗尽/账号封禁）
+// ============================================================================
+
+// disableKiroChannel 永久禁用 Kiro 渠道（额度耗尽/账号封禁）
+// 直接禁用渠道而非短期冷却，因为月度额度耗尽或账号封禁在短期内不会恢复
+func (s *Server) disableKiroChannel(ctx context.Context, channelID int64, reason string) {
+	// 获取当前渠道配置
+	cfg, err := s.store.GetConfig(ctx, channelID)
+	if err != nil {
+		log.Printf("[ERROR] [Kiro] 禁用渠道失败（获取配置）: channelID=%d, err=%v", channelID, err)
+		return
+	}
+
+	// 已禁用则跳过
+	if !cfg.Enabled {
+		log.Printf("[INFO] [Kiro] 渠道已处于禁用状态: channelID=%d", channelID)
+		return
+	}
+
+	// 禁用渠道
+	cfg.Enabled = false
+	if _, err := s.store.UpdateConfig(ctx, channelID, cfg); err != nil {
+		log.Printf("[ERROR] [Kiro] 禁用渠道失败（更新配置）: channelID=%d, err=%v", channelID, err)
+		return
+	}
+
+	// 清除缓存，确保立即生效
+	s.InvalidateChannelListCache()
+	s.invalidateCooldownCache()
+
+	log.Printf("[WARN] [Kiro] 渠道已永久禁用: channelID=%d, 渠道名=%s, 原因=%s", channelID, cfg.Name, reason)
+
+	// 通过冷却事件 SSE 广播通知前端（渠道已禁用，until 设为零值表示永久）
+	if s.cooldownService != nil {
+		s.cooldownService.BroadcastChannelCooldown(channelID, cfg.Name, -1, time.Time{}, 0)
 	}
 }

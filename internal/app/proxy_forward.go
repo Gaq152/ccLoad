@@ -634,6 +634,25 @@ func (s *Server) forwardAttempt(
 
 	// [INFO] Kiro 预设使用专门的转发逻辑
 	if reqCtx.isKiro {
+		// Kiro MCP Web Search：检测请求中的 web_search 工具
+		// 使用原始 Anthropic 请求体（reqCtx.body）检测，因为 bodyToSend 已转换为 Kiro 格式
+		if hasWebSearchTool(reqCtx.body) {
+			log.Printf("[INFO] [Kiro MCP] 检测到 web_search 工具，路由到 MCP 端点")
+			handled, mcpErr := s.handleKiroWebSearch(ctx, targetWriter, reqCtx)
+			if handled {
+				// web_search 已处理，构造成功结果
+				return &proxyResult{
+					status:    200,
+					channelID: &cfg.ID,
+					message:   "ok (mcp web_search)",
+					duration:  0,
+					succeeded: true,
+				}, cooldown.ActionReturnClient
+			}
+			if mcpErr != nil {
+				log.Printf("[WARN] [Kiro MCP] MCP 请求失败，回退到正常转发: %v", mcpErr)
+			}
+		}
 		res, duration, err = s.forwardKiroRequest(ctx, cfg, reqCtx, bodyToSend, targetWriter)
 	} else {
 		res, duration, err = s.forwardOnceAsync(ctx, cfg, selectedKey, reqCtx.requestMethod,
@@ -711,6 +730,30 @@ func (s *Server) forwardAttempt(
 	}
 
 	// 处理错误响应
+	// [INFO] Kiro 预设永久性错误拦截：在进入冷却逻辑之前检测
+	// 月度额度耗尽或账号封禁应直接禁用渠道，而非短期冷却
+	if reqCtx.isKiro && res != nil && len(res.Body) > 0 {
+		if IsKiroMonthlyQuotaExhausted(res.Body) {
+			disableCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			s.disableKiroChannel(disableCtx, cfg.ID, "月度额度耗尽 (MONTHLY_REQUEST_COUNT)")
+			// 记录日志
+			s.AddLogAsync(buildLogEntry(actualModel, cfg.ID, cfg.Name, cfg.GetChannelType(), res.Status,
+				duration, reqCtx.isStreaming, selectedKey, cfg.URL, reqCtx.tokenID, reqCtx.tokenName, reqCtx.clientIP, res, "Kiro 月度额度耗尽，渠道已禁用", reqCtx.attemptStartTime))
+			// 切换到下一个渠道
+			return nil, cooldown.ActionRetryChannel
+		}
+		if IsKiroTemporarilySuspended(res.Body) {
+			disableCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			s.disableKiroChannel(disableCtx, cfg.ID, "账号暂停 (TEMPORARILY_SUSPENDED)")
+			// 记录日志
+			s.AddLogAsync(buildLogEntry(actualModel, cfg.ID, cfg.Name, cfg.GetChannelType(), res.Status,
+				duration, reqCtx.isStreaming, selectedKey, cfg.URL, reqCtx.tokenID, reqCtx.tokenName, reqCtx.clientIP, res, "Kiro 账号暂停，渠道已禁用", reqCtx.attemptStartTime))
+			// 切换到下一个渠道
+			return nil, cooldown.ActionRetryChannel
+		}
+	}
 	return s.handleProxyErrorResponse(ctx, cfg, keyIndex, actualModel, selectedKey, res, duration, reqCtx)
 }
 
