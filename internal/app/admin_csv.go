@@ -717,14 +717,29 @@ func buildCodexDefaultQuotaConfig(accessToken, accountID string) *model.QuotaCon
     return { isValid: false, error: "响应格式错误：缺少 primary_window" };
   }
 
-  const remaining = 100 - primary.used_percent;
-  const resetTime = new Date(primary.reset_at * 1000).toLocaleString();
+  var plan = data.plan_type || '';
+  var hasDualWindow = !!rl.secondary_window;
+
+  var remaining, detail;
+  if (hasDualWindow) {
+    var h5 = Math.round(100 - primary.used_percent);
+    var weekly = Math.round(100 - rl.secondary_window.used_percent);
+    var h5Reset = new Date(primary.reset_at * 1000).toLocaleString();
+    var weeklyReset = new Date(rl.secondary_window.reset_at * 1000).toLocaleString();
+    remaining = h5 + '|' + weekly;
+    detail = plan + ' | 5h重置: ' + h5Reset + ' | 周重置: ' + weeklyReset;
+  } else {
+    var weeklyPct = Math.round(100 - primary.used_percent);
+    var resetTime = new Date(primary.reset_at * 1000).toLocaleString();
+    remaining = '-|' + weeklyPct;
+    detail = plan + ' | 重置: ' + resetTime;
+  }
 
   return {
     isValid: true,
     remaining: remaining,
-    unit: '%',
-    detail: '重置时间: ' + resetTime,
+    unit: '',
+    detail: detail,
     limitReached: rl.limit_reached || false
   };
 }`,

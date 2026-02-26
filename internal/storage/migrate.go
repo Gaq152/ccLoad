@@ -3,10 +3,13 @@ package storage
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 
 	"ccLoad/internal/storage/schema"
+	"ccLoad/internal/util"
 )
 
 // Dialect 数据库方言
@@ -185,6 +188,11 @@ func migrate(ctx context.Context, db *sql.DB, dialect Dialect) error {
 	// 迁移：确保所有多端点渠道至少有一个激活端点（2025-12新增）
 	if err := ensureActiveEndpoints(ctx, db); err != nil {
 		return fmt.Errorf("ensure active endpoints: %w", err)
+	}
+
+	// 迁移：升级 Codex 官方预设渠道的 extractor 脚本和模型列表（2026-02新增）
+	if err := migrateCodexPresetData(ctx, db, dialect); err != nil {
+		return fmt.Errorf("migrate codex preset data: %w", err)
 	}
 
 	return nil
@@ -1211,6 +1219,170 @@ func ensureChannelsSortOrderSQLite(ctx context.Context, db *sql.DB) error {
 	)
 	if err != nil {
 		return fmt.Errorf("add sort_order column: %w", err)
+	}
+
+	return nil
+}
+
+// codexExtractorV2 是升级后的 Codex 用量提取脚本（支持 Free/Plus/Team 不同窗口结构）
+const codexExtractorV2 = `function(response) {
+  const data = typeof response === 'string' ? JSON.parse(response) : response;
+
+  if (!data.rate_limit) {
+    return { isValid: false, error: "响应格式错误：缺少 rate_limit" };
+  }
+
+  const rl = data.rate_limit;
+  const primary = rl.primary_window;
+
+  if (!primary) {
+    return { isValid: false, error: "响应格式错误：缺少 primary_window" };
+  }
+
+  var plan = data.plan_type || '';
+  var hasDualWindow = !!rl.secondary_window;
+
+  var remaining, detail;
+  if (hasDualWindow) {
+    var h5 = Math.round(100 - primary.used_percent);
+    var weekly = Math.round(100 - rl.secondary_window.used_percent);
+    var h5Reset = new Date(primary.reset_at * 1000).toLocaleString();
+    var weeklyReset = new Date(rl.secondary_window.reset_at * 1000).toLocaleString();
+    remaining = h5 + '|' + weekly;
+    detail = plan + ' | 5h重置: ' + h5Reset + ' | 周重置: ' + weeklyReset;
+  } else {
+    var weeklyPct = Math.round(100 - primary.used_percent);
+    var resetTime = new Date(primary.reset_at * 1000).toLocaleString();
+    remaining = '-|' + weeklyPct;
+    detail = plan + ' | 重置: ' + resetTime;
+  }
+
+  return {
+    isValid: true,
+    remaining: remaining,
+    unit: '',
+    detail: detail,
+    limitReached: rl.limit_reached || false
+  };
+}`
+
+// migrateCodexPresetData 升级 Codex 官方预设渠道的 extractor 脚本和模型列表（2026-02新增）
+// 每次启动时幂等执行：
+// 1. 将旧版 extractor 脚本替换为 V2（支持 5h+周窗口）
+// 2. 为已有渠道补充新增的预设模型（只增不删）
+func migrateCodexPresetData(ctx context.Context, db *sql.DB, dialect Dialect) error {
+	// 查找所有 Codex 官方预设渠道
+	rows, err := db.QueryContext(ctx, `
+		SELECT id, models, quota_config
+		FROM channels
+		WHERE channel_type = 'codex' AND preset = 'official'
+	`)
+	if err != nil {
+		return fmt.Errorf("query codex channels: %w", err)
+	}
+	defer rows.Close()
+
+	type codexChannel struct {
+		id          int64
+		models      string
+		quotaConfig *string
+	}
+	var channels []codexChannel
+	for rows.Next() {
+		var ch codexChannel
+		if err := rows.Scan(&ch.id, &ch.models, &ch.quotaConfig); err != nil {
+			return fmt.Errorf("scan codex channel: %w", err)
+		}
+		channels = append(channels, ch)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate codex channels: %w", err)
+	}
+
+	if len(channels) == 0 {
+		return nil
+	}
+
+	// 获取最新的预设模型列表
+	latestModels := util.PredefinedModels(util.ChannelTypeCodex)
+	if len(latestModels) == 0 {
+		return nil
+	}
+
+	for _, ch := range channels {
+		// === 1. 升级 extractor 脚本 ===
+		if ch.quotaConfig != nil && *ch.quotaConfig != "" {
+			var qc map[string]any
+			if err := json.Unmarshal([]byte(*ch.quotaConfig), &qc); err == nil {
+				oldScript, _ := qc["extractor_script"].(string)
+				// 只在脚本是旧版时才更新（通过特征判断）
+				if oldScript != "" && !strings.Contains(oldScript, "secondary_window") {
+					qc["extractor_script"] = codexExtractorV2
+					newJSON, err := json.Marshal(qc)
+					if err == nil {
+						_, err = db.ExecContext(ctx,
+							"UPDATE channels SET quota_config = ? WHERE id = ?",
+							string(newJSON), ch.id,
+						)
+						if err != nil {
+							log.Printf("Warning: migrate codex extractor for channel %d: %v", ch.id, err)
+						}
+					}
+				}
+			}
+		}
+
+		// === 2. 补充缺失的预设模型 ===
+		var existingModels []string
+		if err := json.Unmarshal([]byte(ch.models), &existingModels); err != nil {
+			continue
+		}
+
+		// 构建已有模型集合
+		existingSet := make(map[string]bool, len(existingModels))
+		for _, m := range existingModels {
+			existingSet[m] = true
+		}
+
+		// 找出缺失的模型
+		var newModels []string
+		for _, m := range latestModels {
+			if !existingSet[m] {
+				newModels = append(newModels, m)
+			}
+		}
+
+		if len(newModels) == 0 {
+			continue
+		}
+
+		// 更新 channels.models JSON 字段
+		updatedModels := append(existingModels, newModels...)
+		modelsJSON, err := json.Marshal(updatedModels)
+		if err != nil {
+			continue
+		}
+		_, err = db.ExecContext(ctx,
+			"UPDATE channels SET models = ? WHERE id = ?",
+			string(modelsJSON), ch.id,
+		)
+		if err != nil {
+			log.Printf("Warning: migrate codex models for channel %d: %v", ch.id, err)
+			continue
+		}
+
+		// 同步到 channel_models 索引表
+		var insertSQL string
+		if dialect == DialectSQLite {
+			insertSQL = `INSERT OR IGNORE INTO channel_models (channel_id, model) VALUES (?, ?)`
+		} else {
+			insertSQL = `INSERT IGNORE INTO channel_models (channel_id, model) VALUES (?, ?)`
+		}
+		for _, m := range newModels {
+			if _, err := db.ExecContext(ctx, insertSQL, ch.id, m); err != nil {
+				log.Printf("Warning: insert model %s for channel %d: %v", m, ch.id, err)
+			}
+		}
 	}
 
 	return nil
