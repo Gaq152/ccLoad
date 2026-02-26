@@ -261,11 +261,19 @@ var predefinedModelSets = map[string][]string{
 		"claude-opus-4-20250514",
 	},
 	ChannelTypeCodex: {
-		"gpt-5",
-		"gpt-5.1",
+		// GPT-5.3 系列（2026年2月最新）
+		"gpt-5.3-codex",
+		"gpt-5.3-codex-spark",
+		// GPT-5.2 系列
+		"gpt-5.2-codex",
+		"gpt-5.2",
+		// GPT-5.1 系列
 		"gpt-5.1-codex",
 		"gpt-5.1-codex-max",
-		"gpt-5.2",
+		"gpt-5.1-codex-mini",
+		// GPT-5 系列
+		"gpt-5",
+		"gpt-5.1",
 	},
 	ChannelTypeGemini: {
 		// Gemini 3 系列（2025年11月最新）

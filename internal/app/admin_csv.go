@@ -298,7 +298,7 @@ func (s *Server) HandleImportChannelsCSV(c *gin.Context) {
 			case "kiro":
 				modelsRaw = "claude-opus-4-6,claude-sonnet-4-6,claude-sonnet-4-20250514,claude-3-5-sonnet-20241022,claude-3-5-haiku-20241022"
 			case "codex":
-				modelsRaw = "gpt-5.1,gpt-5,gpt-5.1-codex,gpt-5.1-codex-max,gpt-5.2"
+				modelsRaw = "gpt-5.3-codex,gpt-5.3-codex-spark,gpt-5.2-codex,gpt-5.2,gpt-5.1-codex,gpt-5.1-codex-max,gpt-5.1-codex-mini,gpt-5,gpt-5.1"
 			case "gemini":
 				modelsRaw = "gemini-2.5-pro,gemini-2.5-flash"
 			}

@@ -33,7 +33,7 @@ CSV 导入导出用于批量管理渠道配置。导出的 CSV 可以直接再�
 |------|-----------|
 | `channel_type` | `codex` |
 | `url` | `https://chatgpt.com/backend-api/codex` |
-| `models` | `gpt-5.1,gpt-5,gpt-5.1-codex,gpt-5.1-codex-max,gpt-5.2` |
+| `models` | `gpt-5.3-codex,gpt-5.3-codex-spark,gpt-5.2-codex,gpt-5.2,gpt-5.1-codex,gpt-5.1-codex-max,gpt-5.1-codex-mini,gpt-5,gpt-5.1` |
 | `quota_config` | Codex 官方用量监控模板（自动从 access_token 提取认证信息） |
 
 数据库映射：`channel_type="codex"`, `preset="official"`
