@@ -79,7 +79,11 @@ type webSearchResult struct {
 	PublishedAt int64  `json:"published_date,omitempty"`
 }
 
-// hasWebSearchTool 检测请求体中是否包含 web_search 工具定义
+// hasWebSearchTool 检测请求是否为 web_search 请求
+// 必须同时满足两个条件：
+// 1. tools 数组中包含 web_search 工具定义
+// 2. 最后一条用户消息匹配搜索查询格式（"Perform a web search for the query: ..."）
+// 仅检查 tools 定义不够——Claude Code 启用 web_search 后每个请求都带此工具定义
 func hasWebSearchTool(body []byte) bool {
 	// 快速路径：字符串检测
 	if !bytes.Contains(body, []byte("web_search")) {
@@ -90,40 +94,62 @@ func hasWebSearchTool(body []byte) bool {
 		Tools []struct {
 			Name string `json:"name"`
 		} `json:"tools"`
+		Messages []struct {
+			Role    string `json:"role"`
+			Content any    `json:"content"`
+		} `json:"messages"`
 	}
 	if err := sonic.Unmarshal(body, &req); err != nil {
 		return false
 	}
+
+	// 条件1：tools 中有 web_search
+	hasToolDef := false
 	for _, tool := range req.Tools {
 		if tool.Name == "web_search" {
-			return true
+			hasToolDef = true
+			break
+		}
+	}
+	if !hasToolDef {
+		return false
+	}
+
+	// 条件2：最后一条用户消息匹配搜索查询格式
+	for i := len(req.Messages) - 1; i >= 0; i-- {
+		if req.Messages[i].Role == "user" {
+			text := extractTextFromContent(req.Messages[i].Content)
+			return strings.HasPrefix(text, "Perform a web search for the query: ")
 		}
 	}
 	return false
 }
 
 // extractWebSearchQuery 从请求体中提取搜索查询
-// Claude Code 发送 web_search 请求时，查询内容在第一条消息中
+// 从最后一条用户消息中提取 "Perform a web search for the query: ..." 格式的查询内容
 func extractWebSearchQuery(body []byte) string {
 	var req struct {
 		Messages []struct {
-			Content any `json:"content"`
+			Role    string `json:"role"`
+			Content any    `json:"content"`
 		} `json:"messages"`
 	}
 	if err := sonic.Unmarshal(body, &req); err != nil || len(req.Messages) == 0 {
 		return ""
 	}
 
-	// 提取第一条消息的文本内容
-	firstMsg := req.Messages[0]
-	text := extractTextFromContent(firstMsg.Content)
-
-	// 移除常见的搜索前缀
-	prefix := "Perform a web search for the query: "
-	if strings.HasPrefix(text, prefix) {
-		return strings.TrimSpace(text[len(prefix):])
+	// 从最后一条用户消息提取查询
+	for i := len(req.Messages) - 1; i >= 0; i-- {
+		if req.Messages[i].Role == "user" {
+			text := extractTextFromContent(req.Messages[i].Content)
+			prefix := "Perform a web search for the query: "
+			if strings.HasPrefix(text, prefix) {
+				return strings.TrimSpace(text[len(prefix):])
+			}
+			return ""
+		}
 	}
-	return text
+	return ""
 }
 
 // extractTextFromContent 从消息 content 中提取文本
