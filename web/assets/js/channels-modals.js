@@ -203,6 +203,9 @@ async function editChannel(id) {
     // 加载用量监控配置
     loadQuotaConfig(channel.quota_config);
 
+    // 从 quota 缓存中提取 plan_type 显示在认证区域
+    updateCodexPlanType(id);
+
     // 初始化渠道类型相关 UI（Codex OAuth 区块）
     initChannelTypeEventListener();
 
@@ -1309,6 +1312,46 @@ function resetQuotaConfig() {
 }
 
 /**
+ * 从 quota 缓存中提取 plan_type 并显示在认证区域
+ */
+function updateCodexPlanType(channelId) {
+  const wrap = document.getElementById('codexPlanTypeWrap');
+  const el = document.getElementById('codexPlanType');
+  if (!wrap || !el) return;
+
+  const quotaData = QuotaManager.getCachedQuota(channelId);
+  if (!quotaData || !quotaData.detail) {
+    wrap.style.display = 'none';
+    return;
+  }
+
+  // detail 格式: "plus | 5h重置: ..." 或 "free | 重置: ..."
+  const match = quotaData.detail.match(/^(\S+)\s*\|/);
+  if (!match || !match[1]) {
+    wrap.style.display = 'none';
+    return;
+  }
+
+  const plan = match[1];
+  el.textContent = plan;
+
+  // 根据 plan 级别设置颜色
+  const planLower = plan.toLowerCase();
+  if (planLower === 'plus') {
+    el.style.background = 'var(--success-50, #ecfdf5)';
+    el.style.color = 'var(--success-700, #15803d)';
+  } else if (planLower === 'team' || planLower === 'enterprise') {
+    el.style.background = 'var(--primary-50, #eff6ff)';
+    el.style.color = 'var(--primary-700, #1d4ed8)';
+  } else {
+    el.style.background = 'var(--neutral-100, #f3f4f6)';
+    el.style.color = 'var(--neutral-600, #4b5563)';
+  }
+
+  wrap.style.display = '';
+}
+
+/**
  * 加载用量配置
  */
 function loadQuotaConfig(config) {
@@ -1635,7 +1678,6 @@ const QUOTA_TEMPLATES = {
     extractor: `function(response) {
   const data = typeof response === 'string' ? JSON.parse(response) : response;
 
-  // 检查 rate_limit 结构
   if (!data.rate_limit) {
     return { isValid: false, error: "响应格式错误：缺少 rate_limit" };
   }
@@ -1643,19 +1685,34 @@ const QUOTA_TEMPLATES = {
   const rl = data.rate_limit;
   const primary = rl.primary_window;
 
-  // 只使用 5h 窗口（primary_window）的数据
   if (!primary) {
     return { isValid: false, error: "响应格式错误：缺少 primary_window" };
   }
 
-  const remaining = 100 - primary.used_percent;
-  const resetTime = new Date(primary.reset_at * 1000).toLocaleString();
+  var plan = data.plan_type || '';
+  var hasDualWindow = !!rl.secondary_window;
+
+  // Plus/Team: primary=5h, secondary=周; Free: primary=周, secondary=null
+  var remaining, detail;
+  if (hasDualWindow) {
+    var h5 = Math.round(100 - primary.used_percent);
+    var weekly = Math.round(100 - rl.secondary_window.used_percent);
+    var h5Reset = new Date(primary.reset_at * 1000).toLocaleString();
+    var weeklyReset = new Date(rl.secondary_window.reset_at * 1000).toLocaleString();
+    remaining = h5 + '|' + weekly;
+    detail = plan + ' | 5h重置: ' + h5Reset + ' | 周重置: ' + weeklyReset;
+  } else {
+    var weeklyPct = Math.round(100 - primary.used_percent);
+    var resetTime = new Date(primary.reset_at * 1000).toLocaleString();
+    remaining = '-|' + weeklyPct;
+    detail = plan + ' | 重置: ' + resetTime;
+  }
 
   return {
     isValid: true,
     remaining: remaining,
-    unit: '%',
-    detail: '重置时间: ' + resetTime,
+    unit: '',
+    detail: detail,
     limitReached: rl.limit_reached || false
   };
 }`

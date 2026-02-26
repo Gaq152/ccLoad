@@ -408,19 +408,30 @@ const QuotaManager = {
     const remaining = quotaData.remaining;
     const unit = quotaData.unit || '';
 
-    // 颜色判断
+    // 颜色判断（支持 "98|99" 或 "-|85" 格式）
     let colorClass = 'quota-good';
-    if (typeof remaining === 'number') {
-      if (remaining < 10) {
+    let colorValue = remaining;
+    if (typeof remaining === 'string' && remaining.includes('|')) {
+      // 取第一个非 "-" 的数字用于颜色判断
+      const parts = remaining.split('|');
+      const first = parseInt(parts[0], 10);
+      const second = parseInt(parts[1], 10);
+      colorValue = !isNaN(first) ? first : second;
+    }
+    if (typeof colorValue === 'number') {
+      if (colorValue < 10) {
         colorClass = 'quota-danger';
-      } else if (remaining < 50) {
+      } else if (colorValue < 50) {
         colorClass = 'quota-warning';
       }
     }
 
-    // 格式化显示值（只显示数字，最多2位小数）
+    // 格式化显示值
     let displayValue = '--';
-    if (typeof remaining === 'number') {
+    if (typeof remaining === 'string' && remaining.includes('|')) {
+      // Codex 格式: "98|99" 或 "-|85" → 直接显示
+      displayValue = remaining;
+    } else if (typeof remaining === 'number') {
       // 根据数值大小智能格式化
       if (remaining >= 1000) {
         displayValue = remaining.toFixed(0); // 大数字不显示小数
@@ -436,10 +447,11 @@ const QuotaManager = {
     // XSS防护
     const safeValue = this.escapeHtml(displayValue);
     const safeUnit = this.escapeHtml(unit || '');
+    const safeDetail = quotaData.detail ? this.escapeHtml(quotaData.detail) : '余额';
 
     // 精简显示：数字 + 单位 + 刷新按钮 + 倒计时
     const unitDisplay = safeUnit ? `<span class="quota-unit">${safeUnit}</span>` : '';
-    badge.innerHTML = `<span class="quota-badge ${colorClass}" title="余额">${safeValue}${unitDisplay}</span>${refreshBtn}${countdownSpan}`;
+    badge.innerHTML = `<span class="quota-badge ${colorClass}" title="${safeDetail}">${safeValue}${unitDisplay}</span>${refreshBtn}${countdownSpan}`;
     badge.style.display = 'inline-flex';
 
     // 立即更新倒计时显示
