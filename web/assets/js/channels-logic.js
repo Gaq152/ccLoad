@@ -324,8 +324,8 @@
 
     const container = e.currentTarget;
 
-    // 限制：只能在同类型内拖拽
-    const draggedType = draggedItem.closest('.channel-type-group')?.dataset.type;
+    // 限制：只能在同类型内拖拽（排序模式下容器为 .priority-group）
+    const draggedType = draggedItem.closest('.priority-group')?.dataset.type;
     const targetType = container.dataset.type;
     if (draggedType !== targetType) {
       e.dataTransfer.dropEffect = 'none';
@@ -389,8 +389,8 @@
 
     if (!draggedItem) return;
 
-    // 限制：只能在同类型内拖拽
-    const draggedType = draggedItem.closest('.channel-type-group')?.dataset.type;
+    // 限制：只能在同类型内拖拽（排序模式下容器为 .priority-group）
+    const draggedType = draggedItem.closest('.priority-group')?.dataset.type;
     if (draggedType !== groupType) {
       return; // 类型不匹配，拒绝放置
     }
