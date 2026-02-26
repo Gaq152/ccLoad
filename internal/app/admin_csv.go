@@ -45,7 +45,7 @@ func (s *Server) HandleExportChannelsCSV(c *gin.Context) {
 	writer := csv.NewWriter(buf)
 	defer writer.Flush()
 
-	header := []string{"id", "name", "api_key", "url", "priority", "models", "model_redirects", "channel_type", "key_strategy", "enabled"}
+	header := []string{"id", "name", "api_key", "url", "priority", "models", "model_redirects", "channel_type", "key_strategy", "enabled", "preset", "quota_config"}
 	if err := writer.Write(header); err != nil {
 		RespondError(c, http.StatusInternalServerError, err)
 		return
@@ -55,12 +55,45 @@ func (s *Server) HandleExportChannelsCSV(c *gin.Context) {
 		// 从预加载的map中获取API Keys,O(1)查找
 		apiKeys := allAPIKeys[cfg.ID]
 
-		// 格式化API Keys为逗号分隔字符串
-		apiKeyStrs := make([]string, 0, len(apiKeys))
-		for _, key := range apiKeys {
-			apiKeyStrs = append(apiKeyStrs, key.APIKey)
+		// 判断是否为 OAuth 预设渠道
+		isKiroPreset := cfg.Preset == "kiro"
+		isOfficialPreset := cfg.Preset == "official"
+		channelType := cfg.GetChannelType()
+		isOAuthChannel := isKiroPreset ||
+			(isOfficialPreset && (channelType == util.ChannelTypeCodex || channelType == util.ChannelTypeGemini))
+
+		// 格式化 API Key 字段
+		var apiKeyStr string
+		if isOAuthChannel && len(apiKeys) > 0 {
+			// OAuth 预设：将认证信息序列化为 JSON
+			ak := apiKeys[0]
+			authConfig := map[string]any{}
+			if ak.RefreshToken != "" {
+				authConfig["refreshToken"] = ak.RefreshToken
+			}
+			if ak.AccessToken != "" {
+				authConfig["accessToken"] = ak.AccessToken
+			}
+			if ak.IDToken != "" {
+				authConfig["idToken"] = ak.IDToken
+			}
+			if ak.TokenExpiresAt > 0 {
+				authConfig["tokenExpiresAt"] = ak.TokenExpiresAt
+			}
+			if ak.DeviceFingerprint != "" {
+				authConfig["deviceFingerprint"] = ak.DeviceFingerprint
+			}
+			if jsonBytes, err := sonic.Marshal(authConfig); err == nil {
+				apiKeyStr = string(jsonBytes)
+			}
+		} else {
+			// 普通渠道：逗号分隔的 API Key
+			apiKeyStrs := make([]string, 0, len(apiKeys))
+			for _, key := range apiKeys {
+				apiKeyStrs = append(apiKeyStrs, key.APIKey)
+			}
+			apiKeyStr = strings.Join(apiKeyStrs, ",")
 		}
-		apiKeyStr := strings.Join(apiKeyStrs, ",")
 
 		// 获取Key策略(从第一个Key)
 		keyStrategy := model.KeyStrategySequential // 默认值
@@ -76,6 +109,25 @@ func (s *Server) HandleExportChannelsCSV(c *gin.Context) {
 			}
 		}
 
+		// 导出 preset：DB "official" → CSV "codex"/"gemini"（与导入映射对称）
+		exportPreset := cfg.Preset
+		if cfg.Preset == "official" {
+			switch channelType {
+			case util.ChannelTypeCodex:
+				exportPreset = "codex"
+			case util.ChannelTypeGemini:
+				exportPreset = "gemini"
+			}
+		}
+
+		// 序列化 quota_config
+		quotaConfigJSON := ""
+		if cfg.QuotaConfig != nil {
+			if jsonBytes, err := sonic.Marshal(cfg.QuotaConfig); err == nil {
+				quotaConfigJSON = string(jsonBytes)
+			}
+		}
+
 		record := []string{
 			strconv.FormatInt(cfg.ID, 10),
 			cfg.Name,
@@ -84,9 +136,11 @@ func (s *Server) HandleExportChannelsCSV(c *gin.Context) {
 			strconv.Itoa(cfg.Priority),
 			strings.Join(cfg.Models, ","),
 			modelRedirectsJSON,
-			cfg.GetChannelType(), // 使用GetChannelType确保默认值
+			channelType,
 			keyStrategy,
 			strconv.FormatBool(cfg.Enabled),
+			exportPreset,
+			quotaConfigJSON,
 		}
 		if err := writer.Write(record); err != nil {
 			RespondError(c, http.StatusInternalServerError, err)
@@ -137,7 +191,12 @@ func (s *Server) HandleImportChannelsCSV(c *gin.Context) {
 	}
 
 	columnIndex := buildCSVColumnIndex(headerRow)
-	required := []string{"name", "api_key", "url", "models"}
+	// OAuth 预设（preset 列存在时）只需 name + api_key，url/models 可自动填充
+	_, hasPresetCol := columnIndex["preset"]
+	required := []string{"name", "api_key"}
+	if !hasPresetCol {
+		required = append(required, "url", "models")
+	}
 	for _, key := range required {
 		if _, ok := columnIndex[key]; !ok {
 			RespondErrorMsg(c, http.StatusBadRequest, fmt.Sprintf("缺少必需列: %s", key))
@@ -187,14 +246,32 @@ func (s *Server) HandleImportChannelsCSV(c *gin.Context) {
 		keyStrategy := fetch("key_strategy")
 		quotaConfigRaw := fetch("quota_config")  // 用量查询配置（JSON 格式）
 
-		if name == "" || apiKey == "" || modelsRaw == "" {
-			summary.Errors = append(summary.Errors, fmt.Sprintf("第%d行缺少必填字段", lineNo))
+		// OAuth 预设（通过 preset 字段判断）
+		isOAuthPreset := preset == "kiro" || preset == "codex" || preset == "gemini"
+
+		// 必填字段校验：OAuth 预设放宽 models 要求（可自动填充）
+		if name == "" || apiKey == "" {
+			summary.Errors = append(summary.Errors, fmt.Sprintf("第%d行缺少必填字段(name/api_key)", lineNo))
+			summary.Skipped++
+			continue
+		}
+		if modelsRaw == "" && !isOAuthPreset {
+			summary.Errors = append(summary.Errors, fmt.Sprintf("第%d行缺少必填字段(models)", lineNo))
 			summary.Skipped++
 			continue
 		}
 
-		// OAuth 预设（通过 preset 字段判断）
-		isOAuthPreset := preset == "kiro" || preset == "codex" || preset == "gemini"
+		// OAuth 预设自动推导 channel_type
+		if isOAuthPreset && channelType == "" {
+			switch preset {
+			case "kiro":
+				channelType = util.ChannelTypeAnthropic
+			case "codex":
+				channelType = util.ChannelTypeCodex
+			case "gemini":
+				channelType = util.ChannelTypeGemini
+			}
+		}
 
 		// 验证 URL（OAuth 预设可以为空）
 		if url == "" && !isOAuthPreset {
@@ -209,10 +286,23 @@ func (s *Server) HandleImportChannelsCSV(c *gin.Context) {
 			case "kiro":
 				url = "https://codewhisperer.us-east-1.amazonaws.com"
 			case "codex":
-				url = "https://api.codeium.com"
+				url = "https://chatgpt.com/backend-api/codex"
 			case "gemini":
 				url = "https://generativelanguage.googleapis.com"
 			}
+		}
+
+		// OAuth 预设自动填充默认模型
+		if modelsRaw == "" && isOAuthPreset {
+			switch preset {
+			case "kiro":
+				modelsRaw = "claude-opus-4-6,claude-sonnet-4-6,claude-sonnet-4-20250514,claude-3-5-sonnet-20241022,claude-3-5-haiku-20241022"
+			case "codex":
+				modelsRaw = "gpt-5.1,gpt-5,gpt-5.1-codex,gpt-5.1-codex-max,gpt-5.2"
+			case "gemini":
+				modelsRaw = "gemini-2.5-pro,gemini-2.5-flash"
+			}
+			log.Printf("[INFO] [CSV导入] 第%d行 %s 预设自动填充模型: %s", lineNo, preset, modelsRaw)
 		}
 
 		if url != "" {
@@ -280,6 +370,16 @@ func (s *Server) HandleImportChannelsCSV(c *gin.Context) {
 		}
 
 		// 构建渠道配置
+		// CSV preset 值到数据库 preset 值的映射：
+		// CSV "codex"  → DB channel_type="codex",  preset="official"
+		// CSV "gemini" → DB channel_type="gemini", preset="official"
+		// CSV "kiro"   → DB channel_type="anthropic", preset="kiro"
+		// 其他值直接透传
+		dbPreset := preset
+		if preset == "codex" || preset == "gemini" {
+			dbPreset = "official"
+		}
+
 		cfg := &model.Config{
 			Name:           name,
 			URL:            url,
@@ -287,7 +387,7 @@ func (s *Server) HandleImportChannelsCSV(c *gin.Context) {
 			Models:         models,
 			ModelRedirects: modelRedirects,
 			ChannelType:    channelType,
-			Preset:         preset,  // 设置预设类型
+			Preset:         dbPreset,
 			Enabled:        enabled,
 		}
 
@@ -317,28 +417,39 @@ func (s *Server) HandleImportChannelsCSV(c *gin.Context) {
 				continue
 			}
 
-			// 提取 OAuth 字段
-			refreshToken, _ := authConfig["refreshToken"].(string)
-			clientId, _ := authConfig["clientId"].(string)
-			clientSecret, _ := authConfig["clientSecret"].(string)
-			accessToken, _ := authConfig["accessToken"].(string)
+			// 提取 OAuth 字段（同时支持 camelCase 和 snake_case）
+			refreshToken := getStringFromMap(authConfig, "refreshToken", "refresh_token")
+			clientId := getStringFromMap(authConfig, "clientId", "client_id")
+			clientSecret := getStringFromMap(authConfig, "clientSecret", "client_secret")
+			accessToken := getStringFromMap(authConfig, "accessToken", "access_token")
+			idToken := getStringFromMap(authConfig, "idToken", "id_token")
+			deviceFingerprintJSON := getStringFromMap(authConfig, "deviceFingerprint", "device_fingerprint")
 
-			// deviceFingerprint 应该是 JSON 格式的指纹配置，不是简单的 UUID
-			// 如果 CSV 中提供了 deviceFingerprint，应该是完整的 JSON 配置
-			// 否则留空，让 Kiro 预设自动生成
-			deviceFingerprintJSON, _ := authConfig["deviceFingerprint"].(string)
-
-			// 提取 tokenExpiresAt（可能是 float64 或 int）
+			// 提取 tokenExpiresAt / token_expires_at（可能是 float64 或 int）
 			var tokenExpiresAt int64
-			if expiresAt, ok := authConfig["tokenExpiresAt"].(float64); ok {
-				tokenExpiresAt = int64(expiresAt)
-			} else if expiresAt, ok := authConfig["tokenExpiresAt"].(int64); ok {
-				tokenExpiresAt = expiresAt
+			for _, key := range []string{"tokenExpiresAt", "token_expires_at"} {
+				if expiresAt, ok := authConfig[key].(float64); ok {
+					tokenExpiresAt = int64(expiresAt)
+					break
+				} else if expiresAt, ok := authConfig[key].(int64); ok {
+					tokenExpiresAt = expiresAt
+					break
+				}
 			}
 
-			// 验证必需字段
-			if refreshToken == "" {
-				summary.Errors = append(summary.Errors, fmt.Sprintf("第%d行OAuth配置缺少refreshToken", lineNo))
+			// 支持 ISO 格式的 expired / expires 字段（如 "2026-03-07T19:52:09+08:00"）
+			if tokenExpiresAt == 0 {
+				expiredStr := getStringFromMap(authConfig, "expired", "expires")
+				if expiredStr != "" {
+					if t, err := time.Parse(time.RFC3339, expiredStr); err == nil {
+						tokenExpiresAt = t.Unix()
+					}
+				}
+			}
+
+			// 验证必需字段：refresh_token 或 access_token 至少有一个
+			if refreshToken == "" && accessToken == "" {
+				summary.Errors = append(summary.Errors, fmt.Sprintf("第%d行OAuth配置缺少refreshToken/accessToken", lineNo))
 				summary.Skipped++
 				continue
 			}
@@ -350,8 +461,9 @@ func (s *Server) HandleImportChannelsCSV(c *gin.Context) {
 					APIKey:            "",                      // OAuth 预设不使用 api_key 字段（IdC 方式除外）
 					KeyStrategy:       keyStrategy,
 					RefreshToken:      refreshToken,            // 存储到 refresh_token 字段
-					AccessToken:       accessToken,             // 如果 CSV 中提供了 access_token
-					TokenExpiresAt:    tokenExpiresAt,          // 如果 CSV 中提供了过期时间
+					AccessToken:       accessToken,             // 存储到 access_token 字段
+					IDToken:           idToken,                 // 存储到 id_token 字段（Codex/Gemini JWT）
+					TokenExpiresAt:    tokenExpiresAt,          // 过期时间 Unix 时间戳
 					DeviceFingerprint: deviceFingerprintJSON,   // Kiro 设备指纹 JSON 配置（可选）
 				},
 			}
@@ -373,9 +485,9 @@ func (s *Server) HandleImportChannelsCSV(c *gin.Context) {
 				}
 			}
 
-			// 如果是 IdC 方式，将 clientId 和 clientSecret 存储到 id_token 字段（JSON 格式）
+			// Kiro IdC 方式：将 clientId 和 clientSecret 存储到 id_token 字段（JSON 格式）
 			// [FIX] 与 admin_testing.go:96 保持一致，IdC 配置存储在 id_token 字段
-			if clientId != "" && clientSecret != "" {
+			if preset == "kiro" && clientId != "" && clientSecret != "" {
 				idcConfig := map[string]string{
 					"clientId":     clientId,
 					"clientSecret": clientSecret,
@@ -383,6 +495,13 @@ func (s *Server) HandleImportChannelsCSV(c *gin.Context) {
 				if idcJSON, err := sonic.Marshal(idcConfig); err == nil {
 					apiKeys[0].IDToken = string(idcJSON)
 				}
+			}
+
+			// Codex 预设：自动生成 quota_config（用量监控配置）
+			if preset == "codex" && quotaConfigRaw == "" && accessToken != "" {
+				accountID := ExtractAccountIDFromJWT(accessToken)
+				cfg.QuotaConfig = buildCodexDefaultQuotaConfig(accessToken, accountID)
+				log.Printf("[INFO] [CSV导入] 第%d行 Codex 预设自动生成 quota_config", lineNo)
 			}
 		} else {
 			// 普通格式：逗号分隔的 API Key
@@ -423,7 +542,7 @@ func (s *Server) HandleImportChannelsCSV(c *gin.Context) {
 		s.InvalidateAllAPIKeysCache()
 		s.invalidateCooldownCache()
 
-		// [FIX] 导入完成后，同步 Kiro 预设的 Authorization 头
+		// [FIX] 导入完成后，同步 OAuth 预设的 Authorization 头
 		// 如果 CSV 中已经包含了 AccessToken，立即同步到 quota_config
 		go func() {
 			ctx := context.Background()
@@ -438,7 +557,9 @@ func (s *Server) HandleImportChannelsCSV(c *gin.Context) {
 			}
 
 			for _, cwk := range validChannels {
-				if cwk.Config.Preset == "kiro" && cwk.Config.QuotaConfig != nil && cwk.Config.QuotaConfig.Enabled {
+				isKiro := cwk.Config.Preset == "kiro"
+				isCodex := cwk.Config.Preset == "codex"
+				if (isKiro || isCodex) && cwk.Config.QuotaConfig != nil && cwk.Config.QuotaConfig.Enabled {
 					channelID, ok := nameToID[cwk.Config.Name]
 					if !ok {
 						continue
@@ -554,5 +675,59 @@ func parseImportEnabled(raw string) (bool, bool) {
 		return false, true
 	default:
 		return false, false
+	}
+}
+
+// getStringFromMap 从 map 中按多个候选 key 提取字符串值（支持 camelCase / snake_case 兼容）
+func getStringFromMap(m map[string]any, keys ...string) string {
+	for _, key := range keys {
+		if val, ok := m[key].(string); ok && val != "" {
+			return val
+		}
+	}
+	return ""
+}
+
+// buildCodexDefaultQuotaConfig 构建 Codex 预设的默认用量监控配置
+// 与前端 QUOTA_TEMPLATES.codex + applyCodexQuotaTemplate 逻辑保持一致
+func buildCodexDefaultQuotaConfig(accessToken, accountID string) *model.QuotaConfig {
+	headers := map[string]string{
+		"Authorization": "Bearer " + accessToken,
+	}
+	if accountID != "" {
+		headers["chatgpt-account-id"] = accountID
+	}
+
+	return &model.QuotaConfig{
+		Enabled:       true,
+		RequestURL:    "https://chatgpt.com/backend-api/wham/usage",
+		RequestMethod: "GET",
+		RequestHeaders: headers,
+		ExtractorScript: `function(response) {
+  const data = typeof response === 'string' ? JSON.parse(response) : response;
+
+  if (!data.rate_limit) {
+    return { isValid: false, error: "响应格式错误：缺少 rate_limit" };
+  }
+
+  const rl = data.rate_limit;
+  const primary = rl.primary_window;
+
+  if (!primary) {
+    return { isValid: false, error: "响应格式错误：缺少 primary_window" };
+  }
+
+  const remaining = 100 - primary.used_percent;
+  const resetTime = new Date(primary.reset_at * 1000).toLocaleString();
+
+  return {
+    isValid: true,
+    remaining: remaining,
+    unit: '%',
+    detail: '重置时间: ' + resetTime,
+    limitReached: rl.limit_reached || false
+  };
+}`,
+		IntervalSeconds: 300,
 	}
 }

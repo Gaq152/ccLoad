@@ -117,7 +117,7 @@ func TestAdminAPI_ExportChannelsCSV(t *testing.T) {
 		header[0] = strings.TrimPrefix(header[0], "\ufeff")
 	}
 
-	expectedHeaders := []string{"id", "name", "api_key", "url", "priority", "models", "model_redirects", "channel_type", "key_strategy", "enabled"}
+	expectedHeaders := []string{"id", "name", "api_key", "url", "priority", "models", "model_redirects", "channel_type", "key_strategy", "enabled", "preset", "quota_config"}
 	if len(header) != len(expectedHeaders) {
 		t.Errorf("Header字段数量不匹配: 期望 %d, 实际: %d\nHeader: %v", len(expectedHeaders), len(header), header)
 	}
@@ -128,9 +128,9 @@ func TestAdminAPI_ExportChannelsCSV(t *testing.T) {
 		}
 	}
 
-	// 验证数据行（应该有10个字段）
-	if len(records[1]) < 10 {
-		t.Errorf("数据行字段不足，期望至少10个字段，实际: %d", len(records[1]))
+	// 验证数据行（应该有12个字段）
+	if len(records[1]) < 12 {
+		t.Errorf("数据行字段不足，期望至少12个字段，实际: %d", len(records[1]))
 	}
 
 	t.Logf("[INFO] CSV导出成功，共 %d 行记录（含header）", len(records))
