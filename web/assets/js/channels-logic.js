@@ -26,6 +26,8 @@
   let draggedItemOriginalParent = null;
   let draggedItemOriginalNextSibling = null;
   let dropSucceeded = false;
+  // 多选拖拽组：存储跟随主卡片一起移动的其他选中卡片
+  let draggedGroup = []; // [{ element, originalParent, originalNextSibling }]
 
   // ===== 事件委托初始化 =====
 
@@ -249,14 +251,39 @@
     draggedItemOriginalParent = this.parentElement;
     draggedItemOriginalNextSibling = this.nextElementSibling;
     dropSucceeded = false;
+    draggedGroup = [];
 
     e.dataTransfer.effectAllowed = 'move';
+
+    // 多选拖拽：如果当前卡片在选中集合中，收集同泳道内其他选中卡片
+    const draggedId = parseInt(this.dataset.id);
+    if (typeof bulkState !== 'undefined' && bulkState.selectedIds.has(draggedId)) {
+      const lane = this.closest('.priority-group');
+      if (lane) {
+        lane.querySelectorAll('.channel-card').forEach(card => {
+          const cardId = parseInt(card.dataset.id);
+          if (cardId !== draggedId && bulkState.selectedIds.has(cardId)) {
+            draggedGroup.push({
+              element: card,
+              originalParent: card.parentElement,
+              originalNextSibling: card.nextElementSibling
+            });
+          }
+        });
+      }
+    }
+
     // 延迟添加样式，避免拖拽时的重影也带有透明度
-    setTimeout(() => this.classList.add('dragging'), 0);
+    setTimeout(() => {
+      this.classList.add('dragging');
+      draggedGroup.forEach(g => g.element.classList.add('dragging-group'));
+    }, 0);
   }
 
   function handleDragEnd(e) {
     this.classList.remove('dragging');
+    // 移除组内卡片的拖拽样式
+    draggedGroup.forEach(g => g.element.classList.remove('dragging-group'));
 
     // 清除所有泳道的高亮状态
     document.querySelectorAll('.priority-group').forEach(group => {
@@ -265,6 +292,16 @@
 
     // 如果 drop 未成功执行，回滚到原始位置
     if (!dropSucceeded && draggedItemOriginalParent) {
+      // 先回滚组内卡片（逆序恢复，保证位置正确）
+      for (let i = draggedGroup.length - 1; i >= 0; i--) {
+        const g = draggedGroup[i];
+        if (g.originalNextSibling) {
+          g.originalParent.insertBefore(g.element, g.originalNextSibling);
+        } else {
+          g.originalParent.appendChild(g.element);
+        }
+      }
+      // 再回滚主卡片
       if (draggedItemOriginalNextSibling) {
         draggedItemOriginalParent.insertBefore(this, draggedItemOriginalNextSibling);
       } else {
@@ -277,6 +314,7 @@
     draggedItemOriginalParent = null;
     draggedItemOriginalNextSibling = null;
     dropSucceeded = false;
+    draggedGroup = [];
   }
 
   function handleDragOver(e) {
@@ -304,6 +342,20 @@
       container.appendChild(draggedItem);
     } else if (afterElement !== draggedItem) {
       container.insertBefore(draggedItem, afterElement);
+    }
+
+    // 多选拖拽：组内卡片紧跟主卡片之后插入
+    if (draggedGroup.length > 0) {
+      let insertAfter = draggedItem;
+      draggedGroup.forEach(g => {
+        const nextSib = insertAfter.nextSibling;
+        if (nextSib) {
+          container.insertBefore(g.element, nextSib);
+        } else {
+          container.appendChild(g.element);
+        }
+        insertAfter = g.element;
+      });
     }
   }
 
@@ -359,6 +411,7 @@
 
     // 乐观更新 UI (Data Attributes)
     draggedItem.dataset.priority = newPriority;
+    draggedGroup.forEach(g => g.element.dataset.priority = newPriority);
     cards.forEach((card, index) => {
       card.dataset.sortOrder = index;
     });
@@ -388,7 +441,7 @@
    * 辅助函数：根据鼠标 Y 坐标获取插入位置后方的元素
    */
   function getDragAfterElement(container, y) {
-    const draggableElements = [...container.querySelectorAll('.channel-card:not(.dragging)')];
+    const draggableElements = [...container.querySelectorAll('.channel-card:not(.dragging):not(.dragging-group)')];
 
     return draggableElements.reduce((closest, child) => {
       const box = child.getBoundingClientRect();

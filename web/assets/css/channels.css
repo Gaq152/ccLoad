@@ -1081,6 +1081,15 @@ html.dark .priority-header:hover {
   pointer-events: none; /* 防止拖拽时干扰位置计算，避免闪烁 */
 }
 
+/* 多选拖拽组：跟随主卡片移动的选中卡片 */
+.channel-card.dragging-group {
+  opacity: 0.4;
+  transform: scale(0.96);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  pointer-events: none;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
 /* 渠道卡片拖拽光标 */
 .priority-group .glass-card {
   cursor: grab;
