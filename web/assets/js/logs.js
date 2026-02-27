@@ -353,7 +353,7 @@
 
       // 5. API Key显示(含按钮组)
       let apiKeyDisplay = '';
-      if (entry.api_key_used && entry.channel_id && entry.model) {
+      if (entry.api_key_used && entry.channel_id) {
         const sc = entry.status_code || 0;
         const showTestBtn = sc !== 200;
         const showDeleteBtn = sc === 403;
