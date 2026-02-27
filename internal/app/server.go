@@ -259,6 +259,10 @@ func NewServer(store storage.Store) *Server {
 	} else {
 		s.traceStore = traceStore
 		s.monitorService = NewMonitorService(traceStore, s.shutdownCh)
+		// 从配置恢复监控开关状态
+		if configService.GetBool("monitor_enabled", false) {
+			s.monitorService.SetEnabled(true)
+		}
 		log.Print("[INFO] 请求监控服务已初始化")
 	}
 

@@ -816,6 +816,7 @@ func initDefaultSettings(ctx context.Context, db *sql.DB, dialect Dialect) error
 		{"channel_load_balance", "true", "bool", "渠道负载均衡(同优先级+同预设随机打乱)", "true"},
 		{"quota_request_concurrency", "10", "int", "用量查询并发数(定时自动刷新,1-50)", "10"},
 		{"quota_batch_concurrency", "10", "int", "批量查询并发数(手动刷新,1-50)", "10"},
+		{"monitor_enabled", "false", "bool", "请求监控开关(重启后保持状态)", "false"},
 	}
 
 	var query string
