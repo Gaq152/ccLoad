@@ -478,9 +478,10 @@ func getAPIKeyDisplayForLog(apiKeyUsed string, channelType string) string {
 	}
 
 	// OAuth 认证渠道显示认证类型
+	// 注意：Kiro 渠道的 channelType 是 "anthropic"（内部标识符），不是 "kiro"
 	switch channelType {
-	case "kiro":
-		return "[Kiro OAuth]"
+	case "anthropic", "kiro":
+		return "[OAuth]"
 	case "codex":
 		return "[Codex OAuth]"
 	case "gemini":

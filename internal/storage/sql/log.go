@@ -22,8 +22,9 @@ func (s *SQLStore) AddLog(ctx context.Context, e *model.LogEntry) error {
 
 	// API Key在写入时强制脱敏（2025-10-06）
 	// 设计原则：数据库中不应存储完整API Key，避免备份和日志导出时泄露
+	// 跳过已经是展示标签的值（如 [OAuth]、[测试] 等）
 	maskedKey := e.APIKeyUsed
-	if maskedKey != "" {
+	if maskedKey != "" && !(maskedKey[0] == '[' && maskedKey[len(maskedKey)-1] == ']') {
 		maskedKey = maskAPIKey(maskedKey)
 	}
 
@@ -71,7 +72,7 @@ func (s *SQLStore) BatchAddLogs(ctx context.Context, logs []*model.LogEntry) err
 		timeMs := cleanTime.UnixMilli()
 
 		maskedKey := e.APIKeyUsed
-		if maskedKey != "" {
+		if maskedKey != "" && !(maskedKey[0] == '[' && maskedKey[len(maskedKey)-1] == ']') {
 			maskedKey = maskAPIKey(maskedKey)
 		}
 
@@ -181,7 +182,13 @@ func (s *SQLStore) ListLogs(ctx context.Context, since time.Time, limit, offset 
 		}
 		if apiKeyUsed.Valid && apiKeyUsed.String != "" {
 			// 向后兼容：历史数据可能包含明文Key，maskAPIKey是幂等的
-			e.APIKeyUsed = maskAPIKey(apiKeyUsed.String)
+			// 跳过已经是展示标签的值（如 [OAuth]、[测试] 等）
+			v := apiKeyUsed.String
+			if v[0] == '[' && v[len(v)-1] == ']' {
+				e.APIKeyUsed = v
+			} else {
+				e.APIKeyUsed = maskAPIKey(v)
+			}
 		}
 		if apiBaseURL.Valid {
 			e.APIBaseURL = apiBaseURL.String
@@ -354,7 +361,12 @@ func (s *SQLStore) ListLogsRange(ctx context.Context, since, until time.Time, li
 			e.FirstByteTime = firstByteTime.Float64
 		}
 		if apiKeyUsed.Valid && apiKeyUsed.String != "" {
-			e.APIKeyUsed = maskAPIKey(apiKeyUsed.String)
+			v := apiKeyUsed.String
+			if v[0] == '[' && v[len(v)-1] == ']' {
+				e.APIKeyUsed = v
+			} else {
+				e.APIKeyUsed = maskAPIKey(v)
+			}
 		}
 		if apiBaseURL.Valid {
 			e.APIBaseURL = apiBaseURL.String
