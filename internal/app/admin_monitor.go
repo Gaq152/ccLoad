@@ -41,6 +41,14 @@ func (s *Server) HandleMonitorToggle(c *gin.Context) {
 	}
 
 	s.monitorService.SetEnabled(req.Enabled)
+
+	// 持久化监控状态到数据库（重启后恢复）
+	val := "false"
+	if req.Enabled {
+		val = "true"
+	}
+	_ = s.store.UpdateSetting(c.Request.Context(), "monitor_enabled", val)
+
 	RespondJSON(c, 200, gin.H{"enabled": req.Enabled})
 }
 
@@ -125,21 +133,28 @@ func writeSSETrace(w gin.ResponseWriter, trace *storage.TraceListItem) error {
 }
 
 // HandleMonitorList 获取追踪记录列表
-// GET /admin/monitor/traces?limit=100
+// GET /admin/monitor/traces?limit=50&offset=0
 func (s *Server) HandleMonitorList(c *gin.Context) {
 	if s.monitorService == nil {
 		RespondErrorMsg(c, 503, "监控服务不可用")
 		return
 	}
 
-	limit := 100
+	limit := 50
 	if l := c.Query("limit"); l != "" {
 		if v, err := strconv.Atoi(l); err == nil && v > 0 {
 			limit = v
 		}
 	}
 
-	traces, err := s.monitorService.GetStore().List(c.Request.Context(), limit)
+	offset := 0
+	if o := c.Query("offset"); o != "" {
+		if v, err := strconv.Atoi(o); err == nil && v >= 0 {
+			offset = v
+		}
+	}
+
+	traces, err := s.monitorService.GetStore().List(c.Request.Context(), limit, offset)
 	if err != nil {
 		RespondErrorMsg(c, 500, "获取追踪记录失败")
 		return
@@ -165,12 +180,14 @@ func (s *Server) HandleMonitorList(c *gin.Context) {
 		}
 	}
 
-	// 获取统计信息
+	// 获取统计信息和总数
 	stats, _ := s.monitorService.GetStore().Stats(c.Request.Context())
+	total, _ := s.monitorService.GetStore().Count(c.Request.Context())
 
 	RespondJSON(c, 200, gin.H{
 		"data":  traces,
 		"stats": stats,
+		"total": total,
 	})
 }
 

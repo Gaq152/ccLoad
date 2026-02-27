@@ -5,12 +5,18 @@
 // 监控状态
 let monitorEnabled = false;
 let sseEventSource = null;
-let traces = []; // 缓存的追踪记录
+let traces = []; // 当前页的追踪记录
 let filteredTraces = []; // 过滤后的追踪记录
 let currentFilter = 'all'; // 当前筛选：all/success/error
 let currentTokenFilter = ''; // 当前令牌筛选
 let knownTokens = new Set(); // 已知的令牌名称集合
-const MAX_TRACES = 500; // 最大缓存数量
+
+// 分页状态
+let currentPage = 1;
+let pageSize = 50;
+let totalTraces = 0;
+let totalPages = 1;
+let hasNewData = false; // 非第一页时是否有新数据到达
 
 // 统计数据
 let stats = { total: 0, success: 0, error: 0 };
@@ -157,18 +163,22 @@ function disconnectSSE() {
 // 加载追踪记录列表
 async function loadTraces() {
   try {
-    const data = await fetchDataWithAuth('/admin/monitor/traces?limit=100');
+    const offset = (currentPage - 1) * pageSize;
+    const data = await fetchDataWithAuth(`/admin/monitor/traces?limit=${pageSize}&offset=${offset}`);
     traces = data.data || [];
+    totalTraces = data.total || 0;
+    totalPages = Math.ceil(totalTraces / pageSize) || 1;
+
     // 更新统计
     if (data.stats) {
       stats = data.stats;
     } else {
-      // 本地计算统计
       stats = calculateStats(traces);
     }
     updateStatsUI();
     updateTokenSelect();
     applyFilters();
+    updatePaginationUI();
   } catch (e) {
     console.error('加载追踪记录失败:', e);
   }
@@ -310,13 +320,9 @@ function prependTrace(trace) {
   // 去重检查
   if (traces.some(t => t.id === trace.id)) return;
 
-  traces.unshift(trace);
-  if (traces.length > MAX_TRACES) {
-    traces.pop();
-  }
-
   // 更新统计（200=成功，非200=错误）
   stats.total++;
+  totalTraces++;
   if (trace.status_code === 200) {
     stats.success++;
   } else {
@@ -326,10 +332,27 @@ function prependTrace(trace) {
 
   // 更新令牌下拉列表（如果有新令牌）
   if (trace.auth_token_name && !knownTokens.has(trace.auth_token_name)) {
+    knownTokens.add(trace.auth_token_name);
     updateTokenSelect();
   }
 
-  applyFilters();
+  // 仅在第一页时 prepend 到列表
+  if (currentPage === 1) {
+    traces.unshift(trace);
+    // 保持当前页不超过 pageSize
+    if (traces.length > pageSize) {
+      traces.pop();
+    }
+    totalPages = Math.ceil(totalTraces / pageSize) || 1;
+    applyFilters();
+    updatePaginationUI();
+  } else {
+    // 非第一页时显示"有新数据"提示
+    hasNewData = true;
+    totalPages = Math.ceil(totalTraces / pageSize) || 1;
+    updatePaginationUI();
+    showNewDataBanner();
+  }
 }
 
 // 更新记录数量显示
@@ -338,6 +361,77 @@ function updateTraceCount(count) {
   if (el) {
     el.textContent = `${count} 条记录`;
   }
+}
+
+// 分页控制函数
+function updatePaginationUI() {
+  const section = document.getElementById('paginationSection');
+  const currentEl = document.getElementById('monitorCurrentPage');
+  const totalEl = document.getElementById('monitorTotalPages');
+  const prevBtn = document.getElementById('monitorPrev');
+  const nextBtn = document.getElementById('monitorNext');
+  const jumpInput = document.getElementById('monitorJumpPage');
+
+  // 有数据时显示分页控件
+  if (section) {
+    section.style.display = totalTraces > 0 ? '' : 'none';
+  }
+
+  if (currentEl) currentEl.textContent = currentPage;
+  if (totalEl) totalEl.textContent = totalPages;
+  if (prevBtn) prevBtn.disabled = currentPage <= 1;
+  if (nextBtn) nextBtn.disabled = currentPage >= totalPages;
+  if (jumpInput) jumpInput.max = totalPages;
+}
+
+function prevPage() {
+  if (currentPage > 1) {
+    currentPage--;
+    loadTraces();
+  }
+}
+
+function nextPage() {
+  if (currentPage < totalPages) {
+    currentPage++;
+    loadTraces();
+  }
+}
+
+function jumpToPage() {
+  const input = document.getElementById('monitorJumpPage');
+  if (!input) return;
+  const page = parseInt(input.value, 10);
+  if (page >= 1 && page <= totalPages && page !== currentPage) {
+    currentPage = page;
+    loadTraces();
+  }
+  input.value = '';
+}
+
+function changePageSize() {
+  const select = document.getElementById('monitorPageSize');
+  if (!select) return;
+  pageSize = parseInt(select.value, 10) || 50;
+  currentPage = 1;
+  loadTraces();
+}
+
+function goToFirstPage() {
+  currentPage = 1;
+  hasNewData = false;
+  hideNewDataBanner();
+  loadTraces();
+}
+
+function showNewDataBanner() {
+  const banner = document.getElementById('newDataBanner');
+  if (banner) banner.style.display = '';
+}
+
+function hideNewDataBanner() {
+  const banner = document.getElementById('newDataBanner');
+  if (banner) banner.style.display = 'none';
 }
 
 // 渲染追踪记录
@@ -505,7 +599,13 @@ async function confirmClearTraces() {
     traces = [];
     filteredTraces = [];
     stats = { total: 0, success: 0, error: 0 };
+    totalTraces = 0;
+    totalPages = 1;
+    currentPage = 1;
+    hasNewData = false;
+    hideNewDataBanner();
     updateStatsUI();
+    updatePaginationUI();
     renderTraces();
     if (window.showSuccess) showSuccess('已清空');
   } catch (e) {
@@ -578,6 +678,7 @@ function syntaxHighlight(json) {
 function parseJSONResponse(obj) {
   let thinking = '';
   let reply = '';
+  let toolCalls = [];
 
   // OpenAI 格式: choices[0].message.content
   if (obj.choices && obj.choices[0]) {
@@ -587,13 +688,19 @@ function parseJSONResponse(obj) {
     }
   }
 
-  // Claude 格式: content[].type=thinking/text
+  // Claude 格式: content[].type=thinking/text/tool_use
   if (obj.content && Array.isArray(obj.content)) {
     for (const block of obj.content) {
       if (block.type === 'thinking' && block.thinking) {
         thinking += block.thinking;
       } else if (block.type === 'text' && block.text) {
         reply += block.text;
+      } else if (block.type === 'tool_use') {
+        toolCalls.push({
+          name: block.name || '',
+          id: block.id || '',
+          input: typeof block.input === 'string' ? block.input : JSON.stringify(block.input || {}, null, 2)
+        });
       }
     }
   }
@@ -614,14 +721,18 @@ function parseJSONResponse(obj) {
     }
   }
 
-  return { thinking, reply };
+  return { thinking, reply, toolCalls };
 }
 
 // 解析 SSE 流式响应（OpenAI/Claude/Gemini/Codex）
 function parseSSEResponse(responseBody) {
   let thinking = '';
   let reply = '';
+  let toolCalls = []; // 工具调用列表
   let currentBlockType = 'text'; // 跟踪当前内容块类型
+  let currentToolName = ''; // 当前工具调用名称
+  let currentToolId = ''; // 当前工具调用 ID
+  let currentToolInput = ''; // 当前工具调用的累积 JSON 输入
 
   const lines = responseBody.split('\n');
   for (const line of lines) {
@@ -648,6 +759,11 @@ function parseSSEResponse(responseBody) {
       // Claude SSE: content_block_start 标记块类型
       if (obj.type === 'content_block_start' && obj.content_block) {
         currentBlockType = obj.content_block.type || 'text';
+        if (currentBlockType === 'tool_use') {
+          currentToolName = obj.content_block.name || '';
+          currentToolId = obj.content_block.id || '';
+          currentToolInput = '';
+        }
       }
 
       // Claude SSE: content_block_delta 内容增量
@@ -656,6 +772,9 @@ function parseSSEResponse(responseBody) {
           thinking += obj.delta.thinking;
         } else if (obj.delta.type === 'text_delta' && obj.delta.text) {
           reply += obj.delta.text;
+        } else if (obj.delta.type === 'input_json_delta' && obj.delta.partial_json !== undefined) {
+          // tool_use 输入 JSON 增量
+          currentToolInput += obj.delta.partial_json;
         } else if (obj.delta.text) {
           // 兼容旧格式
           if (currentBlockType === 'thinking') {
@@ -664,6 +783,19 @@ function parseSSEResponse(responseBody) {
             reply += obj.delta.text;
           }
         }
+      }
+
+      // Claude SSE: content_block_stop 标记块结束
+      if (obj.type === 'content_block_stop' && currentBlockType === 'tool_use') {
+        toolCalls.push({
+          name: currentToolName,
+          id: currentToolId,
+          input: currentToolInput
+        });
+        currentBlockType = 'text';
+        currentToolName = '';
+        currentToolId = '';
+        currentToolInput = '';
       }
 
       // Gemini SSE: response.candidates[0].content.parts[] 或 candidates[0].content.parts[]
@@ -691,7 +823,7 @@ function parseSSEResponse(responseBody) {
     }
   }
 
-  return { thinking, reply };
+  return { thinking, reply, toolCalls };
 }
 
 // 解析错误响应（Anthropic/OpenAI/Gemini 错误格式）
@@ -754,23 +886,27 @@ function parseAWSEventStreamResponse(responseBody) {
 }
 
 // 解析并展示模型响应（思考内容和回复内容）
-// 支持格式：OpenAI、Claude、Gemini、Codex（流式和非流式）+ 错误响应
+// 支持格式：OpenAI、Claude、Gemini、Codex（流式和非流式）+ 错误响应 + 工具调用
 function parseAndDisplayResponse(responseBody) {
   const thinkingEl = document.getElementById('parsedThinking');
   const thinkingTextEl = document.getElementById('parsedThinkingText');
   const replyEl = document.getElementById('parsedReply');
   const replyTextEl = document.getElementById('parsedReplyText');
+  const toolCallsEl = document.getElementById('parsedToolCalls');
+  const toolCallsTextEl = document.getElementById('parsedToolCallsText');
   const emptyEl = document.getElementById('parsedEmpty');
 
   // 隐藏所有
   if (thinkingEl) thinkingEl.style.display = 'none';
   if (replyEl) replyEl.style.display = 'none';
+  if (toolCallsEl) toolCallsEl.style.display = 'none';
   if (emptyEl) emptyEl.style.display = 'block';
 
   if (!responseBody) return;
 
   let thinking = '';
   let reply = '';
+  let toolCalls = [];
 
   // 检测是否为 AWS Event Stream 二进制格式（Kiro 响应）
   // 特征：包含 :event-type 和 :message-type 等二进制头标记
@@ -787,6 +923,7 @@ function parseAndDisplayResponse(responseBody) {
     const result = parseSSEResponse(responseBody);
     thinking = result.thinking;
     reply = result.reply;
+    toolCalls = result.toolCalls || [];
   } else {
     // 解析 JSON 非流式响应
     try {
@@ -801,6 +938,7 @@ function parseAndDisplayResponse(responseBody) {
         const result = parseJSONResponse(obj);
         thinking = result.thinking;
         reply = result.reply;
+        toolCalls = result.toolCalls || [];
       }
     } catch {
       // 非有效 JSON，跳过
@@ -819,6 +957,27 @@ function parseAndDisplayResponse(responseBody) {
   if (reply) {
     if (replyEl) replyEl.style.display = 'block';
     if (replyTextEl) replyTextEl.textContent = reply;
+    hasContent = true;
+  }
+
+  if (toolCalls.length > 0) {
+    if (toolCallsEl) toolCallsEl.style.display = 'block';
+    if (toolCallsTextEl) {
+      // 格式化工具调用为可读文本
+      let toolCallsText = '';
+      for (const tc of toolCalls) {
+        toolCallsText += `Tool: ${tc.name}\n`;
+        // 尝试格式化 JSON 输入
+        try {
+          const parsed = JSON.parse(tc.input);
+          toolCallsText += JSON.stringify(parsed, null, 2);
+        } catch {
+          toolCallsText += tc.input || '{}';
+        }
+        toolCallsText += '\n\n';
+      }
+      toolCallsTextEl.textContent = toolCallsText.trim();
+    }
     hasContent = true;
   }
 
@@ -921,3 +1080,8 @@ window.setFilter = setFilter;
 window.toggleRequestBody = toggleRequestBody;
 window.toggleRawResponse = toggleRawResponse;
 window.copyContent = copyContent;
+window.prevPage = prevPage;
+window.nextPage = nextPage;
+window.jumpToPage = jumpToPage;
+window.changePageSize = changePageSize;
+window.goToFirstPage = goToFirstPage;

@@ -88,6 +88,56 @@
             </table>
           </div>
         </section>
+
+        <!-- 底部分页控制 -->
+        <section class="mb-2" id="paginationSection" style="display: none;">
+          <div class="glass-card" style="padding: var(--space-2);">
+            <div class="flex justify-center items-center">
+              <div class="pagination-controls">
+                <button id="monitorPrev" class="btn btn-secondary btn-sm" onclick="prevPage()">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+                  </svg>
+                  上一页
+                </button>
+                <span class="pagination-info" style="margin: 0 var(--space-4); display: flex; align-items: center; gap: var(--space-2);">
+                  第 <span id="monitorCurrentPage">1</span> 页，共 <span id="monitorTotalPages">1</span> 页
+                  <span style="margin-left: var(--space-2);">|</span>
+                  每页
+                  <select id="monitorPageSize" class="modern-select" style="width: 70px; padding: 4px 8px;" onchange="changePageSize()">
+                    <option value="20">20</option>
+                    <option value="50" selected>50</option>
+                    <option value="100">100</option>
+                  </select>
+                  条
+                  <span style="margin-left: var(--space-2);">|</span>
+                  跳转到
+                  <input
+                    type="number"
+                    id="monitorJumpPage"
+                    min="1"
+                    max="1"
+                    placeholder="页码"
+                    style="width: 80px; padding: 4px 8px; border: 1px solid var(--neutral-300); border-radius: 4px; text-align: center;"
+                    onkeydown="if(event.key==='Enter') jumpToPage()"
+                  />
+                  页
+                </span>
+                <button id="monitorNext" class="btn btn-secondary btn-sm" onclick="nextPage()">
+                  下一页
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 新数据提示条 -->
+        <div id="newDataBanner" style="display: none; position: fixed; top: 60px; left: 50%; transform: translateX(-50%); z-index: 100; background: var(--primary-500); color: #fff; padding: 8px 20px; border-radius: 20px; font-size: 0.85rem; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.15);" onclick="goToFirstPage()">
+          有新的监控数据，点击查看
+        </div>
       </div>
     </main>
   </div>
@@ -211,6 +261,12 @@
                 <span class="label-icon">💬</span> 回复内容
               </div>
               <pre class="parsed-code-block reply-block" id="parsedReplyText"></pre>
+            </div>
+            <div class="parsed-block parsed-tool-calls" id="parsedToolCalls" style="display:none;">
+              <div class="parsed-label">
+                <span class="label-icon">🔧</span> 工具调用
+              </div>
+              <pre class="parsed-code-block tool-calls-block" id="parsedToolCallsText"></pre>
             </div>
             <div class="parsed-empty" id="parsedEmpty">无法解析响应内容</div>
           </div>
