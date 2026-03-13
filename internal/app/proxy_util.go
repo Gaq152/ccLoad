@@ -483,9 +483,9 @@ func getAPIKeyDisplayForLog(apiKeyUsed string, channelType string) string {
 	case "anthropic", "kiro":
 		return "[OAuth]"
 	case "codex":
-		return "[Codex OAuth]"
+		return "[OAuth]"
 	case "gemini":
-		return "[Gemini OAuth]"
+		return "[OAuth]"
 	}
 
 	return "-"
@@ -515,6 +515,7 @@ func buildLogEntry(originalModel string, channelID int64, channelName string, ch
 		Duration:      duration,
 		IsStreaming:   isStreaming,
 		APIKeyUsed:    displayKey,
+		APIKeyHash:    util.HashAPIKey(apiKeyUsed),
 		APIBaseURL:    apiBaseURL,
 		AuthTokenID:   authTokenID,
 		AuthTokenName: authTokenName,

@@ -26,6 +26,32 @@
       }
     }
 
+    const keyHashCache = new Map();
+
+    function isDisplayOnlyKey(value) {
+      return typeof value === 'string' && /^\[[^\]]+\]$/.test(value.trim());
+    }
+
+    async function hashKeyForCompare(key) {
+      if (!key || !window.crypto?.subtle || typeof TextEncoder === 'undefined') {
+        return '';
+      }
+      if (keyHashCache.has(key)) {
+        return keyHashCache.get(key);
+      }
+
+      const promise = (async () => {
+        const data = new TextEncoder().encode(key);
+        const digest = await window.crypto.subtle.digest('SHA-256', data);
+        return Array.from(new Uint8Array(digest))
+          .map((b) => b.toString(16).padStart(2, '0'))
+          .join('');
+      })();
+
+      keyHashCache.set(key, promise);
+      return promise;
+    }
+
     // 加载默认测试内容（从系统设置）
     async function loadDefaultTestContent() {
       try {
@@ -353,7 +379,8 @@
 
       // 5. API Key显示(含按钮组)
       let apiKeyDisplay = '';
-      if (entry.api_key_used && entry.channel_id) {
+      const isActionableKey = entry.api_key_used && entry.channel_id && !isDisplayOnlyKey(entry.api_key_used);
+      if (isActionableKey) {
         const sc = entry.status_code || 0;
         const showTestBtn = sc !== 200;
         const showDeleteBtn = sc === 403;
@@ -367,6 +394,7 @@
               data-channel-id="${entry.channel_id}"
               data-channel-name="${escapeHtml(entry.channel_name || '').replace(/"/g, '&quot;')}"
               data-api-key="${escapeHtml(entry.api_key_used).replace(/"/g, '&quot;')}"
+              data-api-key-hash="${escapeHtml(entry.api_key_hash || '').replace(/"/g, '&quot;')}"
               data-model="${escapeHtml(entry.model).replace(/"/g, '&quot;')}"
               title="测试此 API Key">
               ⚡
@@ -389,7 +417,9 @@
         }
 
         apiKeyDisplay = `
-          <div style="display: flex; align-items: center; gap: 6px; justify-content: center;">
+          <div
+            style="display: flex; align-items: center; gap: 6px; justify-content: center;"
+            data-api-key-hash="${escapeHtml(entry.api_key_hash || '').replace(/"/g, '&quot;')}">
             <code style="font-size: 0.9em; color: var(--neutral-600);">${escapeHtml(entry.api_key_used)}</code>
             ${buttons}
           </div>
@@ -861,6 +891,29 @@
       return null;
     }
 
+    async function findKeyIndexForLog(keys, maskedKey, apiKeyHash) {
+      if (!keys || !keys.length) {
+        return { index: null, matchType: 'none' };
+      }
+
+      const normalizedHash = (apiKeyHash || '').trim().toLowerCase();
+      if (normalizedHash) {
+        for (let i = 0; i < keys.length; i++) {
+          const keyHash = await hashKeyForCompare(keys[i]);
+          if (keyHash && keyHash === normalizedHash) {
+            return { index: i, matchType: 'hash' };
+          }
+        }
+      }
+
+      const maskedIndex = findKeyIndexByMaskedKey(keys, maskedKey);
+      if (maskedIndex !== null) {
+        return { index: maskedIndex, matchType: 'mask' };
+      }
+
+      return { index: null, matchType: 'none' };
+    }
+
     function updateTestKeyIndexInfo(text) {
       const el = document.getElementById('testKeyIndexInfo');
       if (el) el.textContent = text || '';
@@ -950,12 +1003,13 @@
           const channelId = parseInt(btn.dataset.channelId);
           const channelName = btn.dataset.channelName || '';
           const apiKey = btn.dataset.apiKey || '';
+          const apiKeyHash = btn.dataset.apiKeyHash || btn.parentElement?.dataset.apiKeyHash || '';
           const model = btn.dataset.model || '';
 
           if (action === 'test') {
-            testKey(channelId, channelName, apiKey, model);
+            testKey(channelId, channelName, apiKey, apiKeyHash, model);
           } else if (action === 'delete') {
-            deleteKeyFromLog(channelId, channelName, apiKey);
+            deleteKeyFromLog(channelId, channelName, apiKey, apiKeyHash);
           }
         });
       }
@@ -1004,11 +1058,12 @@
     // ========== API Key 测试功能 ==========
     let testingKeyData = null;
 
-    async function testKey(channelId, channelName, apiKey, model) {
+    async function testKey(channelId, channelName, apiKey, apiKeyHash, model) {
       testingKeyData = {
         channelId,
         channelName,
         maskedApiKey: apiKey,
+        apiKeyHash,
         originalModel: model,
         channelType: null, // 将在异步加载渠道配置后填充
         keyIndex: null
@@ -1033,11 +1088,12 @@
         // ✅ 保存渠道类型,用于后续测试请求
         testingKeyData.channelType = channel.channel_type || 'anthropic';
         const apiKeys = parseApiKeysFromChannel(channel);
-        const matchedIndex = findKeyIndexByMaskedKey(apiKeys, apiKey);
-        testingKeyData.keyIndex = matchedIndex;
+        const matchResult = await findKeyIndexForLog(apiKeys, apiKey, apiKeyHash);
+        testingKeyData.keyIndex = matchResult.index;
+        const matchedIndex = matchResult.index;
         if (apiKeys.length > 0) {
           updateTestKeyIndexInfo(
-            matchedIndex !== null
+            matchResult.index !== null
               ? `匹配到 Key #${matchedIndex + 1}，按日志所用Key测试`
               : '未匹配到日志中的 Key，将按默认顺序测试'
           );
@@ -1239,7 +1295,7 @@
     }
 
     // ========== 删除 Key（从日志列表入口） ==========
-    async function deleteKeyFromLog(channelId, channelName, maskedApiKey) {
+    async function deleteKeyFromLog(channelId, channelName, maskedApiKey, apiKeyHash) {
       if (!channelId || !maskedApiKey) return;
 
       const confirmDel = await showConfirm({
@@ -1254,7 +1310,8 @@
         const channel = await fetchDataWithAuth(`/admin/channels/${channelId}`);
 
         const apiKeys = parseApiKeysFromChannel(channel);
-        const keyIndex = findKeyIndexByMaskedKey(apiKeys, maskedApiKey);
+        const matchResult = await findKeyIndexForLog(apiKeys, maskedApiKey, apiKeyHash);
+        const keyIndex = matchResult.index;
         if (keyIndex === null) {
           showAlert('未能匹配到该Key，请检查渠道配置。');
           return;

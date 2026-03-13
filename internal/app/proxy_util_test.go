@@ -145,3 +145,59 @@ func TestFilterAndWriteResponseHeaders_StripsHopByHop(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildLogEntry_SetsAPIKeyHashForKeyAuth(t *testing.T) {
+	entry := buildLogEntry(
+		"claude-3",
+		1,
+		"test-channel",
+		"anthropic",
+		200,
+		1.2,
+		true,
+		"sk-test-key",
+		"https://api.example.com",
+		0,
+		"",
+		"",
+		nil,
+		"",
+		time.Now(),
+	)
+
+	if entry.APIKeyUsed == "" || entry.APIKeyUsed == "sk-test-key" {
+		t.Fatalf("expected masked API key, got %q", entry.APIKeyUsed)
+	}
+	if entry.APIKeyHash == "" {
+		t.Fatal("expected api key hash to be set")
+	}
+}
+
+func TestBuildLogEntry_UsesGenericOAuthLabel(t *testing.T) {
+	for _, channelType := range []string{"anthropic", "codex", "gemini", "kiro"} {
+		entry := buildLogEntry(
+			"claude-3",
+			1,
+			"test-channel",
+			channelType,
+			200,
+			1.2,
+			true,
+			"",
+			"https://api.example.com",
+			0,
+			"",
+			"",
+			nil,
+			"",
+			time.Now(),
+		)
+
+		if entry.APIKeyUsed != "[OAuth]" {
+			t.Fatalf("expected generic OAuth label for %s, got %q", channelType, entry.APIKeyUsed)
+		}
+		if entry.APIKeyHash != "" {
+			t.Fatalf("expected empty api key hash for OAuth %s, got %q", channelType, entry.APIKeyHash)
+		}
+	}
+}

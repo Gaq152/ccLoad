@@ -43,8 +43,8 @@ func migrate(ctx context.Context, db *sql.DB, dialect Dialect) error {
 		schema.DefineSystemSettingsTable,
 		schema.DefineAdminSessionsTable,
 		schema.DefineLogsTable,
-		schema.DefineDailyStatsTable,    // 每日统计聚合表（2025-12新增）
-		schema.DefineModelPricingTable,  // 模型定价管理表（2026-03新增）
+		schema.DefineDailyStatsTable,   // 每日统计聚合表（2025-12新增）
+		schema.DefineModelPricingTable, // 模型定价管理表（2026-03新增）
 	}
 
 	// 创建表和索引
@@ -68,9 +68,15 @@ func migrate(ctx context.Context, db *sql.DB, dialect Dialect) error {
 				if err := ensureLogsAPIBaseURL(ctx, db); err != nil {
 					return fmt.Errorf("migrate logs.api_base_url: %w", err)
 				}
+				if err := ensureLogsAPIKeyHash(ctx, db); err != nil {
+					return fmt.Errorf("migrate logs.api_key_hash: %w", err)
+				}
 			} else {
 				if err := ensureLogsAPIBaseURLSQLite(ctx, db); err != nil {
 					return fmt.Errorf("migrate logs.api_base_url: %w", err)
+				}
+				if err := ensureLogsAPIKeyHashSQLite(ctx, db); err != nil {
+					return fmt.Errorf("migrate logs.api_key_hash: %w", err)
 				}
 			}
 		}
@@ -424,6 +430,67 @@ func ensureLogsAPIBaseURLSQLite(ctx context.Context, db *sql.DB) error {
 }
 
 // ensureChannelsAutoSelectEndpoint 确保channels表有auto_select_endpoint字段(MySQL增量迁移,2025-12新增)
+// ensureLogsAPIKeyHash ensures logs.api_key_hash exists for MySQL.
+func ensureLogsAPIKeyHash(ctx context.Context, db *sql.DB) error {
+	var count int
+	err := db.QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='logs' AND COLUMN_NAME='api_key_hash'",
+	).Scan(&count)
+	if err != nil {
+		return fmt.Errorf("check column existence: %w", err)
+	}
+
+	if count > 0 {
+		return nil
+	}
+
+	_, err = db.ExecContext(ctx,
+		"ALTER TABLE logs ADD COLUMN api_key_hash VARCHAR(64) NOT NULL DEFAULT '' COMMENT 'API Key SHA256指纹(新增2026-03)'",
+	)
+	if err != nil {
+		return fmt.Errorf("add api_key_hash column: %w", err)
+	}
+
+	return nil
+}
+
+// ensureLogsAPIKeyHashSQLite ensures logs.api_key_hash exists for SQLite.
+func ensureLogsAPIKeyHashSQLite(ctx context.Context, db *sql.DB) error {
+	rows, err := db.QueryContext(ctx, "PRAGMA table_info(logs)")
+	if err != nil {
+		return fmt.Errorf("check table info: %w", err)
+	}
+	defer rows.Close()
+
+	hasColumn := false
+	for rows.Next() {
+		var cid int
+		var name, typ string
+		var notNull, pk int
+		var dfltValue any
+		if err := rows.Scan(&cid, &name, &typ, &notNull, &dfltValue, &pk); err != nil {
+			return fmt.Errorf("scan column info: %w", err)
+		}
+		if name == "api_key_hash" {
+			hasColumn = true
+			break
+		}
+	}
+
+	if hasColumn {
+		return nil
+	}
+
+	_, err = db.ExecContext(ctx,
+		"ALTER TABLE logs ADD COLUMN api_key_hash TEXT NOT NULL DEFAULT ''",
+	)
+	if err != nil {
+		return fmt.Errorf("add api_key_hash column: %w", err)
+	}
+
+	return nil
+}
+
 func ensureChannelsAutoSelectEndpoint(ctx context.Context, db *sql.DB) error {
 	var count int
 	err := db.QueryRowContext(ctx,

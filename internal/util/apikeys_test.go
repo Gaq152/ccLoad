@@ -58,3 +58,27 @@ func TestParseAPIKeys(t *testing.T) {
 		})
 	}
 }
+
+func TestHashAPIKey(t *testing.T) {
+	const apiKey = "sk-test-key"
+
+	hash1 := HashAPIKey(apiKey)
+	hash2 := HashAPIKey(apiKey)
+	otherHash := HashAPIKey("sk-other-key")
+
+	if hash1 == "" {
+		t.Fatal("expected non-empty hash")
+	}
+	if len(hash1) != 64 {
+		t.Fatalf("expected hash length 64, got %d", len(hash1))
+	}
+	if hash1 != hash2 {
+		t.Fatal("expected same key to produce stable hash")
+	}
+	if hash1 == otherHash {
+		t.Fatal("expected different keys to produce different hashes")
+	}
+	if HashAPIKey("") != "" {
+		t.Fatal("expected empty key to produce empty hash")
+	}
+}

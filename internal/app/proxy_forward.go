@@ -1304,17 +1304,7 @@ func getAPIKeyDisplayForMonitor(cfg *model.Config, selectedKey string) string {
 
 	// OAuth 认证渠道显示认证类型
 	if cfg.Preset == "official" || cfg.Preset == "kiro" {
-		channelType := cfg.GetChannelType()
-		switch channelType {
-		case "kiro":
-			return "[Kiro OAuth]"
-		case "codex":
-			return "[Codex OAuth]"
-		case "gemini":
-			return "[Gemini OAuth]"
-		default:
-			return "[OAuth]"
-		}
+		return "[OAuth]"
 	}
 
 	return "-"

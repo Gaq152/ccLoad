@@ -33,15 +33,15 @@ func DefineAPIKeysTable() *TableBuilder {
 		Column("id INT PRIMARY KEY AUTO_INCREMENT").
 		Column("channel_id INT NOT NULL").
 		Column("key_index INT NOT NULL").
-		Column("api_key TEXT NOT NULL").                           // 扩展为TEXT以支持较长的Key
+		Column("api_key TEXT NOT NULL"). // 扩展为TEXT以支持较长的Key
 		Column("key_strategy VARCHAR(32) NOT NULL DEFAULT 'sequential'").
 		Column("cooldown_until BIGINT NOT NULL DEFAULT 0").
 		Column("cooldown_duration_ms BIGINT NOT NULL DEFAULT 0").
-		Column("access_token TEXT DEFAULT NULL").                  // OAuth access_token（官方预设使用）
-		Column("id_token TEXT DEFAULT NULL").                      // OAuth id_token（官方预设使用）
-		Column("refresh_token TEXT DEFAULT NULL").                 // OAuth refresh_token（官方预设使用）
-		Column("token_expires_at BIGINT NOT NULL DEFAULT 0").      // Token过期时间戳（官方预设使用）
-		Column("device_fingerprint VARCHAR(128) DEFAULT NULL").    // Kiro 设备指纹
+		Column("access_token TEXT DEFAULT NULL").               // OAuth access_token（官方预设使用）
+		Column("id_token TEXT DEFAULT NULL").                   // OAuth id_token（官方预设使用）
+		Column("refresh_token TEXT DEFAULT NULL").              // OAuth refresh_token（官方预设使用）
+		Column("token_expires_at BIGINT NOT NULL DEFAULT 0").   // Token过期时间戳（官方预设使用）
+		Column("device_fingerprint VARCHAR(128) DEFAULT NULL"). // Kiro 设备指纹
 		Column("created_at BIGINT NOT NULL").
 		Column("updated_at BIGINT NOT NULL").
 		Column("UNIQUE KEY uk_channel_key (channel_id, key_index)").
@@ -113,11 +113,11 @@ func DefineChannelEndpointsTable() *TableBuilder {
 		Column("id INT PRIMARY KEY AUTO_INCREMENT").
 		Column("channel_id INT NOT NULL").
 		Column("url VARCHAR(512) NOT NULL").
-		Column("is_active TINYINT NOT NULL DEFAULT 0").       // 当前选中的端点
-		Column("latency_ms INT DEFAULT NULL").                // 最近测速延迟(ms)，NULL表示未测试
-		Column("status_code INT DEFAULT NULL").               // 最近测速HTTP状态码，NULL表示未测试
-		Column("last_test_at BIGINT NOT NULL DEFAULT 0").     // 最后测速时间戳
-		Column("sort_order INT NOT NULL DEFAULT 0").          // 排序顺序
+		Column("is_active TINYINT NOT NULL DEFAULT 0").   // 当前选中的端点
+		Column("latency_ms INT DEFAULT NULL").            // 最近测速延迟(ms)，NULL表示未测试
+		Column("status_code INT DEFAULT NULL").           // 最近测速HTTP状态码，NULL表示未测试
+		Column("last_test_at BIGINT NOT NULL DEFAULT 0"). // 最后测速时间戳
+		Column("sort_order INT NOT NULL DEFAULT 0").      // 排序顺序
 		Column("created_at BIGINT NOT NULL").
 		Column("FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE").
 		Index("idx_channel_endpoints_channel", "channel_id").
@@ -155,9 +155,10 @@ func DefineLogsTable() *TableBuilder {
 		Column("is_streaming TINYINT NOT NULL DEFAULT 0").
 		Column("first_byte_time DOUBLE NOT NULL DEFAULT 0.0").
 		Column("api_key_used VARCHAR(191) NOT NULL DEFAULT ''").
+		Column("api_key_hash VARCHAR(64) NOT NULL DEFAULT ''").
 		Column("api_base_url VARCHAR(512) NOT NULL DEFAULT ''"). // 使用的API端点URL（新增2025-12）
-		Column("auth_token_id BIGINT NOT NULL DEFAULT 0"). // 客户端使用的API令牌ID（新增2025-12）
-		Column("client_ip VARCHAR(45) NOT NULL DEFAULT ''"). // 客户端IP地址（新增2025-12）
+		Column("auth_token_id BIGINT NOT NULL DEFAULT 0").       // 客户端使用的API令牌ID（新增2025-12）
+		Column("client_ip VARCHAR(45) NOT NULL DEFAULT ''").     // 客户端IP地址（新增2025-12）
 		Column("input_tokens INT NOT NULL DEFAULT 0").
 		Column("output_tokens INT NOT NULL DEFAULT 0").
 		Column("cache_read_input_tokens INT NOT NULL DEFAULT 0").
@@ -174,13 +175,13 @@ func DefineLogsTable() *TableBuilder {
 func DefineModelPricingTable() *TableBuilder {
 	return NewTable("model_pricing").
 		Column("id INT PRIMARY KEY AUTO_INCREMENT").
-		Column("model VARCHAR(191) NOT NULL UNIQUE").          // 基础模型名
-		Column("display_name VARCHAR(191) DEFAULT ''").        // 前端显示名
-		Column("channel_type VARCHAR(64) NOT NULL").           // anthropic/openai/gemini
-		Column("input_price DOUBLE NOT NULL").                 // $/1M tokens
-		Column("output_price DOUBLE NOT NULL").                // $/1M tokens
-		Column("input_price_high DOUBLE NOT NULL DEFAULT 0").  // 长上下文输入价
-		Column("output_price_high DOUBLE NOT NULL DEFAULT 0"). // 长上下文输出价
+		Column("model VARCHAR(191) NOT NULL UNIQUE").               // 基础模型名
+		Column("display_name VARCHAR(191) DEFAULT ''").             // 前端显示名
+		Column("channel_type VARCHAR(64) NOT NULL").                // anthropic/openai/gemini
+		Column("input_price DOUBLE NOT NULL").                      // $/1M tokens
+		Column("output_price DOUBLE NOT NULL").                     // $/1M tokens
+		Column("input_price_high DOUBLE NOT NULL DEFAULT 0").       // 长上下文输入价
+		Column("output_price_high DOUBLE NOT NULL DEFAULT 0").      // 长上下文输出价
 		Column("cache_read_multiplier DOUBLE NOT NULL DEFAULT 0").  // 0=使用系统默认
 		Column("cache_write_multiplier DOUBLE NOT NULL DEFAULT 0"). // 0=使用系统默认
 		Column("created_at BIGINT NOT NULL").

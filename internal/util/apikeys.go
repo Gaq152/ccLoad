@@ -1,6 +1,8 @@
 package util
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"strings"
 	"unicode"
@@ -37,4 +39,15 @@ func ParseAPIKeys(apiKey string) []string {
 		}
 	}
 	return keys
+}
+
+// HashAPIKey returns a stable SHA256 fingerprint for an API key.
+func HashAPIKey(apiKey string) string {
+	apiKey = strings.TrimSpace(apiKey)
+	if apiKey == "" {
+		return ""
+	}
+
+	sum := sha256.Sum256([]byte(apiKey))
+	return hex.EncodeToString(sum[:])
 }

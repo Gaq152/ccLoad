@@ -5,13 +5,12 @@ import (
 	"time"
 )
 
-// JSONTime 自定义时间类型，使用Unix时间戳进行JSON序列化
-// 设计原则：与数据库格式统一，减少转换复杂度（KISS原则）
+// JSONTime stores timestamps as Unix seconds in JSON.
 type JSONTime struct {
 	time.Time
 }
 
-// MarshalJSON 实现JSON序列化
+// MarshalJSON implements json.Marshaler.
 func (jt JSONTime) MarshalJSON() ([]byte, error) {
 	if jt.Time.IsZero() {
 		return []byte("0"), nil
@@ -19,7 +18,7 @@ func (jt JSONTime) MarshalJSON() ([]byte, error) {
 	return []byte(strconv.FormatInt(jt.Time.Unix(), 10)), nil
 }
 
-// UnmarshalJSON 实现JSON反序列化
+// UnmarshalJSON implements json.Unmarshaler.
 func (jt *JSONTime) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" || string(data) == "0" {
 		jt.Time = time.Time{}
@@ -33,43 +32,43 @@ func (jt *JSONTime) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// LogEntry 请求日志条目
+// LogEntry is a request log record.
 type LogEntry struct {
 	ID            int64    `json:"id"`
 	Time          JSONTime `json:"time"`
 	Model         string   `json:"model"`
 	ChannelID     int64    `json:"channel_id"`
 	ChannelName   string   `json:"channel_name,omitempty"`
-	ChannelType   string   `json:"channel_type,omitempty"` // 渠道类型（anthropic/gemini/codex），用于前端筛选
+	ChannelType   string   `json:"channel_type,omitempty"`
 	StatusCode    int      `json:"status_code"`
 	Message       string   `json:"message"`
-	Duration      float64  `json:"duration"`         // 总耗时（秒）
-	IsStreaming   bool     `json:"is_streaming"`     // 是否为流式请求
-	FirstByteTime float64  `json:"first_byte_time"`  // 首字节响应时间（秒）
-	APIKeyUsed    string   `json:"api_key_used"`     // 使用的API Key（查询时自动脱敏为 abcd...klmn 格式）
-	APIBaseURL    string   `json:"api_base_url"`     // 使用的API端点URL（新增2025-12）
-	AuthTokenID   int64    `json:"auth_token_id"`    // 客户端使用的API令牌ID（新增2025-12，0表示未使用token）
-	AuthTokenName string   `json:"auth_token_name,omitempty"` // 客户端使用的API令牌名称（查询时填充）
-	ClientIP      string   `json:"client_ip"`        // 客户端IP地址（新增2025-12）
+	Duration      float64  `json:"duration"`
+	IsStreaming   bool     `json:"is_streaming"`
+	FirstByteTime float64  `json:"first_byte_time"`
+	APIKeyUsed    string   `json:"api_key_used"`
+	APIKeyHash    string   `json:"api_key_hash,omitempty"`
+	APIBaseURL    string   `json:"api_base_url"`
+	AuthTokenID   int64    `json:"auth_token_id"`
+	AuthTokenName string   `json:"auth_token_name,omitempty"`
+	ClientIP      string   `json:"client_ip"`
 
-	// Token统计（2025-11新增，支持Claude API usage字段）
 	InputTokens              int     `json:"input_tokens"`
 	OutputTokens             int     `json:"output_tokens"`
 	CacheReadInputTokens     int     `json:"cache_read_input_tokens"`
 	CacheCreationInputTokens int     `json:"cache_creation_input_tokens"`
-	Cost                     float64 `json:"cost"` // 请求成本（美元）
+	Cost                     float64 `json:"cost"`
 }
 
-// LogFilter 日志查询过滤条件
+// LogFilter is the request log query filter.
 type LogFilter struct {
 	ChannelID       *int64
-	ChannelIDLike   string // 渠道ID前缀匹配（输入 "1" 匹配 1, 10, 11 等）
+	ChannelIDLike   string
 	ChannelName     string
 	ChannelNameLike string
 	Model           string
 	ModelLike       string
 	StatusCode      *int
-	StatusCodeLike  string // 状态码前缀匹配（输入 "4" 匹配 400, 401 等 4xx 错误）
-	ChannelType     string // 渠道类型过滤（anthropic/gemini/codex）
-	AuthTokenID     *int64 // API令牌ID过滤
+	StatusCodeLike  string
+	ChannelType     string
+	AuthTokenID     *int64
 }
