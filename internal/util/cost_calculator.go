@@ -3,6 +3,7 @@ package util
 import (
 	"log"
 	"strings"
+	"sync"
 )
 
 // ============================================================================
@@ -18,6 +19,82 @@ type ModelPricing struct {
 	// 如果为0，表示无分段定价，使用InputPrice/OutputPrice
 	InputPriceHigh  float64 // 高上下文输入价格（$/1M tokens, >200k context）
 	OutputPriceHigh float64 // 高上下文输出价格（$/1M tokens, >200k context）
+}
+
+// DBPricingEntry DB 定价缓存条目（轻量结构，不依赖 model 包）
+type DBPricingEntry struct {
+	Model                string  // 基础模型名
+	DisplayName          string  // 前端显示名
+	ChannelType          string  // anthropic/openai/gemini
+	InputPrice           float64 // $/1M tokens
+	OutputPrice          float64 // $/1M tokens
+	InputPriceHigh       float64 // 长上下文输入价
+	OutputPriceHigh      float64 // 长上下文输出价
+	CacheReadMultiplier  float64 // 0=使用系统默认
+	CacheWriteMultiplier float64 // 0=使用系统默认
+}
+
+// dbPricingCache DB 定价内存缓存（sync.Map，并发安全，O(1) 查询）
+// key: model name (string), value: DBPricingEntry
+var dbPricingCache sync.Map
+
+// SetDBPricing 批量加载 DB 定价数据到内存缓存（启动时和 Admin API 修改后调用）
+func SetDBPricing(entries []DBPricingEntry) {
+	// 先清空旧缓存
+	dbPricingCache.Range(func(key, value any) bool {
+		dbPricingCache.Delete(key)
+		return true
+	})
+	// 加载新数据
+	for _, e := range entries {
+		dbPricingCache.Store(e.Model, e)
+	}
+}
+
+// ClearDBPricing 清空 DB 定价缓存
+func ClearDBPricing() {
+	dbPricingCache.Range(func(key, value any) bool {
+		dbPricingCache.Delete(key)
+		return true
+	})
+}
+
+// GetDefaultPricing 导出硬编码定价供 Admin API "导入默认定价" 使用
+func GetDefaultPricing() []DBPricingEntry {
+	entries := make([]DBPricingEntry, 0, len(basePricing))
+	for model, p := range basePricing {
+		channelType := classifyModelChannelType(model)
+		entries = append(entries, DBPricingEntry{
+			Model:           model,
+			ChannelType:     channelType,
+			InputPrice:      p.InputPrice,
+			OutputPrice:     p.OutputPrice,
+			InputPriceHigh:  p.InputPriceHigh,
+			OutputPriceHigh: p.OutputPriceHigh,
+		})
+	}
+	return entries
+}
+
+// classifyModelChannelType 根据模型名推断渠道类型
+func classifyModelChannelType(model string) string {
+	lower := strings.ToLower(model)
+	if strings.HasPrefix(lower, "claude-") {
+		return "anthropic"
+	}
+	if strings.HasPrefix(lower, "gemini-") {
+		return "gemini"
+	}
+	return "openai"
+}
+
+// GetModelAliasesReverse 反向别名映射（base model → alias 列表）
+func GetModelAliasesReverse() map[string][]string {
+	result := make(map[string][]string)
+	for alias, base := range modelAliases {
+		result[base] = append(result[base], alias)
+	}
+	return result
 }
 
 // basePricing 基础定价表（无重复，每个模型只定义一次）
@@ -163,15 +240,44 @@ var modelAliases = map[string]string{
 	"gemini-3-pro-preview":   "gemini-3-pro",
 }
 
-// getPricing 获取模型定价（先查别名再查基础表）
+// getPricing 获取模型定价
+// 查询优先级:
+//  1. DB 内存缓存精确匹配
+//  2. 硬编码 modelAliases 解析 → 再查 DB 缓存
+//  3. 硬编码 basePricing 精确匹配
 func getPricing(model string) (ModelPricing, bool) {
-	// 先查别名
+	// 1. DB 缓存精确匹配
+	if p, ok := getDBPricing(model); ok {
+		return p, true
+	}
+
+	// 2. 别名解析 → 再查 DB 缓存
 	if base, ok := modelAliases[model]; ok {
+		if p, ok := getDBPricing(base); ok {
+			return p, true
+		}
+		// 别名解析后查硬编码
 		model = base
 	}
-	// 再查基础表
+
+	// 3. 硬编码 basePricing 精确匹配
 	p, ok := basePricing[model]
 	return p, ok
+}
+
+// getDBPricing 从 DB 缓存查询定价，转换为 ModelPricing
+func getDBPricing(model string) (ModelPricing, bool) {
+	v, ok := dbPricingCache.Load(model)
+	if !ok {
+		return ModelPricing{}, false
+	}
+	e := v.(DBPricingEntry)
+	return ModelPricing{
+		InputPrice:      e.InputPrice,
+		OutputPrice:     e.OutputPrice,
+		InputPriceHigh:  e.InputPriceHigh,
+		OutputPriceHigh: e.OutputPriceHigh,
+	}, true
 }
 
 const (
@@ -261,7 +367,10 @@ func CalculateCost(model string, inputTokens, outputTokens, cacheReadTokens, cac
 	// 3. 缓存读取成本（OpenAI按模型系列有不同折扣率）
 	if cacheReadTokens > 0 {
 		cacheMultiplier := cacheReadMultiplierClaude // Claude全系/Gemini: 10%折扣
-		if isOpenAIModel(model) {
+		// DB 缓存中的自定义倍率优先
+		if dbMul := getDBCacheReadMultiplier(model); dbMul > 0 {
+			cacheMultiplier = dbMul
+		} else if isOpenAIModel(model) {
 			// OpenAI缓存折扣率按模型系列区分（2025-12官方定价）
 			cacheMultiplier = getOpenAICacheMultiplier(model)
 		} else if isOpusModel(model) {
@@ -273,7 +382,12 @@ func CalculateCost(model string, inputTokens, outputTokens, cacheReadTokens, cac
 
 	// 4. 缓存创建成本(125%基础价格,仅Claude支持)
 	if cacheCreationTokens > 0 {
-		cacheWritePrice := inputPricePerM * cacheWriteMultiplier
+		writeMul := cacheWriteMultiplier
+		// DB 缓存中的自定义倍率优先
+		if dbMul := getDBCacheWriteMultiplier(model); dbMul > 0 {
+			writeMul = dbMul
+		}
+		cacheWritePrice := inputPricePerM * writeMul
 		cost += float64(cacheCreationTokens) * cacheWritePrice / 1_000_000
 	}
 
@@ -392,6 +506,32 @@ func SelectCheapestModel(models []string) (string, bool) {
 	return cheapestModel, true
 }
 
+// getDBCacheReadMultiplier 获取 DB 中模型的缓存读取倍率（0=未设置/使用默认）
+func getDBCacheReadMultiplier(model string) float64 {
+	// 先用别名解析
+	if base, ok := modelAliases[model]; ok {
+		model = base
+	}
+	v, ok := dbPricingCache.Load(model)
+	if !ok {
+		return 0
+	}
+	return v.(DBPricingEntry).CacheReadMultiplier
+}
+
+// getDBCacheWriteMultiplier 获取 DB 中模型的缓存写入倍率（0=未设置/使用默认）
+func getDBCacheWriteMultiplier(model string) float64 {
+	// 先用别名解析
+	if base, ok := modelAliases[model]; ok {
+		model = base
+	}
+	v, ok := dbPricingCache.Load(model)
+	if !ok {
+		return 0
+	}
+	return v.(DBPricingEntry).CacheWriteMultiplier
+}
+
 // fuzzyMatchModel 模糊匹配模型名称
 // 例如：claude-3-opus-20240229-extended → claude-3-opus
 //
@@ -435,10 +575,35 @@ func fuzzyMatchModel(model string) (ModelPricing, bool) {
 
 	for _, prefix := range prefixes {
 		if strings.HasPrefix(lowerModel, prefix) {
+			// 先查 DB 缓存
+			if p, ok := getDBPricing(prefix); ok {
+				return p, true
+			}
+			// 再查硬编码
 			if pricing, ok := basePricing[prefix]; ok {
 				return pricing, true
 			}
 		}
+	}
+
+	// 最后尝试 DB 缓存中的前缀匹配（覆盖用户新增的模型）
+	var bestMatch DBPricingEntry
+	bestLen := 0
+	dbPricingCache.Range(func(key, value any) bool {
+		k := key.(string)
+		if strings.HasPrefix(lowerModel, strings.ToLower(k)) && len(k) > bestLen {
+			bestMatch = value.(DBPricingEntry)
+			bestLen = len(k)
+		}
+		return true
+	})
+	if bestLen > 0 {
+		return ModelPricing{
+			InputPrice:      bestMatch.InputPrice,
+			OutputPrice:     bestMatch.OutputPrice,
+			InputPriceHigh:  bestMatch.InputPriceHigh,
+			OutputPriceHigh: bestMatch.OutputPriceHigh,
+		}, true
 	}
 
 	return ModelPricing{}, false
