@@ -1,6 +1,37 @@
 // 系统设置页面
 initTopbar('settings');
 
+// ============================================================================
+// Tab 切换逻辑
+// ============================================================================
+(function initTabs() {
+  const tabBtns = document.querySelectorAll('.tab-btn[data-tab]');
+  tabBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      // 切换按钮状态
+      tabBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      // 切换内容区
+      document.querySelectorAll('.tab-content').forEach(tc => {
+        tc.classList.remove('active');
+        tc.style.display = 'none';
+      });
+      const target = document.getElementById('tab-' + btn.dataset.tab);
+      if (target) {
+        target.classList.add('active');
+        target.style.display = 'block';
+      }
+      // 切换到模型计费 Tab 时加载数据
+      if (btn.dataset.tab === 'pricing' && !pricingLoaded) {
+        loadPricing();
+      }
+    });
+  });
+})();
+
+// ============================================================================
+// 基础设置 Tab
+// ============================================================================
 let originalSettings = {}; // 保存原始值用于比较
 
 async function loadSettings() {
@@ -261,5 +292,218 @@ function showInfo(msg) {
   window.showNotification(msg, 'info');
 }
 
-// 页面加载时执行
+// ============================================================================
+// 模型计费 Tab
+// ============================================================================
+let pricingLoaded = false;
+let pricingData = []; // 完整数据（用于前端筛选）
+
+const channelTypeLabels = {
+  'anthropic': 'Claude',
+  'openai': 'OpenAI',
+  'gemini': 'Gemini'
+};
+
+async function loadPricing() {
+  try {
+    const resp = await fetchDataWithAuth('/admin/pricing');
+    pricingData = resp.entries || [];
+    pricingLoaded = true;
+    renderPricing();
+    initPricingEventDelegation();
+  } catch (err) {
+    console.error('加载定价异常:', err);
+    showError('加载定价异常: ' + err.message);
+  }
+}
+
+function renderPricing() {
+  const tbody = document.getElementById('pricing-tbody');
+  const emptyDiv = document.getElementById('pricing-empty');
+  tbody.innerHTML = '';
+
+  // 筛选
+  const search = (document.getElementById('pricing-search')?.value || '').toLowerCase();
+  const typeFilter = document.getElementById('pricing-type-filter')?.value || '';
+
+  const filtered = pricingData.filter(e => {
+    if (search && !e.model.toLowerCase().includes(search) && !(e.display_name || '').toLowerCase().includes(search)) {
+      return false;
+    }
+    if (typeFilter && e.channel_type !== typeFilter) {
+      return false;
+    }
+    return true;
+  });
+
+  if (filtered.length === 0) {
+    emptyDiv.style.display = pricingData.length === 0 ? 'block' : 'block';
+    if (pricingData.length > 0 && filtered.length === 0) {
+      emptyDiv.textContent = '没有匹配的结果';
+    } else {
+      emptyDiv.textContent = '暂无定价数据，点击"导入默认定价"快速初始化';
+    }
+    return;
+  }
+
+  emptyDiv.style.display = 'none';
+
+  filtered.forEach(e => {
+    const aliasesList = e.aliases || [];
+    const aliasesFull = aliasesList.join(', ');
+    const aliasesDisplay = aliasesList.length > 0
+      ? aliasesList.slice(0, 3).join(', ') + (aliasesList.length > 3 ? ` +${aliasesList.length - 3}` : '')
+      : '<span style="color:var(--neutral-400);">-</span>';
+
+    const row = TemplateEngine.render('tpl-pricing-row', {
+      id: e.id,
+      model: e.model,
+      display_name: e.display_name || e.model,
+      channel_type: e.channel_type,
+      channel_type_label: channelTypeLabels[e.channel_type] || e.channel_type,
+      input_price: formatPrice(e.input_price),
+      output_price: formatPrice(e.output_price),
+      high_input_display: e.input_price_high > 0 ? '$' + formatPrice(e.input_price_high) : '<span style="color:var(--neutral-400);">-</span>',
+      high_output_display: e.output_price_high > 0 ? '$' + formatPrice(e.output_price_high) : '<span style="color:var(--neutral-400);">-</span>',
+      aliases_display: aliasesDisplay,
+      aliases_full: aliasesFull
+    });
+    if (row) tbody.appendChild(row);
+  });
+}
+
+function formatPrice(val) {
+  if (val === 0) return '0';
+  if (val < 0.01) return val.toFixed(4);
+  if (val < 1) return val.toFixed(3);
+  return val.toFixed(2);
+}
+
+function initPricingEventDelegation() {
+  const tbody = document.getElementById('pricing-tbody');
+  if (!tbody || tbody.dataset.delegated) return;
+  tbody.dataset.delegated = 'true';
+
+  tbody.addEventListener('click', (e) => {
+    const editBtn = e.target.closest('.pricing-edit-btn');
+    if (editBtn) {
+      const id = parseInt(editBtn.dataset.id);
+      const entry = pricingData.find(p => p.id === id);
+      if (entry) openPricingDrawer(entry);
+      return;
+    }
+
+    const deleteBtn = e.target.closest('.pricing-delete-btn');
+    if (deleteBtn) {
+      deletePricingEntry(parseInt(deleteBtn.dataset.id), deleteBtn.dataset.model);
+    }
+  });
+
+  // 搜索和筛选
+  document.getElementById('pricing-search')?.addEventListener('input', renderPricing);
+  document.getElementById('pricing-type-filter')?.addEventListener('change', renderPricing);
+}
+
+// ============================================================================
+// 定价抽屉（新增/编辑）
+// ============================================================================
+function openPricingDrawer(entry) {
+  const isEdit = !!entry;
+  document.getElementById('pricingDrawerTitle').textContent = isEdit ? '编辑模型定价' : '新增模型定价';
+  document.getElementById('pricingDrawerId').value = isEdit ? entry.id : '';
+  document.getElementById('pricingModel').value = isEdit ? entry.model : '';
+  document.getElementById('pricingModel').readOnly = isEdit; // 编辑时不允许修改模型名
+  document.getElementById('pricingDisplayName').value = isEdit ? (entry.display_name || '') : '';
+  document.getElementById('pricingChannelType').value = isEdit ? entry.channel_type : 'anthropic';
+  document.getElementById('pricingInputPrice').value = isEdit ? entry.input_price : '';
+  document.getElementById('pricingOutputPrice').value = isEdit ? entry.output_price : '';
+  document.getElementById('pricingInputPriceHigh').value = isEdit ? entry.input_price_high : 0;
+  document.getElementById('pricingOutputPriceHigh').value = isEdit ? entry.output_price_high : 0;
+  document.getElementById('pricingCacheReadMul').value = isEdit ? entry.cache_read_multiplier : 0;
+  document.getElementById('pricingCacheWriteMul').value = isEdit ? entry.cache_write_multiplier : 0;
+
+  document.getElementById('pricingDrawerOverlay').classList.add('show');
+  document.getElementById('pricingDrawer').classList.add('open');
+}
+
+function closePricingDrawer() {
+  document.getElementById('pricingDrawerOverlay').classList.remove('show');
+  document.getElementById('pricingDrawer').classList.remove('open');
+}
+
+async function savePricingEntry() {
+  const id = document.getElementById('pricingDrawerId').value;
+  const isEdit = !!id;
+
+  const payload = {
+    model: document.getElementById('pricingModel').value.trim(),
+    display_name: document.getElementById('pricingDisplayName').value.trim(),
+    channel_type: document.getElementById('pricingChannelType').value,
+    input_price: parseFloat(document.getElementById('pricingInputPrice').value) || 0,
+    output_price: parseFloat(document.getElementById('pricingOutputPrice').value) || 0,
+    input_price_high: parseFloat(document.getElementById('pricingInputPriceHigh').value) || 0,
+    output_price_high: parseFloat(document.getElementById('pricingOutputPriceHigh').value) || 0,
+    cache_read_multiplier: parseFloat(document.getElementById('pricingCacheReadMul').value) || 0,
+    cache_write_multiplier: parseFloat(document.getElementById('pricingCacheWriteMul').value) || 0,
+  };
+
+  if (!payload.model) {
+    showError('模型名称不能为空');
+    return;
+  }
+
+  try {
+    const url = isEdit ? `/admin/pricing/${id}` : '/admin/pricing';
+    const method = isEdit ? 'PUT' : 'POST';
+    await fetchDataWithAuth(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    showSuccess(isEdit ? '定价已更新' : '定价已创建');
+    closePricingDrawer();
+    loadPricing();
+  } catch (err) {
+    console.error('保存定价异常:', err);
+    showError('保存失败: ' + err.message);
+  }
+}
+
+async function deletePricingEntry(id, modelName) {
+  if (!await showConfirm({
+    title: '删除确认',
+    message: `确定要删除模型 "${modelName}" 的定价吗？\n删除后将回退到内置默认定价。`,
+    type: 'danger'
+  })) return;
+
+  try {
+    await fetchDataWithAuth(`/admin/pricing/${id}`, { method: 'DELETE' });
+    showSuccess(`模型 ${modelName} 定价已删除`);
+    loadPricing();
+  } catch (err) {
+    console.error('删除定价异常:', err);
+    showError('删除失败: ' + err.message);
+  }
+}
+
+async function importDefaultPricing() {
+  if (!await showConfirm({
+    title: '导入默认定价',
+    message: '将从内置数据导入所有模型定价。已存在的模型将被覆盖更新。',
+    type: 'warning'
+  })) return;
+
+  try {
+    const resp = await fetchDataWithAuth('/admin/pricing/defaults', { method: 'POST' });
+    showSuccess(resp.message || '导入完成');
+    loadPricing();
+  } catch (err) {
+    console.error('导入默认定价异常:', err);
+    showError('导入失败: ' + err.message);
+  }
+}
+
+// ============================================================================
+// 页面初始化
+// ============================================================================
 loadSettings();
