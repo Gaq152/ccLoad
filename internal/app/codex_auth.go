@@ -24,8 +24,10 @@ type CodexOAuthToken struct {
 	Type         string `json:"type"`          // 固定为 "oauth"
 	AccessToken  string `json:"access_token"`  // JWT 格式的访问令牌
 	RefreshToken string `json:"refresh_token"` // 刷新令牌
+	IDToken      string `json:"id_token"`      // ID Token（可选，包含用户信息）
 	ExpiresAt    int64  `json:"expires_at"`    // 过期时间 Unix 时间戳（秒）
 	AccountID    string `json:"account_id"`    // 从 JWT 提取的 chatgpt_account_id
+	Email        string `json:"email"`         // 用户邮箱（从 ID Token 解析）
 }
 
 // Codex OAuth 配置常量
@@ -137,6 +139,9 @@ func (s *Server) RefreshCodexTokenIfNeeded(
 		existingKey.AccessToken = newToken.AccessToken
 		existingKey.RefreshToken = newToken.RefreshToken
 		existingKey.TokenExpiresAt = newToken.ExpiresAt
+		if newToken.IDToken != "" {
+			existingKey.IDToken = newToken.IDToken
+		}
 		if err := s.store.UpdateAPIKey(ctx, existingKey); err != nil {
 			log.Printf("[WARN] Failed to update Codex token in database: %v", err)
 		} else {
@@ -189,6 +194,7 @@ func (s *Server) refreshCodexToken(ctx context.Context, token *CodexOAuthToken) 
 	var result struct {
 		AccessToken  string `json:"access_token"`
 		RefreshToken string `json:"refresh_token"`
+		IDToken      string `json:"id_token"`
 		ExpiresIn    int64  `json:"expires_in"`
 		TokenType    string `json:"token_type"`
 	}
@@ -205,6 +211,7 @@ func (s *Server) refreshCodexToken(ctx context.Context, token *CodexOAuthToken) 
 		Type:         "oauth",
 		AccessToken:  result.AccessToken,
 		RefreshToken: result.RefreshToken,
+		IDToken:      result.IDToken,
 		ExpiresAt:    time.Now().Unix() + result.ExpiresIn,
 		AccountID:    ExtractAccountIDFromJWT(result.AccessToken),
 	}
@@ -214,26 +221,36 @@ func (s *Server) refreshCodexToken(ctx context.Context, token *CodexOAuthToken) 
 		newToken.RefreshToken = token.RefreshToken
 	}
 
+	// 如果新响应没有 id_token，保留旧的
+	if newToken.IDToken == "" {
+		newToken.IDToken = token.IDToken
+	}
+
+	// 从 ID Token 解析邮箱
+	if newToken.IDToken != "" {
+		newToken.Email = ExtractEmailFromIDToken(newToken.IDToken)
+	}
+
 	// 如果无法提取 account_id，保留旧的
 	if newToken.AccountID == "" {
 		newToken.AccountID = token.AccountID
+	}
+	if newToken.Email == "" {
+		newToken.Email = token.Email
 	}
 
 	return newToken, nil
 }
 
-// ExtractAccountIDFromJWT 从 JWT access_token 中提取 chatgpt_account_id
-// JWT 结构: header.payload.signature
-// payload 中包含: {"https://api.openai.com/auth": {"chatgpt_account_id": "xxx"}}
-func ExtractAccountIDFromJWT(accessToken string) string {
-	if accessToken == "" {
-		return ""
+func extractJWTClaims(token string) map[string]any {
+	if token == "" {
+		return nil
 	}
 
 	// 分割 JWT
-	parts := strings.Split(accessToken, ".")
+	parts := strings.Split(token, ".")
 	if len(parts) != 3 {
-		return ""
+		return nil
 	}
 
 	// 解码 payload（第二部分）
@@ -251,12 +268,24 @@ func ExtractAccountIDFromJWT(accessToken string) string {
 
 	decoded, err := base64.StdEncoding.DecodeString(payload)
 	if err != nil {
-		return ""
+		return nil
 	}
 
 	// 解析 JSON
 	var claims map[string]any
 	if err := sonic.Unmarshal(decoded, &claims); err != nil {
+		return nil
+	}
+
+	return claims
+}
+
+// ExtractAccountIDFromJWT 从 JWT access_token 中提取 chatgpt_account_id
+// JWT 结构: header.payload.signature
+// payload 中包含: {"https://api.openai.com/auth": {"chatgpt_account_id": "xxx"}}
+func ExtractAccountIDFromJWT(accessToken string) string {
+	claims := extractJWTClaims(accessToken)
+	if claims == nil {
 		return ""
 	}
 
@@ -269,6 +298,17 @@ func ExtractAccountIDFromJWT(accessToken string) string {
 
 	accountID, _ := auth["chatgpt_account_id"].(string)
 	return accountID
+}
+
+// ExtractEmailFromIDToken extracts email from an OpenID Connect ID token.
+func ExtractEmailFromIDToken(idToken string) string {
+	claims := extractJWTClaims(idToken)
+	if claims == nil {
+		return ""
+	}
+
+	email, _ := claims["email"].(string)
+	return email
 }
 
 // SerializeCodexToken 将 CodexOAuthToken 序列化为 JSON 字符串

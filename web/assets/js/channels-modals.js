@@ -261,6 +261,7 @@ async function editChannel(id) {
           expires_at: firstKey.token_expires_at || 0
         };
         if (channelType === 'codex') {
+          token.email = extractEmailFromOpenIDToken(firstKey.id_token);
           updateCodexTokenUI(token);
           updateGeminiTokenUI(null);
         } else {
@@ -276,6 +277,7 @@ async function editChannel(id) {
           try {
             const token = JSON.parse(apiKeyStr);
             if (channelType === 'codex') {
+              token.email = token.email || extractEmailFromOpenIDToken(token.id_token);
               updateCodexTokenUI(token);
               updateGeminiTokenUI(null);
             } else {
@@ -2263,6 +2265,7 @@ function handleCodexPresetChange(preset) {
 function updateCodexTokenUI(token) {
   const statusBadge = document.getElementById('codexTokenStatusBadge');
   const tokenInfo = document.getElementById('codexTokenInfo');
+  const emailEl = document.getElementById('codexEmail');
   const accountIdEl = document.getElementById('codexAccountId');
   const expiresAtEl = document.getElementById('codexExpiresAt');
 
@@ -2277,6 +2280,9 @@ function updateCodexTokenUI(token) {
     statusBadge.style.color = 'var(--success-700)';
 
     tokenInfo.style.display = 'block';
+    if (emailEl) {
+      emailEl.textContent = token.email || extractEmailFromOpenIDToken(token.id_token) || '未知';
+    }
     accountIdEl.textContent = token.account_id || extractAccountIdFromToken(token.access_token) || '未知';
 
     if (token.expires_at) {
@@ -2511,6 +2517,7 @@ async function exchangeCodeForToken(code, codeVerifier) {
       if (tokenData.expires_in) {
         tokenData.expires_at = tokenData.created_at + tokenData.expires_in;
       }
+      tokenData.email = extractEmailFromOpenIDToken(tokenData.id_token);
       tokenData.account_id = extractAccountIdFromToken(tokenData.access_token);
 
       updateCodexTokenUI(tokenData);
@@ -2592,6 +2599,9 @@ async function refreshCodexToken() {
 
       // 更新 account_id
       updatedToken.account_id = extractAccountIdFromToken(updatedToken.access_token) || token.account_id;
+      if (newTokenData.id_token) {
+        updatedToken.email = extractEmailFromOpenIDToken(newTokenData.id_token) || token.email;
+      }
 
       updateCodexTokenUI(updatedToken);
 
@@ -2697,6 +2707,18 @@ function extractAccountIdFromToken(token) {
     if (parts.length !== 3) return null;
     const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
     return payload['https://api.openai.com/auth']?.chatgpt_account_id || null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function extractEmailFromOpenIDToken(idToken) {
+  if (!idToken) return null;
+  try {
+    const parts = idToken.split('.');
+    if (parts.length !== 3) return null;
+    const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+    return payload.email || null;
   } catch (e) {
     return null;
   }
