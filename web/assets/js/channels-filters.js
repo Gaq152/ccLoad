@@ -90,7 +90,9 @@ function updateModelOptions() {
   });
 
   const modelFilter = document.getElementById('modelFilter');
-  const currentValue = modelFilter.value;
+  const preferredValue = filters.model && filters.model !== 'all'
+    ? filters.model
+    : modelFilter.value;
   modelFilter.innerHTML = '<option value="all">所有模型</option>';
 
   Array.from(modelSet).sort().forEach(model => {
@@ -100,7 +102,13 @@ function updateModelOptions() {
     modelFilter.appendChild(option);
   });
 
-  modelFilter.value = currentValue;
+  if (preferredValue && preferredValue !== 'all' && modelSet.has(preferredValue)) {
+    modelFilter.value = preferredValue;
+    filters.model = preferredValue;
+  } else {
+    modelFilter.value = 'all';
+    filters.model = 'all';
+  }
 }
 
 // Update priority filter options
