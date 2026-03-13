@@ -67,9 +67,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('statusFilter').value = filters.status;
     document.getElementById('modelFilter').value = filters.model;
   }
-  if (typeof syncChannelsFilterControls === 'function') {
-    syncChannelsFilterControls();
-  }
 
   // 初始化渠道类型 Tab（不包含"全部"选项）
   await initChannelTypeTabs(initialType);

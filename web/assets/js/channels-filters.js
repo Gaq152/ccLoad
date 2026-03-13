@@ -132,7 +132,18 @@ function syncChannelsFilterControls() {
   }
 
   if (modelFilter) {
-    filters.model = setFilterSelectValue(modelFilter, filters.model || 'all');
+    const modelOptions = Array.from(modelFilter.options).map(option => option.value);
+    const shouldDeferModelRestore =
+      filters.model &&
+      filters.model !== 'all' &&
+      modelOptions.length <= 1 &&
+      !modelOptions.includes(filters.model);
+
+    if (shouldDeferModelRestore) {
+      return;
+    } else {
+      filters.model = setFilterSelectValue(modelFilter, filters.model || 'all');
+    }
   }
 }
 

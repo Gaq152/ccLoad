@@ -20,7 +20,6 @@ async function loadChannels(type = 'all', forceRefresh = false) {
     channelsCache[type] = data || [];
     channels = data || [];
     window.channels = channels; // 暴露到全局供 QuotaManager 等使用
-
     updateModelOptions();
     updatePriorityOptions();
     if (typeof syncChannelsFilterControls === 'function') {
