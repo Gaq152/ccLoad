@@ -80,6 +80,62 @@ function updateFilterInfo(filtered, total) {
   document.getElementById('totalCount').textContent = total;
 }
 
+function setFilterSelectValue(selectElement, nextValue, fallbackValue = 'all') {
+  if (!selectElement) return fallbackValue;
+
+  const optionValues = Array.from(selectElement.options).map(option => option.value);
+  let resolvedValue = nextValue;
+
+  if (!optionValues.includes(resolvedValue)) {
+    resolvedValue = optionValues.includes(fallbackValue)
+      ? fallbackValue
+      : (optionValues[0] || '');
+  }
+
+  Array.from(selectElement.options).forEach(option => {
+    option.selected = option.value === resolvedValue;
+  });
+
+  selectElement.value = resolvedValue;
+
+  if (resolvedValue) {
+    const selectedIndex = optionValues.indexOf(resolvedValue);
+    if (selectedIndex >= 0) {
+      selectElement.selectedIndex = selectedIndex;
+    }
+  }
+
+  return resolvedValue;
+}
+
+function syncChannelsFilterControls() {
+  const searchInput = document.getElementById('searchInput');
+  const idFilter = document.getElementById('idFilter');
+  const statusFilter = document.getElementById('statusFilter');
+  const priorityFilter = document.getElementById('priorityFilter');
+  const modelFilter = document.getElementById('modelFilter');
+
+  if (searchInput && searchInput.value !== filters.search) {
+    searchInput.value = filters.search || '';
+  }
+
+  if (idFilter && idFilter.value !== filters.id) {
+    idFilter.value = filters.id || '';
+  }
+
+  if (statusFilter) {
+    filters.status = setFilterSelectValue(statusFilter, filters.status || 'all');
+  }
+
+  if (priorityFilter) {
+    filters.priority = setFilterSelectValue(priorityFilter, filters.priority || 'all');
+  }
+
+  if (modelFilter) {
+    filters.model = setFilterSelectValue(modelFilter, filters.model || 'all');
+  }
+}
+
 // Update model filter options
 function updateModelOptions() {
   const modelSet = new Set();
@@ -90,9 +146,6 @@ function updateModelOptions() {
   });
 
   const modelFilter = document.getElementById('modelFilter');
-  const preferredValue = filters.model && filters.model !== 'all'
-    ? filters.model
-    : modelFilter.value;
   modelFilter.innerHTML = '<option value="all">所有模型</option>';
 
   Array.from(modelSet).sort().forEach(model => {
@@ -102,13 +155,10 @@ function updateModelOptions() {
     modelFilter.appendChild(option);
   });
 
-  if (preferredValue && preferredValue !== 'all' && modelSet.has(preferredValue)) {
-    modelFilter.value = preferredValue;
-    filters.model = preferredValue;
-  } else {
-    modelFilter.value = 'all';
-    filters.model = 'all';
-  }
+  const preferredValue = filters.model && filters.model !== 'all'
+    ? filters.model
+    : modelFilter.value;
+  filters.model = setFilterSelectValue(modelFilter, preferredValue, 'all');
 }
 
 // Update priority filter options
@@ -119,7 +169,6 @@ function updatePriorityOptions() {
   });
 
   const priorityFilter = document.getElementById('priorityFilter');
-  const currentValue = priorityFilter.value;
   priorityFilter.innerHTML = '<option value="all">所有优先级</option>';
 
   Array.from(prioritySet).sort((a, b) => b - a).forEach(priority => {
@@ -129,7 +178,10 @@ function updatePriorityOptions() {
     priorityFilter.appendChild(option);
   });
 
-  priorityFilter.value = currentValue;
+  const preferredValue = filters.priority && filters.priority !== 'all'
+    ? filters.priority
+    : priorityFilter.value;
+  filters.priority = setFilterSelectValue(priorityFilter, preferredValue, 'all');
 }
 
 // Setup filter event listeners

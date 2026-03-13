@@ -6,6 +6,10 @@ async function loadChannels(type = 'all', forceRefresh = false) {
       window.channels = channels; // 暴露到全局
       updateModelOptions();
       updatePriorityOptions();
+      if (typeof syncChannelsFilterControls === 'function') {
+        syncChannelsFilterControls();
+        requestAnimationFrame(() => syncChannelsFilterControls());
+      }
       filterChannels();
       return;
     }
@@ -19,6 +23,10 @@ async function loadChannels(type = 'all', forceRefresh = false) {
 
     updateModelOptions();
     updatePriorityOptions();
+    if (typeof syncChannelsFilterControls === 'function') {
+      syncChannelsFilterControls();
+      requestAnimationFrame(() => syncChannelsFilterControls());
+    }
     filterChannels();
 
     // 初始化用量管理器（轮询获取启用用量监控的渠道数据）

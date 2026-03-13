@@ -173,6 +173,9 @@ const QuotaRequestQueue = {
 
             // 更新UI
             window.QuotaManager.updateBadge(channelId, quotaData);
+            if (typeof window.syncCodexQuotaMetaToUI === 'function') {
+              window.syncCodexQuotaMetaToUI(channelId);
+            }
 
             // 手动刷新时显示成功 toast
             if (isManualRefresh && quotaData.isValid) {

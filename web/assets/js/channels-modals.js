@@ -1313,6 +1313,24 @@ function resetQuotaConfig() {
   renderQuotaHeaders();
 }
 
+function getCachedCodexQuotaMeta(channelId) {
+  if (!channelId || !window.QuotaManager) {
+    return null;
+  }
+
+  const quotaData = window.QuotaManager.getCachedQuota(channelId);
+  if (!quotaData || !quotaData.isValid) {
+    return null;
+  }
+
+  return {
+    email: quotaData.email || '',
+    userId: quotaData.userId || '',
+    accountId: quotaData.accountId || '',
+    planType: quotaData.planType || ''
+  };
+}
+
 /**
  * 从 quota 缓存中提取 plan_type 并显示在认证区域
  */
@@ -1322,23 +1340,26 @@ function updateCodexPlanType(channelId) {
   if (!wrap || !el) return;
 
   const quotaData = QuotaManager.getCachedQuota(channelId);
-  if (!quotaData || !quotaData.detail) {
+  if (!quotaData || (!quotaData.detail && !quotaData.planType)) {
     wrap.style.display = 'none';
     return;
   }
 
   // detail 格式: "plus | 5h重置: ..." 或 "free | 重置: ..."
-  const match = quotaData.detail.match(/^(\S+)\s*\|/);
-  if (!match || !match[1]) {
-    wrap.style.display = 'none';
-    return;
+  const plan = quotaData.planType || '';
+  if (plan) {
+    el.textContent = plan;
+  } else {
+    const match = quotaData.detail.match(/^(\S+)\s*\|/);
+    if (!match || !match[1]) {
+      wrap.style.display = 'none';
+      return;
+    }
+    el.textContent = match[1];
   }
 
-  const plan = match[1];
-  el.textContent = plan;
-
   // 根据 plan 级别设置颜色
-  const planLower = plan.toLowerCase();
+  const planLower = el.textContent.toLowerCase();
   if (planLower === 'plus') {
     el.style.background = 'var(--success-50, #ecfdf5)';
     el.style.color = 'var(--success-700, #15803d)';
@@ -1351,6 +1372,27 @@ function updateCodexPlanType(channelId) {
   }
 
   wrap.style.display = '';
+}
+
+function syncCodexQuotaMetaToUI(channelId) {
+  if (!channelId || editingChannelId !== channelId) {
+    return;
+  }
+
+  updateCodexPlanType(channelId);
+
+  const apiKeyInput = document.getElementById('channelApiKey');
+  const tokenJson = apiKeyInput?.value || '';
+  if (!tokenJson || !tokenJson.startsWith('{')) {
+    return;
+  }
+
+  try {
+    const token = JSON.parse(tokenJson);
+    updateCodexTokenUI(token, channelId);
+  } catch (e) {
+    console.warn('[Codex Quota] Failed to sync token UI from cached quota:', e);
+  }
 }
 
 /**
@@ -1691,7 +1733,10 @@ const QUOTA_TEMPLATES = {
     return { isValid: false, error: "响应格式错误：缺少 primary_window" };
   }
 
-  var plan = data.plan_type || '';
+  var plan = data.plan_type || (Array.isArray(data.plan_types) ? data.plan_types.join(',') : '');
+  var email = typeof data.email === 'string' ? data.email : '';
+  var userId = typeof data.user_id === 'string' ? data.user_id : '';
+  var accountId = typeof data.account_id === 'string' ? data.account_id : '';
   var hasDualWindow = !!rl.secondary_window;
 
   // Plus/Team: primary=5h, secondary=周; Free: primary=周, secondary=null
@@ -1715,7 +1760,11 @@ const QUOTA_TEMPLATES = {
     remaining: remaining,
     unit: '',
     detail: detail,
-    limitReached: rl.limit_reached || false
+    limitReached: rl.limit_reached || false,
+    planType: plan,
+    email: email,
+    userId: userId,
+    accountId: accountId
   };
 }`
   },
@@ -2262,12 +2311,13 @@ function handleCodexPresetChange(preset) {
 /**
  * 更新 Codex Token 状态 UI
  */
-function updateCodexTokenUI(token) {
+function updateCodexTokenUI(token, channelId = editingChannelId) {
   const statusBadge = document.getElementById('codexTokenStatusBadge');
   const tokenInfo = document.getElementById('codexTokenInfo');
   const emailEl = document.getElementById('codexEmail');
   const accountIdEl = document.getElementById('codexAccountId');
   const expiresAtEl = document.getElementById('codexExpiresAt');
+  const quotaMeta = getCachedCodexQuotaMeta(channelId);
 
   const startBtn = document.getElementById('startCodexOAuthBtn');
   const refreshBtn = document.getElementById('refreshCodexTokenBtn');
@@ -2281,9 +2331,9 @@ function updateCodexTokenUI(token) {
 
     tokenInfo.style.display = 'block';
     if (emailEl) {
-      emailEl.textContent = token.email || extractEmailFromOpenIDToken(token.id_token) || '未知';
+      emailEl.textContent = quotaMeta?.email || token.email || extractEmailFromOpenIDToken(token.id_token) || '未知';
     }
-    accountIdEl.textContent = token.account_id || extractAccountIdFromToken(token.access_token) || '未知';
+    accountIdEl.textContent = token.account_id || extractAccountIdFromToken(token.access_token) || quotaMeta?.accountId || quotaMeta?.userId || '未知';
 
     if (token.expires_at) {
       const expDate = new Date(token.expires_at * 1000);

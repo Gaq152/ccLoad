@@ -67,6 +67,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('statusFilter').value = filters.status;
     document.getElementById('modelFilter').value = filters.model;
   }
+  if (typeof syncChannelsFilterControls === 'function') {
+    syncChannelsFilterControls();
+  }
 
   // 初始化渠道类型 Tab（不包含"全部"选项）
   await initChannelTypeTabs(initialType);
@@ -100,11 +103,22 @@ document.addEventListener('DOMContentLoaded', async () => {
       AutoTestTimer.stop();
     } else {
       // 页面重新可见时，重新加载数据并启动倒计时
+      if (typeof syncChannelsFilterControls === 'function') {
+        syncChannelsFilterControls();
+      }
       clearChannelsCache();
       loadChannels(filters.channelType);
       startCooldownSSE();
       AutoTestTimer.init();
     }
+  });
+
+  window.addEventListener('pageshow', (event) => {
+    if (!event.persisted || typeof syncChannelsFilterControls !== 'function') {
+      return;
+    }
+
+    requestAnimationFrame(() => syncChannelsFilterControls());
   });
 });
 
