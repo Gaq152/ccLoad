@@ -131,6 +131,16 @@ type Store interface {
 	GetChannelsWithAutoSelect(ctx context.Context) ([]*model.Config, error)
 
 	// ============================================================================
+	// 模型定价管理
+	// ============================================================================
+	ListModelPricing(ctx context.Context) ([]*model.ModelPricingEntry, error)
+	GetModelPricing(ctx context.Context, id int64) (*model.ModelPricingEntry, error)
+	CreateModelPricing(ctx context.Context, entry *model.ModelPricingEntry) error
+	UpdateModelPricing(ctx context.Context, entry *model.ModelPricingEntry) error
+	DeleteModelPricing(ctx context.Context, id int64) error
+	BatchCreateModelPricing(ctx context.Context, entries []*model.ModelPricingEntry) (int, error)
+
+	// ============================================================================
 	// 批量导入与系统管理
 	// ============================================================================
 	ImportChannelBatch(ctx context.Context, channels []*model.ChannelWithKeys) (created, updated int, err error)

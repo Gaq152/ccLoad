@@ -43,7 +43,8 @@ func migrate(ctx context.Context, db *sql.DB, dialect Dialect) error {
 		schema.DefineSystemSettingsTable,
 		schema.DefineAdminSessionsTable,
 		schema.DefineLogsTable,
-		schema.DefineDailyStatsTable, // 每日统计聚合表（2025-12新增）
+		schema.DefineDailyStatsTable,    // 每日统计聚合表（2025-12新增）
+		schema.DefineModelPricingTable,  // 模型定价管理表（2026-03新增）
 	}
 
 	// 创建表和索引
