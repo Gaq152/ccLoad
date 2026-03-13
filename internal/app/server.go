@@ -266,6 +266,9 @@ func NewServer(store storage.Store) *Server {
 		log.Print("[INFO] 请求监控服务已初始化")
 	}
 
+	// 启动时加载模型定价缓存（从 DB → 内存 sync.Map）
+	s.loadPricingCache()
+
 	return s
 
 }
@@ -519,6 +522,13 @@ func (s *Server) SetupRoutes(r *gin.Engine) {
 		admin.DELETE("/auth-tokens/:id", s.HandleDeleteAuthToken)
 		admin.GET("/auth-tokens/:id/channels", s.HandleGetTokenChannels) // 获取令牌渠道配置（2025-12新增）
 		admin.PUT("/auth-tokens/:id/channels", s.HandleSetTokenChannels) // 设置令牌渠道配置（2025-12新增）
+
+		// 模型定价管理
+		admin.GET("/pricing", s.HandleListModelPricing)
+		admin.POST("/pricing", s.HandleCreateModelPricing)
+		admin.PUT("/pricing/:id", s.HandleUpdateModelPricing)
+		admin.DELETE("/pricing/:id", s.HandleDeleteModelPricing)
+		admin.POST("/pricing/defaults", s.HandleImportDefaultPricing)
 
 		// 系统配置管理
 		admin.GET("/settings", s.AdminListSettings)
