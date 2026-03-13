@@ -94,9 +94,13 @@ func (s *Server) handleNetworkError(
 	reqCtx *proxyRequestContext,
 ) (*proxyResult, cooldown.Action) {
 	statusCode, _, _ := util.ClassifyError(err)
+	var attemptStart time.Time
+	if reqCtx != nil {
+		attemptStart = reqCtx.attemptStartTime
+	}
 	// [INFO] 修复：使用 actualModel 而非 reqCtx.originalModel
 	s.AddLogAsync(buildLogEntry(actualModel, cfg.ID, cfg.Name, cfg.GetChannelType(), statusCode,
-		duration, false, selectedKey, cfg.URL, authTokenID, authTokenName, clientIP, res, err.Error(), reqCtx.attemptStartTime))
+		duration, false, selectedKey, cfg.URL, authTokenID, authTokenName, clientIP, res, err.Error(), attemptStart))
 
 	// [FIX] 保留 499 取消场景下已消耗的 token 统计
 	if res != nil && reqCtx != nil && hasConsumedTokens(res) {
