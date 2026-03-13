@@ -108,6 +108,7 @@ func (t *EndpointTester) testAllEndpoints() {
 	if testCount > 10 {
 		testCount = 10
 	}
+	batch := newEndpointLatencyBatch(t.server, testCount)
 
 	// 并发测速所有渠道（限制并发数避免资源耗尽）
 	sem := make(chan struct{}, 5) // 最多同时测5个渠道
@@ -121,7 +122,7 @@ func (t *EndpointTester) testAllEndpoints() {
 			sem <- struct{}{}        // 获取信号量
 			defer func() { <-sem }() // 释放信号量
 
-			t.testChannelEndpoints(ctx, channelID, testCount)
+			t.testChannelEndpoints(ctx, channelID, batch)
 		}(ch.ID)
 	}
 
@@ -152,7 +153,7 @@ func (t *EndpointTester) GetStatus() (nextRunTime time.Time, intervalSeconds int
 }
 
 // testChannelEndpoints 测速单个渠道的所有端点
-func (t *EndpointTester) testChannelEndpoints(ctx context.Context, channelID int64, testCount int) {
+func (t *EndpointTester) testChannelEndpoints(ctx context.Context, channelID int64, batch *endpointLatencyBatch) {
 	// 检查是否已取消
 	select {
 	case <-ctx.Done():
@@ -190,7 +191,7 @@ TestLoop:
 			default:
 			}
 
-			info, _ := t.server.testEndpointLatencyMulti(url, testCount)
+			info, _ := batch.test(url)
 			// 保存所有结果（包括失败的）
 			mu.Lock()
 			testResults[endpointID] = model.EndpointTestResult{

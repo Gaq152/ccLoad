@@ -170,6 +170,7 @@ func (s *Server) HandleTestEndpoints(c *gin.Context) {
 	if testCount > 10 {
 		testCount = 10
 	}
+	batch := newEndpointLatencyBatch(s, testCount)
 
 	// 并发测速（每个端点测试 N 次取平均值）
 	results := make([]EndpointTestResult, len(endpoints))
@@ -187,7 +188,7 @@ func (s *Server) HandleTestEndpoints(c *gin.Context) {
 				URL: endpoint.URL,
 			}
 
-			info, _ := s.testEndpointLatencyMulti(endpoint.URL, testCount)
+			info, _ := batch.test(endpoint.URL)
 			result.LatencyMs = info.LatencyMs
 			result.StatusCode = info.StatusCode
 			result.TestCount = info.TestCount
