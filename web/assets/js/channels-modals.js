@@ -71,6 +71,46 @@ function closeModalWithFocus(modalId) {
   previousFocusElement = null;
 }
 
+/**
+ * 重置渠道弹窗的 UI 状态
+ * 在打开弹窗（新增/编辑）时调用，避免残留上一个渠道的数据
+ */
+function resetChannelModalUI() {
+  // 重置 Codex OAuth UI
+  const codexLinkSection = document.getElementById('codexOAuthLinkSection');
+  if (codexLinkSection) codexLinkSection.style.display = 'none';
+  const codexLinkInput = document.getElementById('codexOAuthLinkInput');
+  if (codexLinkInput) codexLinkInput.value = '';
+  const codexCodeInput = document.getElementById('codexManualCodeInput');
+  if (codexCodeInput) codexCodeInput.value = '';
+  updateCodexTokenUI(null);
+
+  // 重置 Gemini OAuth UI
+  const geminiLinkSection = document.getElementById('geminiOAuthLinkSection');
+  if (geminiLinkSection) geminiLinkSection.style.display = 'none';
+  const geminiLinkInput = document.getElementById('geminiOAuthLinkInput');
+  if (geminiLinkInput) geminiLinkInput.value = '';
+  const geminiCodeInput = document.getElementById('geminiManualCodeInput');
+  if (geminiCodeInput) geminiCodeInput.value = '';
+  updateGeminiTokenUI(null);
+
+  // 重置 Kiro Token UI
+  updateKiroTokenUI(null);
+  const kiroDeviceFingerprint = document.getElementById('kiroDeviceFingerprint');
+  if (kiroDeviceFingerprint) {
+    kiroDeviceFingerprint.value = '';
+    updateKiroFingerprintStatus('');
+  }
+
+  // 重置用量监控配置
+  resetQuotaConfig();
+
+  // 重置端点列表
+  if (typeof resetInlineEndpoints === 'function') {
+    resetInlineEndpoints();
+  }
+}
+
 function showAddModal() {
   editingChannelId = null;
   currentChannelKeyCooldowns = [];
@@ -84,10 +124,8 @@ function showAddModal() {
   // 新建模式隐藏"测速"按钮（需要先保存才能测速）
   document.getElementById('manageEndpointsBtn').style.display = 'none';
 
-  // 重置端点列表
-  if (typeof resetInlineEndpoints === 'function') {
-    resetInlineEndpoints();
-  }
+  // 重置弹窗 UI 状态（OAuth 链接区域、输入框、Token UI 等）
+  resetChannelModalUI();
 
   redirectTableData = [];
   renderRedirectTable();
@@ -98,24 +136,9 @@ function showAddModal() {
   document.getElementById('inlineEyeOffIcon').style.display = 'block';
   renderInlineKeyTable();
 
-  // 重置用量监控配置
-  resetQuotaConfig();
-
-  // 初始化 OAuth 区块（默认隐藏）
+  // 初始化渠道类型相关 UI（会根据类型显示/隐藏对应的 OAuth 区块）
   handleChannelTypeChange('anthropic');
-  updateCodexTokenUI(null);
-  updateGeminiTokenUI(null);
-  updateKiroTokenUI(null);
-  // 清空设备指纹输入框
-  const deviceFingerprintInput = document.getElementById('kiroDeviceFingerprint');
-  if (deviceFingerprintInput) {
-    deviceFingerprintInput.value = '';
-    updateKiroFingerprintStatus('');
-  }
   initChannelTypeEventListener();
-  // [FIX] 移除 toggleCodexAuthMode('oauth') 调用
-  // handleChannelTypeChange → handlePresetChange 已经正确设置了 UI 状态
-  // 额外调用 toggleCodexAuthMode 会导致非 Codex 渠道的 API Key 输入框被错误隐藏
 
   // 添加 OAuth 回调消息监听
   window.addEventListener('message', handleCodexOAuthMessage);
@@ -131,41 +154,61 @@ async function editChannel(id) {
 
   editingChannelId = id;
 
-  // 性能优化：先打开弹窗，再异步加载数据
+  // 重置弹窗 UI 状态（避免残留上一个渠道的数据）
+  resetChannelModalUI();
+
+  // 基本信息立即填充（从缓存的 channels 数组读取，无需网络请求）
   document.getElementById('modalTitle').textContent = '编辑渠道';
   document.getElementById('channelName').value = channel.name;
   document.getElementById('channelPriority').value = channel.priority;
   document.getElementById('channelModels').value = channel.models.join(',');
   document.getElementById('channelEnabled').checked = channel.enabled;
 
-  // 立即显示弹窗（提升响应速度）
-  showModalWithFocus('channelModal');
-
-  // 显示加载状态
-  const modalContent = document.querySelector('#channelModal .modal-body');
-  if (modalContent) {
-    modalContent.style.opacity = '0.6';
-    modalContent.style.pointerEvents = 'none';
+  // 可从缓存立即填充的配置
+  const channelType = channel.channel_type || 'anthropic';
+  await window.ChannelTypeManager.renderChannelTypeRadios('channelTypeRadios', channelType);
+  const keyStrategy = channel.key_strategy || 'sequential';
+  const strategyRadio = document.querySelector(`input[name="keyStrategy"][value="${keyStrategy}"]`);
+  if (strategyRadio) {
+    strategyRadio.checked = true;
   }
 
-  // 异步加载数据
+  const modelRedirects = channel.model_redirects || {};
+  redirectTableData = jsonToRedirectTable(modelRedirects);
+  renderRedirectTable();
+
+  // 加载用量监控配置（从缓存读取，无需网络请求）
+  loadQuotaConfig(channel.quota_config);
+
+  // 初始化渠道类型相关 UI（Codex OAuth 区块）
+  initChannelTypeEventListener();
+
+  // 立即显示弹窗
+  showModalWithFocus('channelModal');
+
+  // 端点和 Key 区域显示加载提示
+  const endpointTableBody = document.getElementById('inlineEndpointTableBody');
+  const keyTableBody = document.getElementById('inlineKeyTableBody');
+  const loadingHtml = '<tr><td colspan="99" style="padding: 12px; text-align: center; color: var(--neutral-400); font-size: 13px;">加载中...</td></tr>';
+  if (endpointTableBody) endpointTableBody.innerHTML = loadingHtml;
+  if (keyTableBody) keyTableBody.innerHTML = loadingHtml;
+
+  // 异步加载数据（端点和 Keys 并行请求）
   try {
-    // 加载端点列表
-    if (typeof loadEndpointsFromServer === 'function') {
-      await loadEndpointsFromServer(id, channel.url);
-    } else {
-      document.getElementById('channelUrl').value = channel.url;
-    }
+    const [, apiKeys] = await Promise.all([
+      // 加载端点列表
+      (typeof loadEndpointsFromServer === 'function')
+        ? loadEndpointsFromServer(id, channel.url)
+        : Promise.resolve(document.getElementById('channelUrl').value = channel.url),
+      // 加载 API Keys
+      fetchDataWithAuth(`/admin/channels/${id}/keys`).then(data => data || []).catch(e => {
+        console.error('获取API Keys失败', e);
+        return [];
+      })
+    ]);
 
     // 编辑模式显示"测速"按钮
     document.getElementById('manageEndpointsBtn').style.display = 'inline-flex';
-
-    let apiKeys = [];
-    try {
-      apiKeys = await fetchDataWithAuth(`/admin/channels/${id}/keys`) || [];
-    } catch (e) {
-      console.error('获取API Keys失败', e);
-    }
 
     const now = Date.now();
     currentChannelKeyCooldowns = apiKeys.map((apiKey, index) => {
@@ -188,26 +231,8 @@ async function editChannel(id) {
     document.getElementById('inlineEyeOffIcon').style.display = 'block';
     renderInlineKeyTable();
 
-    const channelType = channel.channel_type || 'anthropic';
-    await window.ChannelTypeManager.renderChannelTypeRadios('channelTypeRadios', channelType);
-    const keyStrategy = channel.key_strategy || 'sequential';
-    const strategyRadio = document.querySelector(`input[name="keyStrategy"][value="${keyStrategy}"]`);
-    if (strategyRadio) {
-      strategyRadio.checked = true;
-    }
-
-    const modelRedirects = channel.model_redirects || {};
-    redirectTableData = jsonToRedirectTable(modelRedirects);
-    renderRedirectTable();
-
-    // 加载用量监控配置
-    loadQuotaConfig(channel.quota_config);
-
     // 从 quota 缓存中提取 plan_type 显示在认证区域
     updateCodexPlanType(id);
-
-    // 初始化渠道类型相关 UI（Codex OAuth 区块）
-    initChannelTypeEventListener();
 
     // OAuth 渠道（Codex/Gemini）：根据预设类型设置 UI
     if (channelType === 'codex' || channelType === 'gemini') {
@@ -377,12 +402,8 @@ async function editChannel(id) {
   // 启动冷却倒计时（包括 Key 冷却）
   checkAndStartCooldownCountdown();
 
-  } finally {
-    // 恢复交互状态
-    if (modalContent) {
-      modalContent.style.opacity = '1';
-      modalContent.style.pointerEvents = 'auto';
-    }
+  } catch (e) {
+    console.error('加载渠道数据失败:', e);
   }
 }
 

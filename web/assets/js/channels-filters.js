@@ -92,19 +92,7 @@ function setFilterSelectValue(selectElement, nextValue, fallbackValue = 'all') {
       : (optionValues[0] || '');
   }
 
-  Array.from(selectElement.options).forEach(option => {
-    option.selected = option.value === resolvedValue;
-  });
-
   selectElement.value = resolvedValue;
-
-  if (resolvedValue) {
-    const selectedIndex = optionValues.indexOf(resolvedValue);
-    if (selectedIndex >= 0) {
-      selectElement.selectedIndex = selectedIndex;
-    }
-  }
-
   return resolvedValue;
 }
 

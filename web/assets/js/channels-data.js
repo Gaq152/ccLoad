@@ -8,7 +8,6 @@ async function loadChannels(type = 'all', forceRefresh = false) {
       updatePriorityOptions();
       if (typeof syncChannelsFilterControls === 'function') {
         syncChannelsFilterControls();
-        requestAnimationFrame(() => syncChannelsFilterControls());
       }
       filterChannels();
       return;
