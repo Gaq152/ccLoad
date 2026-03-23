@@ -3751,6 +3751,10 @@ function updateKiroFingerprintStatus(fingerprint) {
   const badge = document.getElementById('kiroFingerprintStatusBadge');
   if (!badge) return;
 
+  // 清除旧的 hash 勋章
+  const existingHashBadge = document.getElementById('kiroFingerprintHashBadge');
+  if (existingHashBadge) existingHashBadge.remove();
+
   if (!fingerprint || fingerprint.trim() === '') {
     // 未配置
     badge.textContent = '未配置';
@@ -3759,12 +3763,16 @@ function updateKiroFingerprintStatus(fingerprint) {
   } else {
     // 已配置
     let statusText = '已配置';
+    let hashShort = '';
+    let hashFull = '';
 
     // 尝试解析 JSON，判断是否为自动生成
     try {
       const fp = JSON.parse(fingerprint);
       if (fp.kiroHash) {
         statusText = '已配置 (自动)';
+        hashShort = fp.kiroHash.substring(0, 8);
+        hashFull = fp.kiroHash;
       }
     } catch (e) {
       // 简单字符串格式（旧版本或手动输入）
@@ -3774,6 +3782,16 @@ function updateKiroFingerprintStatus(fingerprint) {
     badge.textContent = statusText;
     badge.style.background = 'var(--success-100)';
     badge.style.color = 'var(--success-700)';
+
+    // 在状态徽章后追加 hash 短码勋章，方便识别指纹是否重复
+    if (hashShort) {
+      const hashBadge = document.createElement('span');
+      hashBadge.id = 'kiroFingerprintHashBadge';
+      hashBadge.textContent = '#' + hashShort;
+      hashBadge.style.cssText = 'font-size: 11px; padding: 2px 8px; border-radius: 10px; background: var(--neutral-100); color: var(--primary-600); font-family: monospace; margin-left: 6px; cursor: help;';
+      hashBadge.title = hashFull;
+      badge.parentNode.insertBefore(hashBadge, badge.nextSibling);
+    }
   }
 }
 

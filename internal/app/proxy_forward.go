@@ -653,6 +653,10 @@ func (s *Server) forwardAttempt(
 				log.Printf("[WARN] [Kiro MCP] MCP 请求失败，回退到正常转发: %v", mcpErr)
 			}
 		}
+		// Kiro per-key 节流：同一 Key 的请求间强制 1-3 秒随机间隔
+		if waited := getKiroThrottle().Wait(cfg.ID, keyIndex); waited > 0 {
+			log.Printf("[INFO] [Kiro Throttle] 渠道 #%d Key#%d 等待 %dms 后发送请求", cfg.ID, keyIndex, waited.Milliseconds())
+		}
 		res, duration, err = s.forwardKiroRequest(ctx, cfg, reqCtx, bodyToSend, targetWriter)
 	} else {
 		res, duration, err = s.forwardOnceAsync(ctx, cfg, selectedKey, reqCtx.requestMethod,
