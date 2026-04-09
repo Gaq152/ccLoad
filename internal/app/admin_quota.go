@@ -88,7 +88,9 @@ func (s *Server) handleQuotaFetch(c *gin.Context) {
 		qc = config.QuotaConfig
 
 		// [FIX] 官方预设：检查并刷新过期的 Token
+		// 渠道禁用时跳过 Token 刷新，避免无意义的认证请求
 		tokenRefreshed := false // 标记是否刷新了 Token
+		if config.Enabled {
 		switch config.Preset {
 		case "kiro":
 			// Kiro 预设：刷新 Token
@@ -214,6 +216,7 @@ func (s *Server) handleQuotaFetch(c *gin.Context) {
 				}
 			}
 		}
+		} // if config.Enabled
 
 		// 如果刷新了 Token，需要保存更新后的 QuotaConfig 到数据库
 		if tokenRefreshed {
