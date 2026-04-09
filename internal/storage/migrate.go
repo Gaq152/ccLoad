@@ -202,6 +202,11 @@ func migrate(ctx context.Context, db *sql.DB, dialect Dialect) error {
 		return fmt.Errorf("migrate codex preset data: %w", err)
 	}
 
+	// 迁移：Kiro 预设端点和用量查询 URL 从旧域名迁移到新域名（2026-04新增）
+	if err := migrateKiroEndpoints(ctx, db, dialect); err != nil {
+		return fmt.Errorf("migrate kiro endpoints: %w", err)
+	}
+
 	return nil
 }
 
@@ -1452,6 +1457,114 @@ func migrateCodexPresetData(ctx context.Context, db *sql.DB, dialect Dialect) er
 				log.Printf("Warning: insert model %s for channel %d: %v", m, ch.id, err)
 			}
 		}
+	}
+
+	return nil
+}
+
+// migrateKiroEndpoints 迁移 Kiro 预设渠道的端点和用量查询 URL（2026-04新增）
+// 旧域名 codewhisperer.us-east-1.amazonaws.com → 新域名 q.us-east-1.amazonaws.com
+// 1. channel_endpoints 表：为旧端点渠道新增新域名端点
+// 2. quota_config：替换 request_url 中的旧域名
+// 3. channels.url：替换主 URL 字段中的旧域名
+func migrateKiroEndpoints(ctx context.Context, db *sql.DB, dialect Dialect) error {
+	const (
+		oldDomain = "codewhisperer.us-east-1.amazonaws.com"
+		newDomain = "q.us-east-1.amazonaws.com"
+		oldURL    = "https://" + oldDomain
+		newURL    = "https://" + newDomain
+	)
+
+	// === 1. 端点迁移：为只有旧端点的 Kiro 渠道新增新域名端点 ===
+	rows, err := db.QueryContext(ctx, `
+		SELECT DISTINCT e.channel_id
+		FROM channel_endpoints e
+		JOIN channels c ON c.id = e.channel_id
+		WHERE c.preset = 'kiro'
+		  AND e.url LIKE '%` + oldDomain + `%'
+		  AND e.channel_id NOT IN (
+			SELECT channel_id FROM channel_endpoints WHERE url LIKE '%` + newDomain + `%'
+		  )
+	`)
+	if err != nil {
+		return fmt.Errorf("query kiro channels with old endpoints: %w", err)
+	}
+	defer rows.Close()
+
+	var channelIDs []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return fmt.Errorf("scan channel id: %w", err)
+		}
+		channelIDs = append(channelIDs, id)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate kiro channels: %w", err)
+	}
+
+	if len(channelIDs) > 0 {
+		var insertSQL string
+		if dialect == DialectMySQL {
+			insertSQL = `INSERT INTO channel_endpoints (channel_id, url, is_active, sort_order, created_at) VALUES (?, ?, 1, 0, UNIX_TIMESTAMP())`
+		} else {
+			insertSQL = `INSERT INTO channel_endpoints (channel_id, url, is_active, sort_order, created_at) VALUES (?, ?, 1, 0, unixepoch())`
+		}
+		for _, chID := range channelIDs {
+			if _, err := db.ExecContext(ctx, insertSQL, chID, newURL); err != nil {
+				log.Printf("[WARN] [Migrate] Kiro 端点迁移失败 (channel=%d): %v", chID, err)
+			} else {
+				log.Printf("[INFO] [Migrate] Kiro 渠道 #%d 已新增端点: %s", chID, newURL)
+			}
+		}
+	}
+
+	// === 2. 用量查询 URL 迁移：替换 quota_config 中的旧域名 ===
+	qRows, err := db.QueryContext(ctx, `
+		SELECT id, quota_config
+		FROM channels
+		WHERE preset = 'kiro' AND quota_config IS NOT NULL AND quota_config != ''
+		  AND quota_config LIKE '%` + oldDomain + `%'
+	`)
+	if err != nil {
+		return fmt.Errorf("query kiro quota configs: %w", err)
+	}
+	defer qRows.Close()
+
+	type kiroQuota struct {
+		id          int64
+		quotaConfig string
+	}
+	var toUpdate []kiroQuota
+	for qRows.Next() {
+		var kq kiroQuota
+		if err := qRows.Scan(&kq.id, &kq.quotaConfig); err != nil {
+			return fmt.Errorf("scan kiro quota: %w", err)
+		}
+		toUpdate = append(toUpdate, kq)
+	}
+	if err := qRows.Err(); err != nil {
+		return fmt.Errorf("iterate kiro quotas: %w", err)
+	}
+
+	for _, kq := range toUpdate {
+		newConfig := strings.ReplaceAll(kq.quotaConfig, oldURL, newURL)
+		if newConfig == kq.quotaConfig {
+			continue
+		}
+		if _, err := db.ExecContext(ctx, "UPDATE channels SET quota_config = ? WHERE id = ?", newConfig, kq.id); err != nil {
+			log.Printf("[WARN] [Migrate] Kiro 用量 URL 迁移失败 (channel=%d): %v", kq.id, err)
+		} else {
+			log.Printf("[INFO] [Migrate] Kiro 渠道 #%d 用量查询 URL 已更新", kq.id)
+		}
+	}
+
+	// === 3. 更新 channels.url 主 URL 字段 ===
+	if _, err := db.ExecContext(ctx, `
+		UPDATE channels SET url = REPLACE(url, '`+oldURL+`', '`+newURL+`')
+		WHERE preset = 'kiro' AND url LIKE '%`+oldDomain+`%'
+	`); err != nil {
+		log.Printf("[WARN] [Migrate] Kiro 渠道主 URL 迁移失败: %v", err)
 	}
 
 	return nil
