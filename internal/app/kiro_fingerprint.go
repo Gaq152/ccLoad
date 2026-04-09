@@ -39,10 +39,9 @@ var (
 	fingerprintOnce          sync.Once
 )
 
-// SDK 版本选项
+// SDK 版本选项（参考 kiro.rs: aws-sdk-js/1.0.34）
 var sdkVersions = []string{
-	"1.0.20", "1.0.21", "1.0.22", "1.0.23", "1.0.24",
-	"1.0.25", "1.0.26", "1.0.27",
+	"1.0.30", "1.0.31", "1.0.32", "1.0.33", "1.0.34",
 }
 
 // 操作系统配置
@@ -54,41 +53,33 @@ type osProfile struct {
 	platform  string
 }
 
+// 参考 kiro.rs: system_version 从 ["darwin#24.6.0", "win32#10.0.22631"] 中选取
+// 仅保留 darwin 和 win32（Kiro IDE 官方支持的平台），去除 linux 避免风控异常
 var osProfiles = []osProfile{
 	{
 		osType:    "darwin",
-		versions:  []string{"23.0.0", "23.1.0", "23.5.0", "24.0.0", "24.1.0", "24.5.0", "24.6.0", "25.0.0"},
+		versions:  []string{"24.1.0", "24.5.0", "24.6.0", "25.0.0"},
 		locales:   []string{"en-US", "en-GB", "zh-CN", "zh-TW", "ja-JP", "ko-KR"},
 		timezones: []string{"America/Los_Angeles", "America/New_York", "Europe/London", "Asia/Shanghai", "Asia/Tokyo"},
 		platform:  "MacIntel",
 	},
 	{
-		osType:    "windows",
-		versions:  []string{"10.0.19041", "10.0.19042", "10.0.19043", "10.0.22000", "10.0.22621", "10.0.22631"},
+		osType:    "win32",
+		versions:  []string{"10.0.22621", "10.0.22631"},
 		locales:   []string{"en-US", "en-GB", "zh-CN", "zh-TW", "ja-JP", "ko-KR"},
 		timezones: []string{"America/Los_Angeles", "America/New_York", "America/Chicago", "Europe/London", "Asia/Shanghai"},
 		platform:  "Win32",
 	},
-	{
-		osType:    "linux",
-		versions:  []string{"5.15.0", "5.19.0", "6.1.0", "6.2.0", "6.5.0", "6.6.0", "6.8.0"},
-		locales:   []string{"en-US", "en-GB", "zh-CN", "de-DE", "ru-RU"},
-		timezones: []string{"UTC", "America/New_York", "Europe/Berlin", "Asia/Shanghai"},
-		platform:  "Linux x86_64",
-	},
 }
 
-// Node.js 版本选项
+// Node.js 版本选项（参考 kiro.rs: nodejs#22.22.0）
 var nodeVersions = []string{
-	"18.17.0", "18.18.0", "18.19.0", "18.20.0",
-	"20.10.0", "20.11.0", "20.12.0", "20.14.0", "20.15.0", "20.16.0", "20.17.0", "20.18.0",
-	"22.0.0", "22.1.0", "22.2.0",
+	"22.10.0", "22.11.0", "22.12.0", "22.14.0", "22.16.0", "22.18.0", "22.20.0", "22.22.0",
 }
 
-// Kiro 版本选项
+// Kiro 版本选项（参考 kiro.rs: KiroIDE-0.11.107）
 var kiroVersions = []string{
-	"0.3.0", "0.3.1", "0.3.2", "0.3.3",
-	"0.4.0", "0.5.0", "0.6.0", "0.7.0", "0.8.0",
+	"0.10.0", "0.10.5", "0.11.0", "0.11.50", "0.11.100", "0.11.107",
 }
 
 // Accept-Language 模板

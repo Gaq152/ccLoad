@@ -296,8 +296,8 @@ func BuildKiroRequestHeaders(accessToken string, isStreaming bool, deviceFingerp
 		if err != nil {
 			// 生成失败，使用默认值（降级）
 			log.Printf("[WARN] [Kiro] Failed to generate fingerprint: %v, using defaults", err)
-			headers.Set("x-amz-user-agent", "aws-sdk-js/1.0.27 KiroIDE-0.8.0-"+KiroDefaultDeviceFingerprint)
-			headers.Set("User-Agent", "aws-sdk-js/1.0.27 ua/2.1 os/darwin#25.0.0 lang/js md/nodejs#20.16.0 api/codewhispererstreaming#1.0.27 m/E KiroIDE-0.8.0-"+KiroDefaultDeviceFingerprint)
+			headers.Set("x-amz-user-agent", "aws-sdk-js/1.0.34 KiroIDE-0.11.107-"+KiroDefaultDeviceFingerprint)
+			headers.Set("User-Agent", "aws-sdk-js/1.0.34 ua/2.1 os/darwin#24.6.0 lang/js md/nodejs#22.22.0 api/codewhispererstreaming#1.0.34 m/E KiroIDE-0.11.107-"+KiroDefaultDeviceFingerprint)
 			headers.Set("Accept-Language", "en-US,en;q=0.9")
 			headers.Set("Accept-Encoding", "gzip, deflate, br")
 			headers.Set("Connection", "close")
@@ -316,11 +316,29 @@ func BuildKiroRequestHeaders(accessToken string, isStreaming bool, deviceFingerp
 }
 
 // GetKiroModelId 获取 Kiro 模型 ID
-// 如果模型不在映射表中，返回空字符串
+// 优先精确匹配，不命中时按模型族模糊匹配（参考 kiro.rs map_model）
 func GetKiroModelId(anthropicModel string) string {
 	if modelId, ok := KiroModelMap[anthropicModel]; ok {
 		return modelId
 	}
+
+	// 模糊匹配：支持未登记的模型别名
+	lower := strings.ToLower(anthropicModel)
+	switch {
+	case strings.Contains(lower, "sonnet"):
+		if strings.Contains(lower, "4-6") || strings.Contains(lower, "4.6") {
+			return "claude-sonnet-4.6"
+		}
+		return "claude-sonnet-4.5"
+	case strings.Contains(lower, "opus"):
+		if strings.Contains(lower, "4-5") || strings.Contains(lower, "4.5") {
+			return "claude-opus-4.5"
+		}
+		return "claude-opus-4.6"
+	case strings.Contains(lower, "haiku"):
+		return "claude-haiku-4.5"
+	}
+
 	return ""
 }
 

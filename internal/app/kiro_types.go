@@ -13,8 +13,11 @@ const (
 	// Kiro IdC 方式 Token 刷新 URL
 	KiroIdCRefreshTokenURL = "https://oidc.us-east-1.amazonaws.com/token"
 
-	// Kiro API 端点
-	KiroAPIEndpoint = "https://codewhisperer.us-east-1.amazonaws.com/generateAssistantResponse"
+	// Kiro API 端点（主端点，参考 kiro.rs 使用 q.us-east-1 域名）
+	KiroAPIEndpoint = "https://q.us-east-1.amazonaws.com/generateAssistantResponse"
+
+	// Kiro API 备用端点（旧域名，仍可用）
+	KiroAPIEndpointLegacy = "https://codewhisperer.us-east-1.amazonaws.com/generateAssistantResponse"
 
 	// Token 提前刷新时间（过期前 5 分钟刷新）
 	KiroTokenRefreshBuffer = 5 * 60 // 秒
@@ -25,22 +28,30 @@ const (
 )
 
 // KiroModelMap 模型映射表 (Anthropic 模型名 -> CodeWhisperer 模型 ID)
+// 参考 kiro.rs: https://github.com/hank9999/kiro.rs (converter.rs map_model)
+// Kiro API 接受小写点号格式的模型 ID，如 "claude-sonnet-4.5"
 var KiroModelMap = map[string]string{
-	// 完整模型名
-	"claude-opus-4-6":            "CLAUDE_OPUS_4_6_V1_0",
-	"claude-sonnet-4-6":          "CLAUDE_SONNET_4_6_V1_0",
-	"claude-opus-4-5-20251101":   "CLAUDE_OPUS_4_5_20251101_V1_0",
-	"claude-sonnet-4-5-20250929": "CLAUDE_SONNET_4_5_20250929_V1_0",
-	"claude-sonnet-4-20250514":   "CLAUDE_SONNET_4_20250514_V1_0",
-	"claude-3-7-sonnet-20250219": "CLAUDE_3_7_SONNET_20250219_V1_0",
-	"claude-3-5-haiku-20241022":  "auto",
-	"claude-haiku-4-5-20251001":  "auto",
+	// Sonnet 4.6 系列
+	"claude-sonnet-4-6": "claude-sonnet-4.6",
 
-	// 常用别名
-	"claude-3-7-sonnet": "CLAUDE_3_7_SONNET_20250219_V1_0",
-	"claude-sonnet-4":   "CLAUDE_SONNET_4_20250514_V1_0",
-	"claude-sonnet-4-5": "CLAUDE_SONNET_4_5_20250929_V1_0",
-	"claude-opus-4-5":   "CLAUDE_OPUS_4_5_20251101_V1_0",
+	// Sonnet 4.5 及更早版本 → 统一映射为 claude-sonnet-4.5
+	"claude-sonnet-4-5-20250929": "claude-sonnet-4.5",
+	"claude-sonnet-4-5":          "claude-sonnet-4.5",
+	"claude-sonnet-4-20250514":   "claude-sonnet-4.5",
+	"claude-sonnet-4":            "claude-sonnet-4.5",
+	"claude-3-7-sonnet-20250219": "claude-sonnet-4.5",
+	"claude-3-7-sonnet":          "claude-sonnet-4.5",
+
+	// Opus 4.6 系列
+	"claude-opus-4-6": "claude-opus-4.6",
+
+	// Opus 4.5 系列
+	"claude-opus-4-5-20251101": "claude-opus-4.5",
+	"claude-opus-4-5":          "claude-opus-4.5",
+
+	// Haiku 系列
+	"claude-3-5-haiku-20241022": "claude-haiku-4.5",
+	"claude-haiku-4-5-20251001": "claude-haiku-4.5",
 }
 
 // ============================================================================

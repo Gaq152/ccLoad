@@ -284,7 +284,7 @@ func (s *Server) HandleImportChannelsCSV(c *gin.Context) {
 		if url == "" && isOAuthPreset {
 			switch preset {
 			case "kiro":
-				url = "https://codewhisperer.us-east-1.amazonaws.com"
+				url = "https://q.us-east-1.amazonaws.com"
 			case "codex":
 				url = "https://chatgpt.com/backend-api/codex"
 			case "gemini":
