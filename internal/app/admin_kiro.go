@@ -101,7 +101,7 @@ func (s *Server) HandleKiroGetEmail(c *gin.Context) {
 	defer cancel()
 
 	// 调用 AWS CodeWhisperer getUsageLimits API
-	usageLimitsURL := "https://codewhisperer.us-east-1.amazonaws.com/getUsageLimits?isEmailRequired=true&origin=AI_EDITOR&resourceType=AGENTIC_REQUEST"
+	usageLimitsURL := "https://q.us-east-1.amazonaws.com/getUsageLimits?isEmailRequired=true&origin=AI_EDITOR&resourceType=AGENTIC_REQUEST"
 
 	httpReq, err := http.NewRequestWithContext(ctx, "GET", usageLimitsURL, nil)
 	if err != nil {
@@ -110,11 +110,11 @@ func (s *Server) HandleKiroGetEmail(c *gin.Context) {
 		return
 	}
 
-	// 设置请求头
+	// 设置请求头（参考 kiro.rs: codewhispererruntime 用于 getUsageLimits）
 	invocationID := fmt.Sprintf("%d-%s", time.Now().UnixNano(), uuid.New().String()[:8])
 	httpReq.Header.Set("Authorization", "Bearer "+req.AccessToken)
-	httpReq.Header.Set("Host", "codewhisperer.us-east-1.amazonaws.com")
-	httpReq.Header.Set("x-amz-user-agent", "aws-sdk-js/3.738.0 ua/2.1 os/linux lang/js md/browser api/codewhisperer m/E KiroIDE")
+	httpReq.Header.Set("Host", "q.us-east-1.amazonaws.com")
+	httpReq.Header.Set("x-amz-user-agent", "aws-sdk-js/1.0.34 KiroIDE")
 	httpReq.Header.Set("amz-sdk-invocation-id", invocationID)
 	httpReq.Header.Set("amz-sdk-request", "attempt=1; max=1")
 	httpReq.Header.Set("Accept-Language", "en-US,en;q=0.9")
@@ -148,6 +148,9 @@ func (s *Server) HandleKiroGetEmail(c *gin.Context) {
 			Email  string `json:"email"`
 			UserID string `json:"userId"`
 		} `json:"userInfo"`
+		SubscriptionInfo struct {
+			SubscriptionTitle string `json:"subscriptionTitle"`
+		} `json:"subscriptionInfo"`
 	}
 
 	if err := sonic.Unmarshal(respBody, &usageLimits); err != nil {
@@ -162,11 +165,13 @@ func (s *Server) HandleKiroGetEmail(c *gin.Context) {
 		return
 	}
 
-	log.Printf("[INFO] [Kiro Email] Retrieved email: %s", usageLimits.UserInfo.Email)
+	log.Printf("[INFO] [Kiro Email] Retrieved email: %s, subscription: %s",
+		usageLimits.UserInfo.Email, usageLimits.SubscriptionInfo.SubscriptionTitle)
 
 	RespondJSON(c, http.StatusOK, gin.H{
-		"email":   usageLimits.UserInfo.Email,
-		"user_id": usageLimits.UserInfo.UserID,
+		"email":              usageLimits.UserInfo.Email,
+		"user_id":            usageLimits.UserInfo.UserID,
+		"subscription_title": usageLimits.SubscriptionInfo.SubscriptionTitle,
 	})
 }
 

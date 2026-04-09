@@ -486,9 +486,10 @@
 
                   <!-- Token 信息（已配置时显示） -->
                   <div id="kiroTokenInfo" style="display: none; margin-bottom: 12px; padding: 10px; background: var(--card-bg); border-radius: 6px; font-size: 13px;">
-                    <div style="display: flex; gap: 16px; flex-wrap: wrap;">
+                    <div style="display: flex; gap: 16px; flex-wrap: wrap; align-items: center;">
                       <div><span style="color: var(--neutral-500);">认证方式:</span> <code id="kiroAuthType" style="background: var(--neutral-100); padding: 2px 6px; border-radius: 4px;">-</code></div>
                       <div><span style="color: var(--neutral-500);">邮箱:</span> <span id="kiroEmail" style="font-weight: 500; color: var(--primary-600);">-</span></div>
+                      <div id="kiroSubscriptionWrap" style="display: none;"><span style="color: var(--neutral-500);">订阅:</span> <span id="kiroSubscription" style="font-weight: 600; padding: 1px 6px; border-radius: 4px; font-size: 12px;">-</span></div>
                       <div><span style="color: var(--neutral-500);">过期时间:</span> <span id="kiroExpiresAt" style="font-weight: 500;">-</span></div>
                     </div>
                   </div>

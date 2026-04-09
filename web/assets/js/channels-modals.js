@@ -1823,7 +1823,7 @@ const QUOTA_TEMPLATES = {
   // Kiro 官方预设模板（使用 OAuth Token）
   kiro: {
     name: 'Kiro 官方',
-    absoluteUrl: 'https://codewhisperer.us-east-1.amazonaws.com/getUsageLimits?isEmailRequired=true&origin=AI_EDITOR&resourceType=AGENTIC_REQUEST',
+    absoluteUrl: 'https://q.us-east-1.amazonaws.com/getUsageLimits?isEmailRequired=true&origin=AI_EDITOR&resourceType=AGENTIC_REQUEST',
     method: 'GET',
     // headers 动态生成（从 Kiro Token 获取）
     headers: [],
@@ -2253,7 +2253,7 @@ function handlePresetChange(preset) {
   if (isKiro) {
     // Kiro 使用固定的 AWS CodeWhisperer 端点（不需要用户填写）
     if (typeof setInlineEndpoints === 'function') {
-      setInlineEndpoints(['https://codewhisperer.us-east-1.amazonaws.com']);
+      setInlineEndpoints(['https://q.us-east-1.amazonaws.com', 'https://codewhisperer.us-east-1.amazonaws.com']);
     }
 
     if (standardKeyContainer) standardKeyContainer.style.display = 'none';
@@ -3310,6 +3310,27 @@ function updateKiroTokenUI(token) {
       emailEl.style.color = 'var(--neutral-400)';
     }
 
+    // 显示订阅级别（如果已缓存）
+    const subscriptionWrap = document.getElementById('kiroSubscriptionWrap');
+    const subscriptionEl = document.getElementById('kiroSubscription');
+    if (token.subscriptionTitle && subscriptionWrap && subscriptionEl) {
+      subscriptionEl.textContent = token.subscriptionTitle;
+      subscriptionWrap.style.display = '';
+      const titleUpper = token.subscriptionTitle.toUpperCase();
+      if (titleUpper.includes('PRO')) {
+        subscriptionEl.style.background = 'var(--success-50, #ecfdf5)';
+        subscriptionEl.style.color = 'var(--success-700, #15803d)';
+      } else if (titleUpper.includes('FREE')) {
+        subscriptionEl.style.background = 'var(--neutral-100, #f3f4f6)';
+        subscriptionEl.style.color = 'var(--neutral-600, #4b5563)';
+      } else {
+        subscriptionEl.style.background = 'var(--primary-50, #eff6ff)';
+        subscriptionEl.style.color = 'var(--primary-700, #1d4ed8)';
+      }
+    } else if (subscriptionWrap) {
+      subscriptionWrap.style.display = 'none';
+    }
+
     // 显示过期时间
     const expiresAt = token.expiresAt || token.expires_at;
     if (expiresAt) {
@@ -3678,7 +3699,10 @@ async function fetchKiroEmail(accessToken) {
     });
 
     if (result.success && result.data && result.data.email) {
-      return result.data.email;
+      return {
+        email: result.data.email,
+        subscriptionTitle: result.data.subscription_title || ''
+      };
     } else {
       return null;
     }
@@ -3694,10 +3718,16 @@ async function fetchKiroEmail(accessToken) {
  * @param {Object} token - Token 对象
  * @param {string|null} email - 邮箱地址，null 表示获取失败
  */
-function updateKiroTokenEmail(token, email) {
+function updateKiroTokenEmail(token, result) {
   if (!token) return;
 
   const emailEl = document.getElementById('kiroEmail');
+  const subscriptionWrap = document.getElementById('kiroSubscriptionWrap');
+  const subscriptionEl = document.getElementById('kiroSubscription');
+
+  // result 可能是字符串（兼容旧调用）或对象 { email, subscriptionTitle }
+  const email = typeof result === 'string' ? result : (result && result.email);
+  const subscriptionTitle = typeof result === 'object' && result ? result.subscriptionTitle : '';
 
   if (email) {
     // 获取成功
@@ -3713,6 +3743,28 @@ function updateKiroTokenEmail(token, email) {
       emailEl.textContent = '获取失败';
       emailEl.style.color = 'var(--neutral-400)';
     }
+  }
+
+  // 更新订阅级别勋章
+  if (subscriptionTitle && subscriptionWrap && subscriptionEl) {
+    token.subscriptionTitle = subscriptionTitle;
+    subscriptionEl.textContent = subscriptionTitle;
+    subscriptionWrap.style.display = '';
+
+    // 根据订阅级别设置颜色
+    const titleUpper = subscriptionTitle.toUpperCase();
+    if (titleUpper.includes('PRO')) {
+      subscriptionEl.style.background = 'var(--success-50, #ecfdf5)';
+      subscriptionEl.style.color = 'var(--success-700, #15803d)';
+    } else if (titleUpper.includes('FREE')) {
+      subscriptionEl.style.background = 'var(--neutral-100, #f3f4f6)';
+      subscriptionEl.style.color = 'var(--neutral-600, #4b5563)';
+    } else {
+      subscriptionEl.style.background = 'var(--primary-50, #eff6ff)';
+      subscriptionEl.style.color = 'var(--primary-700, #1d4ed8)';
+    }
+  } else if (subscriptionWrap) {
+    subscriptionWrap.style.display = 'none';
   }
 
   // 更新隐藏的 input（用于保存）
