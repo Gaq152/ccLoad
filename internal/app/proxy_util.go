@@ -84,6 +84,7 @@ type proxyRequestContext struct {
 	isKiro                bool   // 是否为 Kiro 预设
 	kiroAccessToken       string // Kiro Access Token（刷新后）
 	kiroDeviceFingerprint string // Kiro 设备指纹
+	kiroTransformedBody   []byte // Kiro 转换后的请求体（调试用）
 
 	// Thinking 兼容处理（2025-12新增）
 	thinkingBlockRemoved bool // thinking 块是否已被清理（避免重复清理）

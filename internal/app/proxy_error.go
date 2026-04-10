@@ -362,6 +362,16 @@ func (s *Server) handleProxyErrorResponse(
 		}
 		log.Printf("[DEBUG-400] 请求体(%d bytes): %s", reqBodyLen, reqPreview)
 
+		// Kiro 转换后的请求体（关键调试信息）
+		if reqCtx.isKiro && len(reqCtx.kiroTransformedBody) > 0 {
+			kiroLen := len(reqCtx.kiroTransformedBody)
+			kiroPreview := string(reqCtx.kiroTransformedBody)
+			if kiroLen > 4000 {
+				kiroPreview = kiroPreview[:4000] + fmt.Sprintf("...(truncated, total=%d bytes)", kiroLen)
+			}
+			log.Printf("[DEBUG-400] Kiro转换后请求体(%d bytes): %s", kiroLen, kiroPreview)
+		}
+
 		// [INFO] 检测 thinking 模式不兼容错误
 		// 错误特征: "Expected `thinking` or `redacted_thinking`, but found `text`"
 		// 触发条件: 渠道不支持 thinking 但请求中包含 thinking 块

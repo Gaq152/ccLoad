@@ -871,6 +871,7 @@ func (s *Server) tryChannelWithKeys(ctx context.Context, cfg *model.Config, reqC
 			return nil, fmt.Errorf("kiro request transform failed: %w", err)
 		}
 		bodyToSend = kiroBody
+		reqCtx.kiroTransformedBody = kiroBody // 保存转换后的请求体用于调试
 	}
 
 	// Key重试循环
