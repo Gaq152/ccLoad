@@ -116,6 +116,9 @@ func TransformToKiroRequest(anthropicBody []byte) ([]byte, error) {
 	// Kiro API 要求每个 tool_use 必须有对应的 tool_result，否则返回 400 Bad Request
 	if len(history) > 0 {
 		toolResults = validateAndFilterToolPairing(history, toolResults)
+
+		// 清理历史：移除因过滤产生的空消息（如 web_search 过滤后的残留）
+		history = cleanupKiroHistory(history)
 		kiroReq.ConversationState.History = history
 
 		// 更新当前消息中的 tool_results（过滤后可能数量变化）
@@ -129,6 +132,14 @@ func TransformToKiroRequest(anthropicBody []byte) ([]byte, error) {
 	// 为历史中引用但不在当前 tools 列表的工具创建占位符定义
 	// Kiro API 要求：历史消息中引用的工具必须在 tools 列表中有定义
 	ensureHistoryToolDefinitions(history, &kiroReq.ConversationState.CurrentMessage.UserInputMessage.UserInputMessageContext)
+
+	// 打印转换摘要（帮助调试 400 错误）
+	toolCount := len(kiroReq.ConversationState.CurrentMessage.UserInputMessage.UserInputMessageContext.Tools)
+	trCount := len(kiroReq.ConversationState.CurrentMessage.UserInputMessage.UserInputMessageContext.ToolResults)
+	histCount := len(kiroReq.ConversationState.History)
+	contentLen := len(kiroReq.ConversationState.CurrentMessage.UserInputMessage.Content)
+	log.Printf("[DEBUG] [Kiro] 转换摘要: model=%s, historyMsgs=%d, tools=%d, currentContent=%d chars, currentToolResults=%d, thinking=%v",
+		modelId, histCount, toolCount, contentLen, trCount, kiroReq.InferenceConfiguration != nil)
 
 	// 序列化
 	return sonic.Marshal(kiroReq)
@@ -591,10 +602,10 @@ func extractAssistantContent(content any) (string, []KiroToolUseEntry) {
 					toolUse.Name = name
 				}
 
-				// 过滤不支持的工具
-				if toolUse.Name == "web_search" || toolUse.Name == "websearch" {
-					continue
-				}
+				// 不过滤 web_search：保留历史中的搜索上下文
+				// 第三方客户端（非 Claude Code）可能使用 Brave 等搜索工具，
+				// 搜索结果是有价值的上下文，应传递给 Kiro
+				// ensureHistoryToolDefinitions 会自动创建占位符工具定义
 
 				if input, ok := block["input"].(map[string]any); ok {
 					toolUse.Input = input
@@ -625,18 +636,16 @@ func getStringOrDefault(m map[string]any, key, defaultVal string) string {
 // ============================================================================
 
 // validateAndFilterToolPairing 验证并过滤 tool_use/tool_result 配对
+// 处理范围包括历史消息和当前消息中的 tool_use/tool_result：
 // 1. 收集历史中所有 assistant 消息的 tool_use_id
-// 2. 收集历史中所有 user 消息已有的 tool_result_id
-// 3. 过滤当前消息中孤立的 tool_result（无匹配 tool_use）
-// 4. 从历史中移除孤立的 tool_use（无匹配 tool_result）
-// 返回过滤后的 toolResults，同时原地修改 history
+// 2. 过滤历史 user 消息中孤立的 tool_result（如 web_search 过滤后的残留）
+// 3. 过滤当前消息中孤立的 tool_result
+// 4. 从历史中移除孤立的 tool_use
+// 返回过滤后的 currentToolResults，同时原地修改 history
 func validateAndFilterToolPairing(history []any, currentToolResults []KiroToolResult) []KiroToolResult {
-	// 收集历史中所有 tool_use_id 和已配对的 tool_result_id
+	// === Phase 1: 收集历史中所有 tool_use_id ===
 	allToolUseIDs := make(map[string]bool)
-	historyToolResultIDs := make(map[string]bool)
-
 	for _, msg := range history {
-		// assistant 消息中的 tool_use
 		if aMsg, ok := msg.(KiroHistoryAssistantMessage); ok {
 			for _, tu := range aMsg.AssistantResponseMessage.ToolUses {
 				if tu.ToolUseId != "" {
@@ -644,7 +653,36 @@ func validateAndFilterToolPairing(history []any, currentToolResults []KiroToolRe
 				}
 			}
 		}
-		// user 消息中已有的 tool_result
+	}
+
+	// === Phase 2: 过滤历史 user 消息中孤立的 tool_result ===
+	// 典型场景：web_search 的 tool_use 被过滤，但对应的 tool_result 仍在历史中
+	for i, msg := range history {
+		uMsg, ok := msg.(KiroHistoryUserMessage)
+		if !ok {
+			continue
+		}
+		results := uMsg.UserInputMessage.UserInputMessageContext.ToolResults
+		if len(results) == 0 {
+			continue
+		}
+		var kept []KiroToolResult
+		for _, tr := range results {
+			if allToolUseIDs[tr.ToolUseId] {
+				kept = append(kept, tr)
+			} else {
+				log.Printf("[WARN] [Kiro] 从历史中移除孤立的 tool_result: tool_use_id=%s", tr.ToolUseId)
+			}
+		}
+		if len(kept) != len(results) {
+			uMsg.UserInputMessage.UserInputMessageContext.ToolResults = kept
+			history[i] = uMsg // 值类型，需要写回
+		}
+	}
+
+	// === Phase 3: 重新收集历史中已配对的 tool_result_id ===
+	historyToolResultIDs := make(map[string]bool)
+	for _, msg := range history {
 		if uMsg, ok := msg.(KiroHistoryUserMessage); ok {
 			for _, tr := range uMsg.UserInputMessage.UserInputMessageContext.ToolResults {
 				if tr.ToolUseId != "" {
@@ -654,7 +692,7 @@ func validateAndFilterToolPairing(history []any, currentToolResults []KiroToolRe
 		}
 	}
 
-	// 计算未配对的 tool_use_id（有 tool_use 但历史中没有 tool_result）
+	// === Phase 4: 过滤当前消息中的 tool_results ===
 	unpairedToolUseIDs := make(map[string]bool)
 	for id := range allToolUseIDs {
 		if !historyToolResultIDs[id] {
@@ -662,11 +700,9 @@ func validateAndFilterToolPairing(history []any, currentToolResults []KiroToolRe
 		}
 	}
 
-	// 过滤当前消息的 tool_results：只保留能配对的
 	var filteredResults []KiroToolResult
 	for _, tr := range currentToolResults {
 		if unpairedToolUseIDs[tr.ToolUseId] {
-			// 配对成功
 			filteredResults = append(filteredResults, tr)
 			delete(unpairedToolUseIDs, tr.ToolUseId)
 		} else if allToolUseIDs[tr.ToolUseId] {
@@ -676,12 +712,41 @@ func validateAndFilterToolPairing(history []any, currentToolResults []KiroToolRe
 		}
 	}
 
-	// 从历史中移除孤立的 tool_use（有 tool_use 但始终没有 tool_result）
+	// === Phase 5: 从历史中移除孤立的 tool_use ===
 	if len(unpairedToolUseIDs) > 0 {
 		removeOrphanedToolUses(history, unpairedToolUseIDs)
 	}
 
 	return filteredResults
+}
+
+// cleanupKiroHistory 清理历史消息，移除空消息
+// 场景：web_search 等工具被过滤后，可能产生空的 user/assistant 消息对
+func cleanupKiroHistory(history []any) []any {
+	// 从尾部开始移除空消息（空 content + 无 toolUses/toolResults）
+	for len(history) > 0 {
+		last := history[len(history)-1]
+		if isEmptyHistoryMessage(last) {
+			log.Printf("[INFO] [Kiro] 移除尾部空历史消息")
+			history = history[:len(history)-1]
+		} else {
+			break
+		}
+	}
+	return history
+}
+
+// isEmptyHistoryMessage 判断历史消息是否为空（无实质内容）
+func isEmptyHistoryMessage(msg any) bool {
+	switch m := msg.(type) {
+	case KiroHistoryAssistantMessage:
+		return m.AssistantResponseMessage.Content == "" && len(m.AssistantResponseMessage.ToolUses) == 0
+	case KiroHistoryUserMessage:
+		return m.UserInputMessage.Content == "" &&
+			len(m.UserInputMessage.Images) == 0 &&
+			len(m.UserInputMessage.UserInputMessageContext.ToolResults) == 0
+	}
+	return false
 }
 
 // removeOrphanedToolUses 从历史中移除没有对应 tool_result 的 tool_use
