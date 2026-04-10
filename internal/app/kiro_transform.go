@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"log"
 	"strings"
 
 	"github.com/bytedance/sonic"
@@ -87,8 +88,22 @@ func TransformToKiroRequest(anthropicBody []byte) ([]byte, error) {
 
 	// 构建历史消息
 	history := buildKiroHistory(anthropicReq, messages, modelId)
+
+	// 验证 tool_use/tool_result 配对
+	// Kiro API 要求每个 tool_use 必须有对应的 tool_result，否则返回 400 Bad Request
 	if len(history) > 0 {
+		toolResults = validateAndFilterToolPairing(history, toolResults)
 		kiroReq.ConversationState.History = history
+
+		// 更新当前消息中的 tool_results（过滤后可能数量变化）
+		if len(toolResults) > 0 {
+			kiroReq.ConversationState.CurrentMessage.UserInputMessage.UserInputMessageContext.ToolResults = toolResults
+			kiroReq.ConversationState.CurrentMessage.UserInputMessage.Content = ""
+		} else {
+			kiroReq.ConversationState.CurrentMessage.UserInputMessage.UserInputMessageContext.ToolResults = nil
+			// 如果过滤后没有 tool_result 了，恢复文本内容
+			kiroReq.ConversationState.CurrentMessage.UserInputMessage.Content = textContent
+		}
 	}
 
 	// 处理 thinking 配置
@@ -487,6 +502,97 @@ func getStringOrDefault(m map[string]any, key, defaultVal string) string {
 		return v
 	}
 	return defaultVal
+}
+
+// ============================================================================
+// Tool Use / Tool Result 配对验证
+// Kiro API 要求 history 中每个 tool_use 都必须有匹配的 tool_result，
+// 否则返回 400 "Improperly formed request"
+// ============================================================================
+
+// validateAndFilterToolPairing 验证并过滤 tool_use/tool_result 配对
+// 1. 收集历史中所有 assistant 消息的 tool_use_id
+// 2. 收集历史中所有 user 消息已有的 tool_result_id
+// 3. 过滤当前消息中孤立的 tool_result（无匹配 tool_use）
+// 4. 从历史中移除孤立的 tool_use（无匹配 tool_result）
+// 返回过滤后的 toolResults，同时原地修改 history
+func validateAndFilterToolPairing(history []any, currentToolResults []KiroToolResult) []KiroToolResult {
+	// 收集历史中所有 tool_use_id 和已配对的 tool_result_id
+	allToolUseIDs := make(map[string]bool)
+	historyToolResultIDs := make(map[string]bool)
+
+	for _, msg := range history {
+		// assistant 消息中的 tool_use
+		if aMsg, ok := msg.(KiroHistoryAssistantMessage); ok {
+			for _, tu := range aMsg.AssistantResponseMessage.ToolUses {
+				if tu.ToolUseId != "" {
+					allToolUseIDs[tu.ToolUseId] = true
+				}
+			}
+		}
+		// user 消息中已有的 tool_result
+		if uMsg, ok := msg.(KiroHistoryUserMessage); ok {
+			for _, tr := range uMsg.UserInputMessage.UserInputMessageContext.ToolResults {
+				if tr.ToolUseId != "" {
+					historyToolResultIDs[tr.ToolUseId] = true
+				}
+			}
+		}
+	}
+
+	// 计算未配对的 tool_use_id（有 tool_use 但历史中没有 tool_result）
+	unpairedToolUseIDs := make(map[string]bool)
+	for id := range allToolUseIDs {
+		if !historyToolResultIDs[id] {
+			unpairedToolUseIDs[id] = true
+		}
+	}
+
+	// 过滤当前消息的 tool_results：只保留能配对的
+	var filteredResults []KiroToolResult
+	for _, tr := range currentToolResults {
+		if unpairedToolUseIDs[tr.ToolUseId] {
+			// 配对成功
+			filteredResults = append(filteredResults, tr)
+			delete(unpairedToolUseIDs, tr.ToolUseId)
+		} else if allToolUseIDs[tr.ToolUseId] {
+			log.Printf("[WARN] [Kiro] 跳过重复的 tool_result：已在历史中配对，tool_use_id=%s", tr.ToolUseId)
+		} else {
+			log.Printf("[WARN] [Kiro] 跳过孤立的 tool_result：找不到对应的 tool_use，tool_use_id=%s", tr.ToolUseId)
+		}
+	}
+
+	// 从历史中移除孤立的 tool_use（有 tool_use 但始终没有 tool_result）
+	if len(unpairedToolUseIDs) > 0 {
+		removeOrphanedToolUses(history, unpairedToolUseIDs)
+	}
+
+	return filteredResults
+}
+
+// removeOrphanedToolUses 从历史中移除没有对应 tool_result 的 tool_use
+func removeOrphanedToolUses(history []any, orphanedIDs map[string]bool) {
+	for i, msg := range history {
+		aMsg, ok := msg.(KiroHistoryAssistantMessage)
+		if !ok || len(aMsg.AssistantResponseMessage.ToolUses) == 0 {
+			continue
+		}
+
+		originalLen := len(aMsg.AssistantResponseMessage.ToolUses)
+		var kept []KiroToolUseEntry
+		for _, tu := range aMsg.AssistantResponseMessage.ToolUses {
+			if !orphanedIDs[tu.ToolUseId] {
+				kept = append(kept, tu)
+			} else {
+				log.Printf("[WARN] [Kiro] 从历史中移除孤立的 tool_use：tool_use_id=%s, name=%s", tu.ToolUseId, tu.Name)
+			}
+		}
+
+		if len(kept) != originalLen {
+			aMsg.AssistantResponseMessage.ToolUses = kept
+			history[i] = aMsg // 值类型，需要写回
+		}
+	}
 }
 
 // ============================================================================
