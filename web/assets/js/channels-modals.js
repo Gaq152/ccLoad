@@ -1172,23 +1172,8 @@ async function fetchModelsFromAPI() {
       return;
     }
   } else if (channelType === 'anthropic' && preset === 'kiro') {
-    // Kiro 预设：使用 refresh_token，模型列表是固定的
-    // Kiro 不支持动态获取模型列表，直接填充支持的模型
-    const kiroModels = [
-      'claude-opus-4-6',
-      'claude-sonnet-4-6',
-      'claude-sonnet-4-20250514',
-      'claude-3-5-sonnet-20241022',
-      'claude-3-5-haiku-20241022'
-    ];
-    const modelsTextarea = document.getElementById('channelModels');
-    modelsTextarea.value = kiroModels.join('\n');
-    if (window.showSuccess) {
-      showSuccess(`已填充 ${kiroModels.length} 个 Kiro 支持的模型`);
-    } else {
-      showAlert(`已填充 ${kiroModels.length} 个 Kiro 支持的模型`);
-    }
-    return;
+    // Kiro 预设：从后端获取预定义模型列表
+    return resetModelsToDefault();
   } else {
     // 其他渠道或自定义预设：使用 API Key
     apiKey = inlineKeyTableData
@@ -1238,7 +1223,6 @@ async function fetchModelsFromAPI() {
 
     const existingModels = originalValue.split(',').map(m => m.trim()).filter(m => m);
     const allModels = [...new Set([...existingModels, ...data.models])];
-
     modelsTextarea.value = allModels.join(',');
 
     const source = data.source === 'api' ? '从API获取' : '预定义列表';
@@ -1257,6 +1241,61 @@ async function fetchModelsFromAPI() {
       showError('获取模型列表失败: ' + error.message);
     } else {
       showAlert('获取模型列表失败: ' + error.message);
+    }
+  } finally {
+    modelsTextarea.disabled = false;
+    modelsTextarea.placeholder = originalPlaceholder;
+  }
+}
+
+// 重置模型列表为预定义默认值
+async function resetModelsToDefault() {
+  const channelType = document.querySelector('input[name="channelType"]:checked')?.value || 'anthropic';
+  const channelUrl = document.getElementById('channelUrl').value.trim() || 'https://api.anthropic.com';
+
+  const modelsTextarea = document.getElementById('channelModels');
+  const originalValue = modelsTextarea.value;
+  const originalPlaceholder = modelsTextarea.placeholder;
+
+  modelsTextarea.disabled = true;
+  modelsTextarea.placeholder = '正在获取默认模型列表...';
+
+  try {
+    const endpoint = '/admin/channels/models/fetch?force_predefined=true';
+    const response = await fetchAPIWithAuth(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        channel_type: channelType,
+        url: channelUrl,
+        api_key: 'predefined'
+      })
+    });
+
+    if (!response.success) {
+      throw new Error(response.error || '获取默认模型列表失败');
+    }
+
+    const data = response.data || {};
+    if (!data.models || data.models.length === 0) {
+      throw new Error('该渠道类型暂无预定义模型列表');
+    }
+
+    modelsTextarea.value = data.models.join(',');
+
+    if (window.showSuccess) {
+      showSuccess(`已导入 ${data.models.length} 个默认模型`);
+    } else {
+      showAlert(`已导入 ${data.models.length} 个默认模型`);
+    }
+  } catch (error) {
+    console.error('获取默认模型列表失败', error);
+    modelsTextarea.value = originalValue;
+
+    if (window.showError) {
+      showError('获取默认模型列表失败: ' + error.message);
+    } else {
+      showAlert('获取默认模型列表失败: ' + error.message);
     }
   } finally {
     modelsTextarea.disabled = false;

@@ -77,7 +77,8 @@ func (s *Server) HandleFetchModels(c *gin.Context) {
 	if channelType == "" {
 		channelType = channel.ChannelType
 	}
-	response, err := fetchModelsForConfig(c.Request.Context(), channelType, channel.URL, apiKey)
+	forcePredefined := c.Query("force_predefined") == "true"
+	response, err := fetchModelsForConfig(c.Request.Context(), channelType, channel.URL, apiKey, forcePredefined)
 	if err != nil {
 		// [INFO] 修复：统一返回200（与HandleFetchModelsPreview保持一致）
 		RespondErrorWithData[any](c, http.StatusOK, err.Error(), nil)
@@ -114,13 +115,14 @@ func (s *Server) HandleFetchModelsPreview(c *gin.Context) {
 	}
 
 	// 检查是否需要认证凭据（预定义列表类型不需要）
+	forcePredefined := c.Query("force_predefined") == "true"
 	source := determineSource(req.ChannelType, req.URL)
-	if source == "api" && authKey == "" {
+	if !forcePredefined && source == "api" && authKey == "" {
 		RespondErrorMsg(c, http.StatusBadRequest, "该渠道类型需要提供api_key或access_token")
 		return
 	}
 
-	response, err := fetchModelsForConfig(c.Request.Context(), req.ChannelType, req.URL, authKey)
+	response, err := fetchModelsForConfig(c.Request.Context(), req.ChannelType, req.URL, authKey, forcePredefined)
 	if err != nil {
 		// [INFO] 修复：统一返回200，通过success字段区分成功/失败（上游错误是预期内的）
 		RespondErrorWithData[any](c, http.StatusOK, err.Error(), nil)
@@ -129,9 +131,14 @@ func (s *Server) HandleFetchModelsPreview(c *gin.Context) {
 	RespondJSON(c, http.StatusOK, response)
 }
 
-func fetchModelsForConfig(ctx context.Context, channelType, channelURL, apiKey string) (*FetchModelsResponse, error) {
+func fetchModelsForConfig(ctx context.Context, channelType, channelURL, apiKey string, forcePredefined bool) (*FetchModelsResponse, error) {
 	normalizedType := util.NormalizeChannelType(channelType)
-	source := determineSource(channelType, channelURL)
+
+	// 强制使用预定义列表（用于"重置为默认"场景）
+	source := "predefined"
+	if !forcePredefined {
+		source = determineSource(channelType, channelURL)
+	}
 
 	var (
 		models     []string
@@ -155,10 +162,19 @@ func fetchModelsForConfig(ctx context.Context, channelType, channelURL, apiKey s
 
 		models, err = fetcher.FetchModels(ctx, channelURL, apiKey)
 		if err != nil {
-			return nil, fmt.Errorf(
-				"获取模型列表失败(渠道类型:%s, 规范化类型:%s, 数据来源:%s): %w",
-				channelType, normalizedType, source, err,
-			)
+			// API 获取失败时降级到预定义列表
+			fallbackModels := util.PredefinedModels(normalizedType)
+			if len(fallbackModels) > 0 {
+				models = fallbackModels
+				source = "predefined_fallback"
+				fetcherStr = "predefined(fallback)"
+				err = nil
+			} else {
+				return nil, fmt.Errorf(
+					"获取模型列表失败(渠道类型:%s, 规范化类型:%s, 数据来源:%s): %w",
+					channelType, normalizedType, source, err,
+				)
+			}
 		}
 	}
 
