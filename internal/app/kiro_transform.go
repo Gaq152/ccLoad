@@ -15,8 +15,11 @@ import (
 // 参考: https://github.com/nineyuanz/kiro2api/blob/main/converter/codewhisperer.go
 // ============================================================================
 
-// 工具描述最大长度
-const KiroMaxToolDescriptionLength = 1024
+// 工具描述最大长度（kiro.rs 使用 10000）
+const KiroMaxToolDescriptionLength = 10000
+
+// 工具名称最大长度（Kiro API 限制）
+const KiroMaxToolNameLength = 63
 
 // TransformToKiroRequest 将 Anthropic 请求体转换为 Kiro (CodeWhisperer) 格式
 // 输入: Anthropic Messages API 格式的请求体 (JSON bytes)
@@ -43,14 +46,37 @@ func TransformToKiroRequest(anthropicBody []byte) ([]byte, error) {
 	kiroReq.ConversationState.AgentTaskType = "vibe"
 	kiroReq.ConversationState.ConversationId = uuid.New().String()
 
-	// 确定 ChatTriggerType
+	// ChatTriggerType 始终使用 MANUAL
+	// kiro.rs 注释: "AUTO" 模式可能会导致 400 Bad Request 错误
 	tools, _ := anthropicReq["tools"].([]any)
-	kiroReq.ConversationState.ChatTriggerType = determineChatTriggerType(anthropicReq, tools)
+	kiroReq.ConversationState.ChatTriggerType = "MANUAL"
 
 	// 提取消息
 	messages, _ := anthropicReq["messages"].([]any)
 	if len(messages) == 0 {
 		return nil, fmt.Errorf("messages is empty")
+	}
+
+	// 预处理 prefill：如果末尾是 assistant 消息，截断到最后一条 user 消息
+	// Claude 4.x 已弃用 assistant prefill，Kiro API 也不支持
+	if lastMsg, ok := messages[len(messages)-1].(map[string]any); ok {
+		if role, _ := lastMsg["role"].(string); role != "user" {
+			// 找到最后一条 user 消息
+			lastUserIdx := -1
+			for i := len(messages) - 1; i >= 0; i-- {
+				if m, ok := messages[i].(map[string]any); ok {
+					if r, _ := m["role"].(string); r == "user" {
+						lastUserIdx = i
+						break
+					}
+				}
+			}
+			if lastUserIdx < 0 {
+				return nil, fmt.Errorf("no user message found")
+			}
+			log.Printf("[INFO] [Kiro] 截断末尾 assistant 消息（prefill），从 %d 条截断到 %d 条", len(messages), lastUserIdx+1)
+			messages = messages[:lastUserIdx+1]
+		}
 	}
 
 	// 处理最后一条消息作为当前消息
@@ -71,22 +97,19 @@ func TransformToKiroRequest(anthropicBody []byte) ([]byte, error) {
 		kiroReq.ConversationState.CurrentMessage.UserInputMessage.Images = images
 	}
 
-	// 如果有工具结果，设置到上下文中
+	// 如果有工具结果，设置到上下文中（保留文本内容，kiro.rs 也不清空）
 	if len(toolResults) > 0 {
 		kiroReq.ConversationState.CurrentMessage.UserInputMessage.UserInputMessageContext.ToolResults = toolResults
-		// 包含工具结果时，content 应为空
-		kiroReq.ConversationState.CurrentMessage.UserInputMessage.Content = ""
 	}
 
-	// 处理工具定义
+	// 处理工具定义（含 JSON Schema 规范化）
 	if len(tools) > 0 {
-		kiroTools := convertKiroTools(tools)
-		if len(kiroTools) > 0 {
+		if kiroTools := convertKiroTools(tools); len(kiroTools) > 0 {
 			kiroReq.ConversationState.CurrentMessage.UserInputMessage.UserInputMessageContext.Tools = kiroTools
 		}
 	}
 
-	// 构建历史消息
+	// 构建历史消息（thinking 通过 XML 标签注入系统消息）
 	history := buildKiroHistory(anthropicReq, messages, modelId)
 
 	// 验证 tool_use/tool_result 配对
@@ -98,67 +121,45 @@ func TransformToKiroRequest(anthropicBody []byte) ([]byte, error) {
 		// 更新当前消息中的 tool_results（过滤后可能数量变化）
 		if len(toolResults) > 0 {
 			kiroReq.ConversationState.CurrentMessage.UserInputMessage.UserInputMessageContext.ToolResults = toolResults
-			kiroReq.ConversationState.CurrentMessage.UserInputMessage.Content = ""
 		} else {
 			kiroReq.ConversationState.CurrentMessage.UserInputMessage.UserInputMessageContext.ToolResults = nil
-			// 如果过滤后没有 tool_result 了，恢复文本内容
-			kiroReq.ConversationState.CurrentMessage.UserInputMessage.Content = textContent
 		}
 	}
 
-	// 处理 thinking 配置
-	if thinking, ok := anthropicReq["thinking"].(map[string]any); ok {
-		if thinkingType, _ := thinking["type"].(string); thinkingType == "enabled" {
-			budgetTokens := 0
-			if bt, ok := thinking["budget_tokens"].(float64); ok {
-				budgetTokens = int(bt)
-			}
-
-			// 获取 max_tokens
-			maxTokens := 4096
-			if mt, ok := anthropicReq["max_tokens"].(float64); ok {
-				maxTokens = int(mt)
-			}
-
-			// 智能调整 max_tokens：确保 max_tokens > budget_tokens
-			// 参考 kiro2api: 如果 max_tokens 不足，自动调整为 budget_tokens + 4096
-			originalMaxTokens := maxTokens
-			if maxTokens <= budgetTokens {
-				maxTokens = budgetTokens + 4096
-				// 使用 fmt.Printf 避免引入 log 包（保持文件简洁）
-				fmt.Printf("[INFO] [Kiro] 自动调整 max_tokens 以满足 thinking 模式要求: original=%d, budget=%d, adjusted=%d\n",
-					originalMaxTokens, budgetTokens, maxTokens)
-			}
-
-			kiroReq.InferenceConfiguration = &KiroInferenceConfiguration{
-				MaxTokens: maxTokens,
-				Thinking: &KiroThinking{
-					Type:         "enabled",
-					BudgetTokens: budgetTokens,
-				},
-			}
-
-			// 如果有 temperature
-			if temp, ok := anthropicReq["temperature"].(float64); ok {
-				kiroReq.InferenceConfiguration.Temperature = &temp
-			}
-		}
-	}
+	// 为历史中引用但不在当前 tools 列表的工具创建占位符定义
+	// Kiro API 要求：历史消息中引用的工具必须在 tools 列表中有定义
+	ensureHistoryToolDefinitions(history, &kiroReq.ConversationState.CurrentMessage.UserInputMessage.UserInputMessageContext)
 
 	// 序列化
 	return sonic.Marshal(kiroReq)
 }
 
-// determineChatTriggerType 确定聊天触发类型
-func determineChatTriggerType(req map[string]any, tools []any) string {
-	if len(tools) > 0 {
-		if toolChoice, ok := req["tool_choice"].(map[string]any); ok {
-			if tcType, _ := toolChoice["type"].(string); tcType == "any" || tcType == "tool" {
-				return "AUTO"
+// generateThinkingPrefix 生成 thinking XML 标签前缀（注入到系统消息中）
+// kiro.rs 不使用 inferenceConfiguration，而是通过 XML 标签在系统消息中传递 thinking 配置
+func generateThinkingPrefix(req map[string]any) string {
+	thinking, ok := req["thinking"].(map[string]any)
+	if !ok {
+		return ""
+	}
+
+	thinkingType, _ := thinking["type"].(string)
+	switch thinkingType {
+	case "enabled":
+		budgetTokens := 0
+		if bt, ok := thinking["budget_tokens"].(float64); ok {
+			budgetTokens = int(bt)
+		}
+		return fmt.Sprintf("<thinking_mode>enabled</thinking_mode><max_thinking_length>%d</max_thinking_length>", budgetTokens)
+	case "adaptive":
+		effort := "high"
+		if oc, ok := req["output_config"].(map[string]any); ok {
+			if e, ok := oc["effort"].(string); ok {
+				effort = e
 			}
 		}
+		return fmt.Sprintf("<thinking_mode>adaptive</thinking_mode><thinking_effort>%s</thinking_effort>", effort)
 	}
-	return "MANUAL"
+	return ""
 }
 
 // processKiroMessageContent 处理消息内容，提取文本、图片和工具结果
@@ -256,7 +257,7 @@ func extractToolResultContent(content any) []map[string]any {
 	return result
 }
 
-// convertKiroTools 转换工具定义
+// convertKiroTools 转换工具定义（含 JSON Schema 规范化）
 func convertKiroTools(tools []any) []KiroTool {
 	var kiroTools []KiroTool
 
@@ -276,6 +277,11 @@ func convertKiroTools(tools []any) []KiroTool {
 			continue
 		}
 
+		// 工具名称截断（Kiro API 限制 63 字符）
+		if len(name) > KiroMaxToolNameLength {
+			name = name[:KiroMaxToolNameLength]
+		}
+
 		description, _ := toolMap["description"].(string)
 		inputSchema := toolMap["input_schema"]
 
@@ -283,13 +289,112 @@ func convertKiroTools(tools []any) []KiroTool {
 		kiroTool.ToolSpecification.Name = name
 		kiroTool.ToolSpecification.Description = truncateKiroDescription(description)
 		kiroTool.ToolSpecification.InputSchema = KiroInputSchema{
-			Json: inputSchema,
+			Json: normalizeJsonSchema(inputSchema),
 		}
 
 		kiroTools = append(kiroTools, kiroTool)
 	}
 
 	return kiroTools
+}
+
+// normalizeJsonSchema 规范化 JSON Schema，修复 MCP 工具定义中常见的类型问题
+// Claude Code / MCP 工具定义偶尔会出现 required: null、properties: null 等，
+// 导致 Kiro API 返回 400 "Improperly formed request"
+func normalizeJsonSchema(schema any) any {
+	obj, ok := schema.(map[string]any)
+	if !ok {
+		// 非 object 类型，返回空的 object schema
+		return map[string]any{
+			"type":                 "object",
+			"properties":           map[string]any{},
+			"required":             []any{},
+			"additionalProperties": true,
+		}
+	}
+
+	// type 必须是字符串
+	if t, ok := obj["type"].(string); !ok || t == "" {
+		obj["type"] = "object"
+	}
+
+	// properties 必须是 object
+	if _, ok := obj["properties"].(map[string]any); !ok {
+		obj["properties"] = map[string]any{}
+	}
+
+	// required 必须是字符串数组（null / 缺失 → 空数组）
+	switch r := obj["required"].(type) {
+	case []any:
+		// 过滤非字符串元素
+		var cleaned []any
+		for _, item := range r {
+			if s, ok := item.(string); ok {
+				cleaned = append(cleaned, s)
+			}
+		}
+		if cleaned == nil {
+			cleaned = []any{}
+		}
+		obj["required"] = cleaned
+	default:
+		obj["required"] = []any{}
+	}
+
+	// additionalProperties 允许 bool 或 object，其他值设为 true
+	switch obj["additionalProperties"].(type) {
+	case bool, map[string]any:
+		// OK
+	default:
+		obj["additionalProperties"] = true
+	}
+
+	return obj
+}
+
+// ensureHistoryToolDefinitions 为历史中引用但不在当前 tools 列表的工具创建占位符
+// Kiro API 要求：历史消息中引用的工具必须在 currentMessage.tools 中有定义
+func ensureHistoryToolDefinitions(history []any, ctx *KiroUserInputMessageContext) {
+	// 收集历史中使用的所有工具名称
+	historyToolNames := make(map[string]bool)
+	for _, msg := range history {
+		if aMsg, ok := msg.(KiroHistoryAssistantMessage); ok {
+			for _, tu := range aMsg.AssistantResponseMessage.ToolUses {
+				if tu.Name != "" {
+					historyToolNames[strings.ToLower(tu.Name)] = true
+				}
+			}
+		}
+	}
+
+	if len(historyToolNames) == 0 {
+		return
+	}
+
+	// 收集当前 tools 中已有的名称
+	existingNames := make(map[string]bool)
+	for _, t := range ctx.Tools {
+		existingNames[strings.ToLower(t.ToolSpecification.Name)] = true
+	}
+
+	// 为缺失的工具创建占位符
+	for name := range historyToolNames {
+		if !existingNames[name] {
+			placeholder := KiroTool{}
+			placeholder.ToolSpecification.Name = name
+			placeholder.ToolSpecification.Description = "Tool used in conversation history"
+			placeholder.ToolSpecification.InputSchema = KiroInputSchema{
+				Json: map[string]any{
+					"type":                 "object",
+					"properties":           map[string]any{},
+					"required":             []any{},
+					"additionalProperties": true,
+				},
+			}
+			ctx.Tools = append(ctx.Tools, placeholder)
+			log.Printf("[INFO] [Kiro] 为历史中引用的工具创建占位符定义: %s", name)
+		}
+	}
 }
 
 // truncateKiroDescription 截断工具描述
@@ -307,12 +412,22 @@ func truncateKiroDescription(description string) string {
 func buildKiroHistory(req map[string]any, messages []any, modelId string) []any {
 	var history []any
 
+	// 生成 thinking XML 标签前缀（如果需要）
+	thinkingPrefix := generateThinkingPrefix(req)
+
 	// 处理 system 消息
-	// 注意：thinking 配置通过顶层 inferenceConfiguration.thinking 传递，
-	// 不在 history 中添加 XML 标签，避免双重配置导致 Kiro API 返回 400 错误
 	systemContent := extractSystemContent(req)
 
-	// 如果有系统消息，添加到历史
+	// 将 thinking 标签注入系统消息前面（kiro.rs 的方式）
+	if thinkingPrefix != "" {
+		if systemContent != "" && !strings.Contains(systemContent, "<thinking_mode>") {
+			systemContent = thinkingPrefix + "\n" + systemContent
+		} else if systemContent == "" {
+			systemContent = thinkingPrefix
+		}
+	}
+
+	// 如果有系统消息（含 thinking 标签），添加到历史
 	if systemContent != "" {
 		userMsg := KiroHistoryUserMessage{}
 		userMsg.UserInputMessage.Content = systemContent
@@ -321,7 +436,7 @@ func buildKiroHistory(req map[string]any, messages []any, modelId string) []any 
 		history = append(history, userMsg)
 
 		assistantMsg := KiroHistoryAssistantMessage{}
-		assistantMsg.AssistantResponseMessage.Content = "OK"
+		assistantMsg.AssistantResponseMessage.Content = "I will follow these instructions."
 		history = append(history, assistantMsg)
 	}
 
@@ -424,7 +539,6 @@ func mergeKiroUserMessages(messages []map[string]any, modelId string) KiroHistor
 
 	if len(allToolResults) > 0 {
 		userMsg.UserInputMessage.UserInputMessageContext.ToolResults = allToolResults
-		userMsg.UserInputMessage.Content = "" // 包含工具结果时 content 为空
 	}
 
 	return userMsg
