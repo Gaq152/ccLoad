@@ -14,6 +14,38 @@
   <link rel="stylesheet" href="/web/assets/css/tokens.css">
   <script src="/web/assets/js/theme.js"></script>
   <link href="/web/assets/css/inter.css" rel="stylesheet">
+  <style>
+    .field-tip {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      margin-left: 4px;
+      cursor: help;
+    }
+    .field-tip svg { color: var(--neutral-400); transition: color .15s; }
+    .field-tip:hover svg { color: var(--primary-500); }
+    .field-tip .tip-text {
+      visibility: hidden;
+      opacity: 0;
+      position: absolute;
+      bottom: calc(100% + 6px);
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--neutral-800);
+      color: #fff;
+      font-size: 11px;
+      font-weight: 400;
+      line-height: 1.4;
+      padding: 6px 10px;
+      border-radius: 6px;
+      width: max-content;
+      max-width: 280px;
+      z-index: 100;
+      pointer-events: none;
+      transition: opacity .15s, visibility .15s;
+    }
+    .field-tip:hover .tip-text { visibility: visible; opacity: 1; }
+  </style>
 </head>
 <body class="dashboard-theme">
 
@@ -95,11 +127,11 @@
                   <tr>
                     <th>模型</th>
                     <th>类型</th>
-                    <th style="text-align: right;">输入价格</th>
-                    <th style="text-align: right;">输出价格</th>
-                    <th style="text-align: right;">高价输入</th>
-                    <th style="text-align: right;">高价输出</th>
-                    <th>别名</th>
+                    <th style="text-align: right;">输入价格 <span class="field-tip"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><span class="tip-text">$/1M tokens</span></span></th>
+                    <th style="text-align: right;">输出价格 <span class="field-tip"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><span class="tip-text">$/1M tokens</span></span></th>
+                    <th style="text-align: right;">高价输入 <span class="field-tip"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><span class="tip-text">长上下文(>200K)输入价</span></span></th>
+                    <th style="text-align: right;">高价输出 <span class="field-tip"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><span class="tip-text">长上下文(>200K)输出价</span></span></th>
+                    <th>别名 <span class="field-tip"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><span class="tip-text">模型名变体，自动匹配到同一定价</span></span></th>
                     <th style="width: 80px;">操作</th>
                   </tr>
                 </thead>
@@ -138,7 +170,7 @@
   <template id="tpl-pricing-row">
     <tr data-id="{{id}}">
       <td>
-        <div style="font-weight: 500;">{{model}}</div>
+        <div style="font-weight: 500; display: flex; align-items: center; gap: 6px;">{{model}}{{{predefined_badge}}}</div>
         <div style="font-size: 11px; color: var(--neutral-500);">{{display_name}}</div>
       </td>
       <td><span style="font-size: 12px; padding: 2px 8px; border-radius: 4px; background: var(--neutral-100); color: var(--neutral-700);">{{channel_type_label}}</span></td>
@@ -179,17 +211,23 @@
         <input type="hidden" id="pricingDrawerId">
 
         <div class="form-group">
-          <label class="form-label">模型名称 <span style="color: var(--danger-500);">*</span></label>
+          <label class="form-label">模型名称 <span style="color: var(--danger-500);">*</span>
+            <span class="field-tip"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><span class="tip-text">定价的唯一标识符，通常是不带日期后缀的基础模型名，如 claude-sonnet-4-5。创建后不可修改。</span></span>
+          </label>
           <input type="text" id="pricingModel" class="form-input" placeholder="例如: claude-sonnet-4-5" required>
         </div>
 
         <div class="form-group">
-          <label class="form-label">显示名称</label>
+          <label class="form-label">显示名称
+            <span class="field-tip"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><span class="tip-text">用于前端展示的友好名称（可选）。留空时显示模型名称本身。</span></span>
+          </label>
           <input type="text" id="pricingDisplayName" class="form-input" placeholder="前端显示名（可选）">
         </div>
 
         <div class="form-group">
-          <label class="form-label">渠道类型 <span style="color: var(--danger-500);">*</span></label>
+          <label class="form-label">渠道类型 <span style="color: var(--danger-500);">*</span>
+            <span class="field-tip"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><span class="tip-text">此模型所属的 API 提供商类型，决定了计费计算逻辑和预定义列表分类。</span></span>
+          </label>
           <select id="pricingChannelType" class="form-input" required>
             <option value="anthropic">Claude (anthropic)</option>
             <option value="openai">OpenAI</option>
@@ -199,38 +237,62 @@
 
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
           <div class="form-group">
-            <label class="form-label">输入价格 ($/1M) <span style="color: var(--danger-500);">*</span></label>
+            <label class="form-label">输入价格 ($/1M) <span style="color: var(--danger-500);">*</span>
+              <span class="field-tip"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><span class="tip-text">每 100 万输入 token 的美元价格。用于计算请求成本。</span></span>
+            </label>
             <input type="number" id="pricingInputPrice" class="form-input" step="0.001" min="0" required>
           </div>
           <div class="form-group">
-            <label class="form-label">输出价格 ($/1M) <span style="color: var(--danger-500);">*</span></label>
+            <label class="form-label">输出价格 ($/1M) <span style="color: var(--danger-500);">*</span>
+              <span class="field-tip"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><span class="tip-text">每 100 万输出 token 的美元价格。用于计算响应成本。</span></span>
+            </label>
             <input type="number" id="pricingOutputPrice" class="form-input" step="0.001" min="0" required>
           </div>
         </div>
 
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
           <div class="form-group">
-            <label class="form-label">高价输入 ($/1M)</label>
+            <label class="form-label">高价输入 ($/1M)
+              <span class="field-tip"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><span class="tip-text">长上下文场景（如 Gemini >200K token）的输入价格。设为 0 表示不启用分段定价。</span></span>
+            </label>
             <input type="number" id="pricingInputPriceHigh" class="form-input" step="0.001" min="0" value="0">
-            <small style="color: var(--neutral-500);">长上下文定价，0=不启用</small>
           </div>
           <div class="form-group">
-            <label class="form-label">高价输出 ($/1M)</label>
+            <label class="form-label">高价输出 ($/1M)
+              <span class="field-tip"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><span class="tip-text">长上下文场景的输出价格。与高价输入配合使用。</span></span>
+            </label>
             <input type="number" id="pricingOutputPriceHigh" class="form-input" step="0.001" min="0" value="0">
           </div>
         </div>
 
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
           <div class="form-group">
-            <label class="form-label">缓存读取倍率</label>
+            <label class="form-label">缓存读取倍率
+              <span class="field-tip"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><span class="tip-text">缓存读取 token 的价格 = 输入价格 × 此倍率。例如 0.1 表示缓存读取只收输入价的 10%。设为 0 使用系统默认值。</span></span>
+            </label>
             <input type="number" id="pricingCacheReadMul" class="form-input" step="0.01" min="0" value="0">
-            <small style="color: var(--neutral-500);">0=使用系统默认</small>
           </div>
           <div class="form-group">
-            <label class="form-label">缓存写入倍率</label>
+            <label class="form-label">缓存写入倍率
+              <span class="field-tip"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><span class="tip-text">缓存写入 token 的价格 = 输入价格 × 此倍率。例如 1.25 表示缓存写入收输入价的 125%。设为 0 使用系统默认值。</span></span>
+            </label>
             <input type="number" id="pricingCacheWriteMul" class="form-input" step="0.01" min="0" value="0">
-            <small style="color: var(--neutral-500);">0=使用系统默认</small>
           </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">别名
+            <span class="field-tip"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><span class="tip-text">带日期后缀或其他变体名（如 claude-sonnet-4-5-20250929），请求这些名称时会自动匹配到此模型的定价。每行一个。</span></span>
+          </label>
+          <textarea id="pricingAliases" class="form-input" rows="3" placeholder="每行一个别名，例如：&#10;claude-sonnet-4-5-20250929&#10;claude-sonnet-4-5-latest" style="font-size: 12px; font-family: monospace;"></textarea>
+        </div>
+
+        <div class="form-group" style="display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 6px; background: var(--neutral-50);">
+          <input type="checkbox" id="pricingIsPredefined" style="width: 16px; height: 16px; cursor: pointer;">
+          <label for="pricingIsPredefined" style="cursor: pointer; font-size: 13px; font-weight: 500; margin: 0;">
+            加入预定义模型列表
+          </label>
+          <span class="field-tip"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><span class="tip-text">勾选后，此模型会出现在渠道页面的"导入默认"模型列表中，方便快速添加到渠道支持的模型。</span></span>
         </div>
       </form>
     </div>

@@ -355,6 +355,10 @@ function renderPricing() {
       ? aliasesList.slice(0, 3).join(', ') + (aliasesList.length > 3 ? ` +${aliasesList.length - 3}` : '')
       : '<span style="color:var(--neutral-400);">-</span>';
 
+    const predefinedBadge = e.is_predefined
+      ? '<span style="font-size:10px;padding:1px 5px;border-radius:3px;background:var(--success-100,#dcfce7);color:var(--success-700,#15803d);font-weight:normal;">预定义</span>'
+      : '';
+
     const row = TemplateEngine.render('tpl-pricing-row', {
       id: e.id,
       model: e.model,
@@ -366,7 +370,8 @@ function renderPricing() {
       high_input_display: e.input_price_high > 0 ? '$' + formatPrice(e.input_price_high) : '<span style="color:var(--neutral-400);">-</span>',
       high_output_display: e.output_price_high > 0 ? '$' + formatPrice(e.output_price_high) : '<span style="color:var(--neutral-400);">-</span>',
       aliases_display: aliasesDisplay,
-      aliases_full: aliasesFull
+      aliases_full: aliasesFull,
+      predefined_badge: predefinedBadge
     });
     if (row) tbody.appendChild(row);
   });
@@ -422,6 +427,13 @@ function openPricingDrawer(entry) {
   document.getElementById('pricingCacheReadMul').value = isEdit ? entry.cache_read_multiplier : 0;
   document.getElementById('pricingCacheWriteMul').value = isEdit ? entry.cache_write_multiplier : 0;
 
+  // 别名（数组 → 换行分隔文本）
+  const aliases = isEdit ? (entry.aliases || []) : [];
+  document.getElementById('pricingAliases').value = aliases.join('\n');
+
+  // 预定义列表开关
+  document.getElementById('pricingIsPredefined').checked = isEdit ? !!entry.is_predefined : false;
+
   document.getElementById('pricingDrawerOverlay').classList.add('show');
   document.getElementById('pricingDrawer').classList.add('open');
 }
@@ -445,6 +457,8 @@ async function savePricingEntry() {
     output_price_high: parseFloat(document.getElementById('pricingOutputPriceHigh').value) || 0,
     cache_read_multiplier: parseFloat(document.getElementById('pricingCacheReadMul').value) || 0,
     cache_write_multiplier: parseFloat(document.getElementById('pricingCacheWriteMul').value) || 0,
+    aliases: document.getElementById('pricingAliases').value.split('\n').map(s => s.trim()).filter(Boolean),
+    is_predefined: document.getElementById('pricingIsPredefined').checked,
   };
 
   if (!payload.model) {
