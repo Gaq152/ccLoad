@@ -4,21 +4,50 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"ccLoad/internal/model"
 )
 
+// scanPricingColumns 定义 model_pricing 表的查询字段列表
+const pricingColumns = `id, model, display_name, channel_type,
+	input_price, output_price, input_price_high, output_price_high,
+	cache_read_multiplier, cache_write_multiplier,
+	aliases, is_predefined,
+	created_at, updated_at`
+
+// scanPricingEntry 从行扫描到 ModelPricingEntry（统一扫描逻辑）
+func scanPricingEntry(scanner interface{ Scan(dest ...any) error }) (*model.ModelPricingEntry, error) {
+	var e model.ModelPricingEntry
+	var aliasesRaw sql.NullString
+	var isPredefined int
+	if err := scanner.Scan(
+		&e.ID, &e.Model, &e.DisplayName, &e.ChannelType,
+		&e.InputPrice, &e.OutputPrice, &e.InputPriceHigh, &e.OutputPriceHigh,
+		&e.CacheReadMultiplier, &e.CacheWriteMultiplier,
+		&aliasesRaw, &isPredefined,
+		&e.CreatedAt, &e.UpdatedAt,
+	); err != nil {
+		return nil, err
+	}
+	e.AliasesRaw = aliasesRaw.String
+	e.IsPredefined = isPredefined != 0
+	// 解析逗号分隔的别名到切片
+	if e.AliasesRaw != "" {
+		for _, a := range strings.Split(e.AliasesRaw, ",") {
+			a = strings.TrimSpace(a)
+			if a != "" {
+				e.Aliases = append(e.Aliases, a)
+			}
+		}
+	}
+	return &e, nil
+}
+
 // ListModelPricing 获取所有模型定价
 func (s *SQLStore) ListModelPricing(ctx context.Context) ([]*model.ModelPricingEntry, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, model, display_name, channel_type,
-		       input_price, output_price, input_price_high, output_price_high,
-		       cache_read_multiplier, cache_write_multiplier,
-		       created_at, updated_at
-		FROM model_pricing
-		ORDER BY channel_type, model
-	`)
+	rows, err := s.db.QueryContext(ctx, `SELECT `+pricingColumns+` FROM model_pricing ORDER BY channel_type, model`)
 	if err != nil {
 		return nil, fmt.Errorf("query model pricing: %w", err)
 	}
@@ -26,46 +55,34 @@ func (s *SQLStore) ListModelPricing(ctx context.Context) ([]*model.ModelPricingE
 
 	var entries []*model.ModelPricingEntry
 	for rows.Next() {
-		var e model.ModelPricingEntry
-		if err := rows.Scan(
-			&e.ID, &e.Model, &e.DisplayName, &e.ChannelType,
-			&e.InputPrice, &e.OutputPrice, &e.InputPriceHigh, &e.OutputPriceHigh,
-			&e.CacheReadMultiplier, &e.CacheWriteMultiplier,
-			&e.CreatedAt, &e.UpdatedAt,
-		); err != nil {
+		e, err := scanPricingEntry(rows)
+		if err != nil {
 			return nil, fmt.Errorf("scan model pricing: %w", err)
 		}
-		entries = append(entries, &e)
+		entries = append(entries, e)
 	}
-
 	return entries, rows.Err()
 }
 
 // GetModelPricing 获取单个模型定价
 func (s *SQLStore) GetModelPricing(ctx context.Context, id int64) (*model.ModelPricingEntry, error) {
-	row := s.db.QueryRowContext(ctx, `
-		SELECT id, model, display_name, channel_type,
-		       input_price, output_price, input_price_high, output_price_high,
-		       cache_read_multiplier, cache_write_multiplier,
-		       created_at, updated_at
-		FROM model_pricing
-		WHERE id = ?
-	`, id)
-
-	var e model.ModelPricingEntry
-	if err := row.Scan(
-		&e.ID, &e.Model, &e.DisplayName, &e.ChannelType,
-		&e.InputPrice, &e.OutputPrice, &e.InputPriceHigh, &e.OutputPriceHigh,
-		&e.CacheReadMultiplier, &e.CacheWriteMultiplier,
-		&e.CreatedAt, &e.UpdatedAt,
-	); err != nil {
+	row := s.db.QueryRowContext(ctx, `SELECT `+pricingColumns+` FROM model_pricing WHERE id = ?`, id)
+	e, err := scanPricingEntry(row)
+	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("model pricing not found: id=%d", id)
 		}
 		return nil, fmt.Errorf("query model pricing: %w", err)
 	}
+	return e, nil
+}
 
-	return &e, nil
+// preparePricingAliases 将别名切片序列化为逗号分隔字符串
+func preparePricingAliases(e *model.ModelPricingEntry) string {
+	if len(e.Aliases) > 0 {
+		return strings.Join(e.Aliases, ",")
+	}
+	return e.AliasesRaw
 }
 
 // CreateModelPricing 创建模型定价
@@ -78,11 +95,13 @@ func (s *SQLStore) CreateModelPricing(ctx context.Context, entry *model.ModelPri
 		INSERT INTO model_pricing (model, display_name, channel_type,
 		    input_price, output_price, input_price_high, output_price_high,
 		    cache_read_multiplier, cache_write_multiplier,
+		    aliases, is_predefined,
 		    created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, entry.Model, entry.DisplayName, entry.ChannelType,
 		entry.InputPrice, entry.OutputPrice, entry.InputPriceHigh, entry.OutputPriceHigh,
 		entry.CacheReadMultiplier, entry.CacheWriteMultiplier,
+		preparePricingAliases(entry), boolToInt(entry.IsPredefined),
 		entry.CreatedAt, entry.UpdatedAt,
 	)
 	if err != nil {
@@ -94,7 +113,6 @@ func (s *SQLStore) CreateModelPricing(ctx context.Context, entry *model.ModelPri
 		return fmt.Errorf("get last insert id: %w", err)
 	}
 	entry.ID = id
-
 	return nil
 }
 
@@ -107,11 +125,13 @@ func (s *SQLStore) UpdateModelPricing(ctx context.Context, entry *model.ModelPri
 		SET model = ?, display_name = ?, channel_type = ?,
 		    input_price = ?, output_price = ?, input_price_high = ?, output_price_high = ?,
 		    cache_read_multiplier = ?, cache_write_multiplier = ?,
+		    aliases = ?, is_predefined = ?,
 		    updated_at = ?
 		WHERE id = ?
 	`, entry.Model, entry.DisplayName, entry.ChannelType,
 		entry.InputPrice, entry.OutputPrice, entry.InputPriceHigh, entry.OutputPriceHigh,
 		entry.CacheReadMultiplier, entry.CacheWriteMultiplier,
+		preparePricingAliases(entry), boolToInt(entry.IsPredefined),
 		entry.UpdatedAt, entry.ID,
 	)
 	if err != nil {
@@ -125,7 +145,6 @@ func (s *SQLStore) UpdateModelPricing(ctx context.Context, entry *model.ModelPri
 	if rows == 0 {
 		return fmt.Errorf("model pricing not found: id=%d", entry.ID)
 	}
-
 	return nil
 }
 
@@ -143,7 +162,6 @@ func (s *SQLStore) DeleteModelPricing(ctx context.Context, id int64) error {
 	if rows == 0 {
 		return fmt.Errorf("model pricing not found: id=%d", id)
 	}
-
 	return nil
 }
 
@@ -165,8 +183,9 @@ func (s *SQLStore) BatchCreateModelPricing(ctx context.Context, entries []*model
 				INSERT INTO model_pricing (model, display_name, channel_type,
 				    input_price, output_price, input_price_high, output_price_high,
 				    cache_read_multiplier, cache_write_multiplier,
+				    aliases, is_predefined,
 				    created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 				ON DUPLICATE KEY UPDATE
 				    display_name = VALUES(display_name),
 				    channel_type = VALUES(channel_type),
@@ -176,6 +195,8 @@ func (s *SQLStore) BatchCreateModelPricing(ctx context.Context, entries []*model
 				    output_price_high = VALUES(output_price_high),
 				    cache_read_multiplier = VALUES(cache_read_multiplier),
 				    cache_write_multiplier = VALUES(cache_write_multiplier),
+				    aliases = VALUES(aliases),
+				    is_predefined = VALUES(is_predefined),
 				    updated_at = VALUES(updated_at)
 			`
 		} else {
@@ -183,8 +204,9 @@ func (s *SQLStore) BatchCreateModelPricing(ctx context.Context, entries []*model
 				INSERT OR REPLACE INTO model_pricing (model, display_name, channel_type,
 				    input_price, output_price, input_price_high, output_price_high,
 				    cache_read_multiplier, cache_write_multiplier,
+				    aliases, is_predefined,
 				    created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			`
 		}
 
@@ -201,6 +223,7 @@ func (s *SQLStore) BatchCreateModelPricing(ctx context.Context, entries []*model
 				e.Model, e.DisplayName, e.ChannelType,
 				e.InputPrice, e.OutputPrice, e.InputPriceHigh, e.OutputPriceHigh,
 				e.CacheReadMultiplier, e.CacheWriteMultiplier,
+				preparePricingAliases(e), boolToInt(e.IsPredefined),
 				e.CreatedAt, e.UpdatedAt,
 			)
 			if err != nil {

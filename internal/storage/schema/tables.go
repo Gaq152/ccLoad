@@ -184,6 +184,8 @@ func DefineModelPricingTable() *TableBuilder {
 		Column("output_price_high DOUBLE NOT NULL DEFAULT 0").      // 长上下文输出价
 		Column("cache_read_multiplier DOUBLE NOT NULL DEFAULT 0").  // 0=使用系统默认
 		Column("cache_write_multiplier DOUBLE NOT NULL DEFAULT 0"). // 0=使用系统默认
+		Column("aliases TEXT DEFAULT ''").                          // 别名列表（逗号分隔）
+		Column("is_predefined TINYINT NOT NULL DEFAULT 0").        // 是否加入预定义模型列表
 		Column("created_at BIGINT NOT NULL").
 		Column("updated_at BIGINT NOT NULL").
 		Index("idx_model_pricing_type", "channel_type")

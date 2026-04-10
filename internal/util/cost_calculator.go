@@ -59,6 +59,29 @@ func ClearDBPricing() {
 	})
 }
 
+// dbPredefinedModels DB 预定义模型列表缓存
+// key: channelType (string), value: []string
+var dbPredefinedModels sync.Map
+
+// dbAliasesCache DB 别名缓存（alias → base model）
+var dbAliasesCache sync.Map
+
+// SetDBPredefinedModels 设置某渠道类型的预定义模型列表
+func SetDBPredefinedModels(channelType string, models []string) {
+	dbPredefinedModels.Store(channelType, models)
+}
+
+// SetDBAliases 批量加载 DB 别名到内存缓存
+func SetDBAliases(aliases map[string]string) {
+	dbAliasesCache.Range(func(key, value any) bool {
+		dbAliasesCache.Delete(key)
+		return true
+	})
+	for alias, base := range aliases {
+		dbAliasesCache.Store(alias, base)
+	}
+}
+
 // GetDefaultPricing 导出硬编码定价供 Admin API "导入默认定价" 使用
 func GetDefaultPricing() []DBPricingEntry {
 	entries := make([]DBPricingEntry, 0, len(basePricing))
@@ -251,12 +274,16 @@ func getPricing(model string) (ModelPricing, bool) {
 		return p, true
 	}
 
-	// 2. 别名解析 → 再查 DB 缓存
-	if base, ok := modelAliases[model]; ok {
+	// 2. 别名解析 → 再查 DB 缓存（优先 DB 别名，其次硬编码别名）
+	if base, ok := dbAliasesCache.Load(model); ok {
+		if p, ok := getDBPricing(base.(string)); ok {
+			return p, true
+		}
+		model = base.(string)
+	} else if base, ok := modelAliases[model]; ok {
 		if p, ok := getDBPricing(base); ok {
 			return p, true
 		}
-		// 别名解析后查硬编码
 		model = base
 	}
 

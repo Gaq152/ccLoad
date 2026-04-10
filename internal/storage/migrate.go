@@ -156,6 +156,25 @@ func migrate(ctx context.Context, db *sql.DB, dialect Dialect) error {
 			}
 		}
 
+		// 增量迁移：确保model_pricing表有aliases和is_predefined字段（2026-04新增）
+		if tb.Name() == "model_pricing" {
+			if dialect == DialectMySQL {
+				if err := ensurePricingAliases(ctx, db); err != nil {
+					return fmt.Errorf("migrate model_pricing.aliases: %w", err)
+				}
+				if err := ensurePricingIsPredefined(ctx, db); err != nil {
+					return fmt.Errorf("migrate model_pricing.is_predefined: %w", err)
+				}
+			} else {
+				if err := ensurePricingAliasesSQLite(ctx, db); err != nil {
+					return fmt.Errorf("migrate model_pricing.aliases: %w", err)
+				}
+				if err := ensurePricingIsPredefinedSQLite(ctx, db); err != nil {
+					return fmt.Errorf("migrate model_pricing.is_predefined: %w", err)
+				}
+			}
+		}
+
 		// 增量迁移：确保channel_endpoints表有status_code字段（2025-12新增）
 		if tb.Name() == "channel_endpoints" {
 			if dialect == DialectMySQL {
@@ -205,6 +224,11 @@ func migrate(ctx context.Context, db *sql.DB, dialect Dialect) error {
 	// 迁移：Kiro 预设端点和用量查询 URL 从旧域名迁移到新域名（2026-04新增）
 	if err := migrateKiroEndpoints(ctx, db, dialect); err != nil {
 		return fmt.Errorf("migrate kiro endpoints: %w", err)
+	}
+
+	// 迁移：为已有定价条目填充别名和预定义标记（2026-04新增）
+	if err := migratePricingAliasesAndPredefined(ctx, db); err != nil {
+		return fmt.Errorf("migrate pricing aliases/predefined: %w", err)
 	}
 
 	return nil
@@ -1567,5 +1591,153 @@ func migrateKiroEndpoints(ctx context.Context, db *sql.DB, dialect Dialect) erro
 		log.Printf("[WARN] [Migrate] Kiro 渠道主 URL 迁移失败: %v", err)
 	}
 
+	return nil
+}
+
+// ============================================================
+// model_pricing 表迁移：aliases + is_predefined（2026-04新增）
+// ============================================================
+
+func ensurePricingAliases(ctx context.Context, db *sql.DB) error {
+	var count int
+	err := db.QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='model_pricing' AND COLUMN_NAME='aliases'",
+	).Scan(&count)
+	if err != nil {
+		return fmt.Errorf("check aliases existence: %w", err)
+	}
+	if count > 0 {
+		return nil
+	}
+	_, err = db.ExecContext(ctx, "ALTER TABLE model_pricing ADD COLUMN aliases TEXT DEFAULT ''")
+	return err
+}
+
+func ensurePricingAliasesSQLite(ctx context.Context, db *sql.DB) error {
+	if hasColumnSQLite(ctx, db, "model_pricing", "aliases") {
+		return nil
+	}
+	_, err := db.ExecContext(ctx, "ALTER TABLE model_pricing ADD COLUMN aliases TEXT DEFAULT ''")
+	return err
+}
+
+func ensurePricingIsPredefined(ctx context.Context, db *sql.DB) error {
+	var count int
+	err := db.QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='model_pricing' AND COLUMN_NAME='is_predefined'",
+	).Scan(&count)
+	if err != nil {
+		return fmt.Errorf("check is_predefined existence: %w", err)
+	}
+	if count > 0 {
+		return nil
+	}
+	_, err = db.ExecContext(ctx, "ALTER TABLE model_pricing ADD COLUMN is_predefined TINYINT NOT NULL DEFAULT 0")
+	return err
+}
+
+func ensurePricingIsPredefinedSQLite(ctx context.Context, db *sql.DB) error {
+	if hasColumnSQLite(ctx, db, "model_pricing", "is_predefined") {
+		return nil
+	}
+	_, err := db.ExecContext(ctx, "ALTER TABLE model_pricing ADD COLUMN is_predefined TINYINT NOT NULL DEFAULT 0")
+	return err
+}
+
+// hasColumnSQLite 检查 SQLite 表是否有指定列
+func hasColumnSQLite(ctx context.Context, db *sql.DB, table, column string) bool {
+	rows, err := db.QueryContext(ctx, "PRAGMA table_info("+table+")")
+	if err != nil {
+		return false
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid int
+		var name, typ string
+		var notNull, pk int
+		var dfltValue any
+		if err := rows.Scan(&cid, &name, &typ, &notNull, &dfltValue, &pk); err != nil {
+			return false
+		}
+		if name == column {
+			return true
+		}
+	}
+	return false
+}
+
+// migratePricingAliasesAndPredefined 为已有定价条目填充别名和预定义标记
+// 仅对 aliases 为空的行执行（幂等）
+func migratePricingAliasesAndPredefined(ctx context.Context, db *sql.DB) error {
+	// 检查是否有需要迁移的行（aliases 为空且有数据的行）
+	var total int
+	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM model_pricing WHERE aliases = '' OR aliases IS NULL").Scan(&total); err != nil {
+		return nil // 表可能不存在，跳过
+	}
+	if total == 0 {
+		return nil
+	}
+
+	// 构建反向别名映射：base model → 逗号分隔的别名
+	reverseAliases := util.GetModelAliasesReverse()
+
+	// 构建预定义模型集合
+	predefinedSet := make(map[string]bool)
+	for channelType, models := range util.GetPredefinedModelSets() {
+		_ = channelType
+		for _, m := range models {
+			predefinedSet[m] = true
+		}
+	}
+
+	// 查询所有需要迁移的行
+	rows, err := db.QueryContext(ctx, "SELECT id, model FROM model_pricing WHERE aliases = '' OR aliases IS NULL")
+	if err != nil {
+		return fmt.Errorf("query pricing for migration: %w", err)
+	}
+	defer rows.Close()
+
+	type pricingRow struct {
+		id    int64
+		model string
+	}
+	var toMigrate []pricingRow
+	for rows.Next() {
+		var r pricingRow
+		if err := rows.Scan(&r.id, &r.model); err != nil {
+			return fmt.Errorf("scan pricing row: %w", err)
+		}
+		toMigrate = append(toMigrate, r)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	migrated := 0
+	for _, r := range toMigrate {
+		aliases := ""
+		if aliasList, ok := reverseAliases[r.model]; ok {
+			aliases = strings.Join(aliasList, ",")
+		}
+		isPredefined := 0
+		if predefinedSet[r.model] {
+			isPredefined = 1
+		}
+		if aliases == "" && isPredefined == 0 {
+			continue
+		}
+		if _, err := db.ExecContext(ctx,
+			"UPDATE model_pricing SET aliases = ?, is_predefined = ? WHERE id = ?",
+			aliases, isPredefined, r.id,
+		); err != nil {
+			log.Printf("[WARN] [Migrate] 定价别名迁移失败 model=%s: %v", r.model, err)
+			continue
+		}
+		migrated++
+	}
+
+	if migrated > 0 {
+		log.Printf("[INFO] [Migrate] 定价别名/预定义迁移完成: %d 条", migrated)
+	}
 	return nil
 }

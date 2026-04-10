@@ -285,9 +285,27 @@ var predefinedModelSets = map[string][]string{
 	},
 }
 
+// GetPredefinedModelSets 返回所有预定义模型集合（用于迁移填充）
+func GetPredefinedModelSets() map[string][]string {
+	return predefinedModelSets
+}
+
 // PredefinedModels 返回给定渠道类型的预设模型列表
+// 优先从 DB 缓存读取（用户可管理），DB 无数据时降级到硬编码
 func PredefinedModels(channelType string) []string {
 	ct := NormalizeChannelType(channelType)
+
+	// 优先从 DB 缓存读取
+	if models, ok := dbPredefinedModels.Load(ct); ok {
+		result := models.([]string)
+		if len(result) > 0 {
+			out := make([]string, len(result))
+			copy(out, result)
+			return out
+		}
+	}
+
+	// 降级到硬编码
 	models, ok := predefinedModelSets[ct]
 	if !ok {
 		return nil

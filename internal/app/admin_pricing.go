@@ -23,14 +23,7 @@ func (s *Server) HandleListModelPricing(c *gin.Context) {
 		return
 	}
 
-	// 填充别名信息（只读展示）
-	aliasMap := util.GetModelAliasesReverse()
-	for _, e := range entries {
-		if aliases, ok := aliasMap[e.Model]; ok {
-			e.Aliases = aliases
-		}
-	}
-
+	// 别名已从数据库读取，无需额外填充
 	RespondJSON(c, http.StatusOK, gin.H{"entries": entries})
 }
 
@@ -145,17 +138,33 @@ func (s *Server) HandleImportDefaultPricing(c *gin.Context) {
 		return
 	}
 
+	// 构建反向别名映射和预定义集合
+	reverseAliases := util.GetModelAliasesReverse()
+	predefinedSets := util.GetPredefinedModelSets()
+	predefinedSet := make(map[string]bool)
+	for _, models := range predefinedSets {
+		for _, m := range models {
+			predefinedSet[m] = true
+		}
+	}
+
 	// 转换为 model.ModelPricingEntry
 	entries := make([]*model.ModelPricingEntry, 0, len(defaults))
 	for _, d := range defaults {
+		var aliases []string
+		if aliasList, ok := reverseAliases[d.Model]; ok {
+			aliases = aliasList
+		}
 		entries = append(entries, &model.ModelPricingEntry{
 			Model:           d.Model,
-			DisplayName:     d.Model, // 默认显示名 = 模型名
+			DisplayName:     d.Model,
 			ChannelType:     d.ChannelType,
 			InputPrice:      d.InputPrice,
 			OutputPrice:     d.OutputPrice,
 			InputPriceHigh:  d.InputPriceHigh,
 			OutputPriceHigh: d.OutputPriceHigh,
+			Aliases:         aliases,
+			IsPredefined:    predefinedSet[d.Model],
 		})
 	}
 
@@ -175,7 +184,7 @@ func (s *Server) HandleImportDefaultPricing(c *gin.Context) {
 	})
 }
 
-// refreshPricingCache 从数据库重新加载定价到内存缓存
+// refreshPricingCache 从数据库重新加载定价到内存缓存（含预定义列表和别名）
 func (s *Server) refreshPricingCache() {
 	ctx := context.Background()
 	entries, err := s.store.ListModelPricing(ctx)
@@ -185,6 +194,9 @@ func (s *Server) refreshPricingCache() {
 	}
 
 	dbEntries := make([]util.DBPricingEntry, 0, len(entries))
+	predefinedByType := make(map[string][]string) // channelType → models
+	aliasMap := make(map[string]string)            // alias → base model
+
 	for _, e := range entries {
 		dbEntries = append(dbEntries, util.DBPricingEntry{
 			Model:                e.Model,
@@ -197,10 +209,40 @@ func (s *Server) refreshPricingCache() {
 			CacheReadMultiplier:  e.CacheReadMultiplier,
 			CacheWriteMultiplier: e.CacheWriteMultiplier,
 		})
+
+		// 构建预定义模型列表
+		if e.IsPredefined {
+			predefinedByType[e.ChannelType] = append(predefinedByType[e.ChannelType], e.Model)
+		}
+
+		// 构建别名映射
+		for _, alias := range e.Aliases {
+			aliasMap[alias] = e.Model
+		}
 	}
 
 	util.SetDBPricing(dbEntries)
-	log.Printf("[INFO] Pricing cache refreshed: %d entries", len(dbEntries))
+
+	// 更新预定义模型缓存
+	for ct, models := range predefinedByType {
+		util.SetDBPredefinedModels(ct, models)
+	}
+
+	// 更新别名缓存
+	if len(aliasMap) > 0 {
+		util.SetDBAliases(aliasMap)
+	}
+
+	log.Printf("[INFO] Pricing cache refreshed: %d entries, %d predefined, %d aliases",
+		len(dbEntries), countPredefined(predefinedByType), len(aliasMap))
+}
+
+func countPredefined(m map[string][]string) int {
+	n := 0
+	for _, v := range m {
+		n += len(v)
+	}
+	return n
 }
 
 // loadPricingCache 启动时从数据库加载定价缓存
