@@ -52,10 +52,10 @@ func (s *Server) buildProxyRequest(
 		// 假设上游端点支持 OpenAI 格式，直接转发
 		upstreamURL = buildUpstreamURL(cfg, requestPath, rawQuery)
 	} else if cfg.ChannelType == "codex" {
-		// Codex 渠道：所有请求统一转发到 /responses 端点
-		// - /v1/responses → /responses（原生 Codex CLI 请求）
-		// - /v1/chat/completions → /responses（OpenAI 格式已在请求体中转换为 Codex 格式）
-		upstreamURL = strings.TrimRight(cfg.URL, "/") + "/responses"
+		// Codex 渠道（官方和非官方）：统一去掉 /v1 前缀
+		// Codex CLI 发送 /v1/responses，但上游 API 期望 /responses
+		codexPath := strings.TrimPrefix(requestPath, "/v1")
+		upstreamURL = strings.TrimRight(cfg.URL, "/") + codexPath
 		if rawQuery != "" {
 			upstreamURL += "?" + rawQuery
 		}
