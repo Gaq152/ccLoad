@@ -195,22 +195,12 @@ func (s *Server) handleErrorResponse(
 // isGeminiCLI: 是否为 Gemini CLI 端点请求（需要响应格式转换）
 // 返回: (usageParser, streamErr)
 func streamAndParseResponse(ctx context.Context, body io.ReadCloser, w http.ResponseWriter, contentType string, channelType string, isStreaming bool, requestPath string, requestURL string, isGeminiCLI bool) (usageParser, error) {
-	// [INFO] Codex 渠道特殊处理
-	if channelType == util.ChannelTypeCodex && strings.Contains(contentType, "text/event-stream") {
-		// 判断是否为原生 Responses API 请求（/v1/responses 或 /responses）
-		// 如果是，直接透传 Responses API 格式，不进行转换
-		// 只有 /v1/chat/completions 等非原生路径才需要转换
-		isResponsesAPI := strings.HasSuffix(requestPath, "/responses")
-		if isResponsesAPI {
-			// 原生 Codex 客户端请求，直接透传，不转换格式
-			parser := newSSEUsageParser(channelType)
-			err := streamCopySSE(ctx, body, w, parser.Feed)
-			return parser, err
-		}
-		// 非原生路径（如 /v1/chat/completions），需要将 Responses API 转换为 Chat Completions 格式
-		transformer, err := StreamCopyCodexSSE(ctx, body, w)
-		// 使用 codexUsageAdapter 包装 transformer 以实现 usageParser 接口
-		return &codexUsageAdapter{transformer: transformer}, err
+	// [INFO] Codex 渠道 /v1/responses 路径：Codex SSE 格式透传
+	// /v1/chat/completions 路径使用标准 OpenAI SSE 格式，走后续通用逻辑
+	if channelType == util.ChannelTypeCodex && strings.Contains(contentType, "text/event-stream") && strings.HasSuffix(requestPath, "/responses") {
+		parser := newSSEUsageParser(channelType)
+		err := streamCopySSE(ctx, body, w, parser.Feed)
+		return parser, err
 	}
 
 	// [INFO] Gemini CLI 端点特殊处理（cloudcode-pa.googleapis.com）
@@ -804,11 +794,14 @@ func (s *Server) tryChannelWithKeys(ctx context.Context, cfg *model.Config, reqC
 	// [INFO] 修复：保存重定向后的模型名称，用于日志记录和调试
 	actualModel, bodyToSend := prepareRequestBody(cfg, reqCtx)
 
-	// [INFO] Codex 渠道预处理：转换请求体格式（在 Key 循环外执行，避免重复转换）
+	// [INFO] Codex 渠道预处理：仅 /v1/responses 路径需要转换请求体
+	// /v1/chat/completions 路径使用 OpenAI 格式，不需要转换
 	isCodexChannel := cfg.ChannelType == util.ChannelTypeCodex
+	isCodexResponsesPath := isCodexChannel && strings.HasSuffix(reqCtx.requestPath, "/responses")
 	if isCodexChannel {
-		reqCtx.isCodex = true
-		// 转换请求体到 Codex 格式
+		reqCtx.isCodex = isCodexResponsesPath
+	}
+	if isCodexResponsesPath {
 		codexBody, err := TransformCodexRequestBody(bodyToSend)
 		if err != nil {
 			log.Printf("[ERROR] [Codex] 请求体转换失败: %v", err)
