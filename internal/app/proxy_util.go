@@ -144,7 +144,15 @@ func isStreamingRequest(path string, body []byte) bool {
 
 // buildUpstreamURL 构建上游完整URL（KISS）
 func buildUpstreamURL(cfg *model.Config, requestPath, rawQuery string) string {
-	upstreamURL := strings.TrimRight(cfg.URL, "/") + requestPath
+	baseURL := strings.TrimRight(cfg.URL, "/")
+
+	// 去重路径前缀：如果 cfg.URL 以 /v1 结尾且 requestPath 以 /v1 开头，去掉 requestPath 的 /v1
+	// 避免拼出 /v1/v1/chat/completions 这样的重复路径
+	if strings.HasSuffix(baseURL, "/v1") && strings.HasPrefix(requestPath, "/v1") {
+		requestPath = strings.TrimPrefix(requestPath, "/v1")
+	}
+
+	upstreamURL := baseURL + requestPath
 	if rawQuery != "" {
 		upstreamURL += "?" + rawQuery
 	}
