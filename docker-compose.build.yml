@@ -16,6 +16,8 @@ services:
       - GIN_MODE=release
       # 必填：未设置将无法启动
       - CCLOAD_PASS=your_admin_password
+      # 可选：令牌加密密钥，启用后可在管理界面再次查看令牌明文
+      # - CCLOAD_TOKEN_KEY=your_random_encryption_key_here
       - TZ=Asia/Shanghai
       # AnyRouter 反爬 Cookie 服务（可选，仅用量监控需要）
       # - ANYROUTER_COOKIE_SERVICE=https://your-cookie-service.deno.dev/
