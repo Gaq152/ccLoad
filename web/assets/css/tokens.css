@@ -55,6 +55,15 @@
       color: var(--error-800);
       border: 1px solid var(--error-300);
     }
+    /* 可点击复制的令牌样式 */
+    .token-display-clickable {
+      cursor: pointer;
+      transition: filter 0.15s ease;
+    }
+    .token-display-clickable:hover {
+      filter: brightness(0.95);
+      text-decoration: underline;
+    }
     .status-badge {
       display: inline-block;
       padding: 4px 12px;

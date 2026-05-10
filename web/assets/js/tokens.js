@@ -81,6 +81,24 @@
           return;
         }
 
+        // 处理复制令牌按钮（直接复制不展示明文）
+        const copyBtn = target.closest('.btn-copy');
+        if (copyBtn) {
+          const row = copyBtn.closest('tr');
+          const tokenId = row ? parseInt(row.dataset.tokenId) : null;
+          if (tokenId) copyTokenById(tokenId);
+          return;
+        }
+
+        // 令牌列掩码区域点击也直接复制
+        const tokenCell = target.closest('[data-action="copy-token"]');
+        if (tokenCell) {
+          const row = tokenCell.closest('tr');
+          const tokenId = row ? parseInt(row.dataset.tokenId) : null;
+          if (tokenId) copyTokenById(tokenId);
+          return;
+        }
+
         // 处理重新生成按钮
         const regenerateBtn = target.closest('.btn-regenerate');
         if (regenerateBtn) {
@@ -205,6 +223,10 @@
       const toggleBtnHtml = buildToggleBtnHtml(token);
       const revealBtnHtml = buildRevealBtnHtml(token);
       const regenerateBtnHtml = buildRegenerateBtnHtml(token);
+      const copyBtnHtml = buildCopyBtnHtml(token);
+      const canCopy = !!(window._revealEnabled && token.has_encrypted);
+      const tokenClickableClass = canCopy ? 'token-display-clickable' : '';
+      const tokenTooltip = canCopy ? '点击复制完整令牌' : '';
 
       // 使用模板引擎渲染
       return TemplateEngine.render('tpl-token-row', {
@@ -212,6 +234,8 @@
         description: token.description,
         token: token.token,
         statusClass: status.class,
+        tokenClickableClass: tokenClickableClass,
+        tokenTooltip: tokenTooltip,
         createdAt: createdAt,
         expiresAt: expiresAt,
         callsHtml: callsHtml,
@@ -223,7 +247,8 @@
         lastUsed: lastUsed,
         toggleBtnHtml: toggleBtnHtml,
         revealBtnHtml: revealBtnHtml,
-        regenerateBtnHtml: regenerateBtnHtml
+        regenerateBtnHtml: regenerateBtnHtml,
+        copyBtnHtml: copyBtnHtml
       });
     }
 
@@ -237,7 +262,18 @@
         return '';
       }
       const eyeIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>';
-      return `<button class="btn-action btn-reveal" data-action="reveal" aria-label="查看令牌">${eyeIcon}</button>`;
+      return `<button class="btn-action btn-reveal" data-action="reveal" title="查看令牌明文" aria-label="查看令牌">${eyeIcon}</button>`;
+    }
+
+    /**
+     * 构建复制令牌按钮HTML（不展示明文直接复制到剪贴板）
+     */
+    function buildCopyBtnHtml(token) {
+      if (!window._revealEnabled || !token.has_encrypted) {
+        return '';
+      }
+      const copyIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
+      return `<button class="btn-action btn-copy" data-action="copy" title="复制令牌到剪贴板" aria-label="复制令牌">${copyIcon}</button>`;
     }
 
     /**
@@ -245,7 +281,7 @@
      */
     function buildRegenerateBtnHtml(token) {
       const refreshIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>';
-      return `<button class="btn-action btn-regenerate" data-action="regenerate" aria-label="重新生成">${refreshIcon}</button>`;
+      return `<button class="btn-action btn-regenerate" data-action="regenerate" title="重新生成令牌" aria-label="重新生成">${refreshIcon}</button>`;
     }
 
     /**
@@ -533,6 +569,8 @@
           closeDrawer();
           // 显示新令牌
           document.getElementById('newTokenValue').value = data.token;
+          document.getElementById('tokenResultModalTitle').textContent = '令牌创建成功';
+          applyTokenResultWarning();
           document.getElementById('tokenResultModal').style.display = 'block';
           loadTokens();
           window.showNotification('令牌创建成功', 'success');
@@ -902,22 +940,82 @@
       }
     }
 
-    async function regenerateToken(tokenId) {
-      if (!confirm('确定要重新生成此令牌吗？旧令牌将立即失效，使用该令牌的所有客户端需要更新。')) {
-        return;
+    // 静默复制令牌到剪贴板（不展示明文）
+    async function copyTokenById(tokenId) {
+      try {
+        const data = await fetchDataWithAuth(`${API_BASE}/auth-tokens/${tokenId}/reveal`, {
+          method: 'POST'
+        });
+        const plaintext = data.token;
+        try {
+          await navigator.clipboard.writeText(plaintext);
+        } catch (_) {
+          // 降级方案：通过隐藏 textarea 执行 execCommand
+          const ta = document.createElement('textarea');
+          ta.value = plaintext;
+          ta.style.position = 'fixed';
+          ta.style.opacity = '0';
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+        }
+        window.showNotification('已复制令牌到剪贴板', 'success');
+      } catch (error) {
+        window.showNotification(error.message || '复制失败', 'error');
       }
+    }
+
+    // 重新生成令牌 - 打开自定义确认弹窗
+    let regeneratingTokenId = null;
+    function regenerateToken(tokenId) {
+      regeneratingTokenId = tokenId;
+      const modal = document.getElementById('regenerateConfirmModal');
+      requestAnimationFrame(() => modal.classList.add('active'));
+    }
+
+    function closeRegenerateConfirmModal() {
+      const modal = document.getElementById('regenerateConfirmModal');
+      modal.classList.remove('active');
+      regeneratingTokenId = null;
+    }
+
+    async function confirmRegenerateToken() {
+      if (!regeneratingTokenId) return;
+      const tokenId = regeneratingTokenId;
       try {
         const data = await fetchDataWithAuth(`${API_BASE}/auth-tokens/${tokenId}/regenerate`, {
           method: 'POST'
         });
+        closeRegenerateConfirmModal();
         document.getElementById('newTokenValue').value = data.token;
         document.getElementById('tokenResultModalTitle').textContent = '令牌已重新生成';
-        document.getElementById('tokenResultWarning').style.display = '';
+        applyTokenResultWarning();
         document.getElementById('tokenResultModal').style.display = 'block';
         loadTokens();
         window.showNotification('令牌已重新生成', 'success');
       } catch (error) {
+        closeRegenerateConfirmModal();
         window.showNotification(error.message || '重新生成失败', 'error');
+      }
+    }
+
+    // 根据是否启用加密调整创建成功/重新生成弹窗的提示
+    function applyTokenResultWarning() {
+      const warning = document.getElementById('tokenResultWarning');
+      if (!warning) return;
+      const enabled = !!window._revealEnabled;
+      warning.style.display = '';
+      const title = warning.querySelector('[data-warning-title]');
+      const body = warning.querySelector('[data-warning-body]');
+      if (enabled) {
+        warning.classList.add('tokenResultInfo');
+        if (title) title.textContent = 'ℹ️ 提示：';
+        if (body) body.textContent = '请妥善保存此令牌。如有遗失，可在列表的"查看/复制"按钮再次获取。';
+      } else {
+        warning.classList.remove('tokenResultInfo');
+        if (title) title.textContent = '⚠️ 重要提示：';
+        if (body) body.textContent = '请立即复制并保存此令牌。关闭此窗口后，您将无法再次查看完整令牌。';
       }
     }
 
@@ -925,7 +1023,8 @@
       document.getElementById('tokenResultModal').style.display = 'none';
       document.getElementById('newTokenValue').value = '';
       document.getElementById('tokenResultModalTitle').textContent = '令牌创建成功';
-      document.getElementById('tokenResultWarning').style.display = '';
+      // 默认恢复为警告样式（若下次是查看明文场景，revealToken 会隐藏警告）
+      applyTokenResultWarning();
     }
 
     // 待删除的令牌ID
