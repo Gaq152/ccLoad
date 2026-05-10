@@ -166,9 +166,7 @@
           <tr>
             <th>描述</th>
             <th>令牌</th>
-            <th style="text-align: center;">调用次数</th>
             <th style="text-align: center;">成功率</th>
-            <th style="text-align: center;">Token用量</th>
             <th style="text-align: center;">总费用</th>
             <th style="text-align: center;">流首字平均</th>
             <th style="text-align: center;">非流平均</th>
@@ -214,10 +212,8 @@
       const successRate = totalCount > 0 ? ((successCount / totalCount) * 100).toFixed(1) : 0;
 
       // 预构建各个HTML片段(保留条件逻辑在JS中)
-      const callsHtml = buildCallsHtml(successCount, failureCount, totalCount);
-      const successRateHtml = buildSuccessRateHtml(successRate, totalCount);
-      const tokensHtml = buildTokensHtml(token);
-      const costHtml = buildCostHtml(token.total_cost_usd);
+      const successRateHtml = buildSuccessRateHtml(successRate, totalCount, successCount, failureCount);
+      const costHtml = buildCostHtml(token.total_cost_usd, token);
       const streamAvgHtml = buildResponseTimeHtml(token.stream_avg_ttfb, token.stream_count);
       const nonStreamAvgHtml = buildResponseTimeHtml(token.non_stream_avg_rt, token.non_stream_count);
       const toggleBtnHtml = buildToggleBtnHtml(token);
@@ -238,9 +234,7 @@
         tokenTooltip: tokenTooltip,
         createdAt: createdAt,
         expiresAt: expiresAt,
-        callsHtml: callsHtml,
         successRateHtml: successRateHtml,
-        tokensHtml: tokensHtml,
         costHtml: costHtml,
         streamAvgHtml: streamAvgHtml,
         nonStreamAvgHtml: nonStreamAvgHtml,
@@ -312,32 +306,9 @@
     }
 
     /**
-     * 构建调用次数HTML
-     */
-    function buildCallsHtml(successCount, failureCount, totalCount) {
-      if (totalCount === 0) {
-        return '<span style="color: var(--neutral-500); font-size: 13px;">-</span>';
-      }
-
-      let html = '<div style="display: flex; flex-direction: column; gap: 4px; align-items: center;">';
-      html += `<span class="stats-badge" style="background: var(--success-50); color: var(--success-700); font-weight: 600; border: 1px solid var(--success-200);" title="成功调用">`;
-      html += `<span style="color: var(--success-600); font-size: 14px; font-weight: 700;">✓</span> ${successCount.toLocaleString()}`;
-      html += `</span>`;
-
-      if (failureCount > 0) {
-        html += `<span class="stats-badge" style="background: var(--error-50); color: var(--error-700); font-weight: 600; border: 1px solid var(--error-200);" title="失败调用">`;
-        html += `<span style="color: var(--error-600); font-size: 14px; font-weight: 700;">✗</span> ${failureCount.toLocaleString()}`;
-        html += `</span>`;
-      }
-
-      html += '</div>';
-      return html;
-    }
-
-    /**
      * 构建成功率HTML
      */
-    function buildSuccessRateHtml(successRate, totalCount) {
+    function buildSuccessRateHtml(successRate, totalCount, successCount, failureCount) {
       if (totalCount === 0) {
         return '<span style="color: var(--neutral-500); font-size: 13px;">-</span>';
       }
@@ -347,67 +318,29 @@
       else if (successRate >= 80) className += ' success-rate-medium';
       else className += ' success-rate-low';
 
-      return `<span class="${className}">${successRate}%</span>`;
+      const tooltip = `总调用 ${totalCount.toLocaleString()} 次 | 成功 ${successCount.toLocaleString()} · 失败 ${failureCount.toLocaleString()}`;
+      return `<span class="${className}" title="${tooltip}">${successRate}%</span>`;
     }
 
     /**
-     * 构建Token用量HTML
+     * 构建总费用HTML（附带 tokens 明细 tooltip）
      */
-    function buildTokensHtml(token) {
-      const hasTokens = token.prompt_tokens_total > 0 ||
-                        token.completion_tokens_total > 0 ||
-                        token.cache_read_tokens_total > 0 ||
-                        token.cache_creation_tokens_total > 0;
-
-      if (!hasTokens) {
-        return '<span style="color: var(--neutral-500); font-size: 13px;">-</span>';
-      }
-
-      let html = '<div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">';
-
-      // 输入/输出
-      html += '<div style="display: inline-flex; gap: 4px; font-size: 12px;">';
-      html += `<span class="stats-badge" style="background: var(--primary-50); color: var(--primary-700);" title="输入Tokens">`;
-      html += `输入 ${formatTokenCount(token.prompt_tokens_total || 0)}`;
-      html += `</span>`;
-      html += `<span class="stats-badge" style="background: var(--secondary-50); color: var(--secondary-700);" title="输出Tokens">`;
-      html += `输出 ${formatTokenCount(token.completion_tokens_total || 0)}`;
-      html += `</span>`;
-      html += '</div>';
-
-      // 缓存
-      if (token.cache_read_tokens_total > 0 || token.cache_creation_tokens_total > 0) {
-        html += '<div style="display: inline-flex; gap: 4px; font-size: 12px;">';
-
-        if (token.cache_read_tokens_total > 0) {
-          html += `<span class="stats-badge" style="background: var(--success-50); color: var(--success-700);" title="缓存读Tokens">`;
-          html += `缓存读 ${formatTokenCount(token.cache_read_tokens_total || 0)}`;
-          html += `</span>`;
-        }
-
-        if (token.cache_creation_tokens_total > 0) {
-          html += `<span class="stats-badge" style="background: var(--warning-50); color: var(--warning-700);" title="缓存建Tokens">`;
-          html += `缓存建 ${formatTokenCount(token.cache_creation_tokens_total || 0)}`;
-          html += `</span>`;
-        }
-
-        html += '</div>';
-      }
-
-      html += '</div>';
-      return html;
-    }
-
-    /**
-     * 构建总费用HTML
-     */
-    function buildCostHtml(totalCostUsd) {
+    function buildCostHtml(totalCostUsd, token) {
       if (!totalCostUsd || totalCostUsd <= 0) {
         return '<span style="color: var(--neutral-500); font-size: 13px;">-</span>';
       }
 
+      const parts = [];
+      if (token) {
+        if (token.prompt_tokens_total > 0) parts.push(`输入 ${formatTokenCount(token.prompt_tokens_total)}`);
+        if (token.completion_tokens_total > 0) parts.push(`输出 ${formatTokenCount(token.completion_tokens_total)}`);
+        if (token.cache_read_tokens_total > 0) parts.push(`缓存读 ${formatTokenCount(token.cache_read_tokens_total)}`);
+        if (token.cache_creation_tokens_total > 0) parts.push(`缓存建 ${formatTokenCount(token.cache_creation_tokens_total)}`);
+      }
+      const tooltip = parts.length > 0 ? parts.join(' · ') : `总费用 $${totalCostUsd.toFixed(4)}`;
+
       return `
-        <div style="display: flex; flex-direction: column; align-items: center; gap: 2px;">
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 2px;" title="${tooltip}">
           <span class="metric-value" style="color: var(--success-700); font-size: 15px; font-weight: 700;">
             $${totalCostUsd.toFixed(4)}
           </span>

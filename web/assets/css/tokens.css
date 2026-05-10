@@ -38,6 +38,18 @@
       border-radius: 4px;
       font-size: 13px;
       display: inline-block;
+      max-width: 220px;
+      overflow-x: auto;
+      white-space: nowrap;
+      vertical-align: middle;
+    }
+    /* 隐藏横向滚动条但保持可滚动（类似 Excel 单元格） */
+    .token-display::-webkit-scrollbar {
+      height: 4px;
+    }
+    .token-display::-webkit-scrollbar-thumb {
+      background: var(--neutral-300);
+      border-radius: 2px;
     }
     /* Token状态颜色 */
     .token-display-active {
