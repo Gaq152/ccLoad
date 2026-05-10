@@ -72,6 +72,24 @@
           return;
         }
 
+        // 处理查看令牌按钮
+        const revealBtn = target.closest('.btn-reveal');
+        if (revealBtn) {
+          const row = revealBtn.closest('tr');
+          const tokenId = row ? parseInt(row.dataset.tokenId) : null;
+          if (tokenId) revealToken(tokenId);
+          return;
+        }
+
+        // 处理重新生成按钮
+        const regenerateBtn = target.closest('.btn-regenerate');
+        if (regenerateBtn) {
+          const row = regenerateBtn.closest('tr');
+          const tokenId = row ? parseInt(row.dataset.tokenId) : null;
+          if (tokenId) regenerateToken(tokenId);
+          return;
+        }
+
         // 处理禁用/启用按钮
         const toggleBtn = target.closest('.btn-toggle-status');
         if (toggleBtn) {
@@ -103,6 +121,7 @@
 
         const data = await fetchDataWithAuth(url);
         allTokens = (data && data.tokens) || [];
+        window._revealEnabled = !!(data && data.reveal_enabled);
         renderTokens();
       } catch (error) {
         console.error('加载令牌失败:', error);
@@ -184,6 +203,8 @@
       const streamAvgHtml = buildResponseTimeHtml(token.stream_avg_ttfb, token.stream_count);
       const nonStreamAvgHtml = buildResponseTimeHtml(token.non_stream_avg_rt, token.non_stream_count);
       const toggleBtnHtml = buildToggleBtnHtml(token);
+      const revealBtnHtml = buildRevealBtnHtml(token);
+      const regenerateBtnHtml = buildRegenerateBtnHtml(token);
 
       // 使用模板引擎渲染
       return TemplateEngine.render('tpl-token-row', {
@@ -200,8 +221,31 @@
         streamAvgHtml: streamAvgHtml,
         nonStreamAvgHtml: nonStreamAvgHtml,
         lastUsed: lastUsed,
-        toggleBtnHtml: toggleBtnHtml
+        toggleBtnHtml: toggleBtnHtml,
+        revealBtnHtml: revealBtnHtml,
+        regenerateBtnHtml: regenerateBtnHtml
       });
+    }
+
+    /**
+     * 构建查看令牌按钮HTML
+     * @param {Object} token - 令牌对象
+     * @returns {string} 按钮HTML（仅当 reveal_enabled 且 has_encrypted 时显示）
+     */
+    function buildRevealBtnHtml(token) {
+      if (!window._revealEnabled || !token.has_encrypted) {
+        return '';
+      }
+      const eyeIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>';
+      return `<button class="btn-action btn-reveal" data-action="reveal" aria-label="查看令牌">${eyeIcon}</button>`;
+    }
+
+    /**
+     * 构建重新生成按钮HTML
+     */
+    function buildRegenerateBtnHtml(token) {
+      const refreshIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>';
+      return `<button class="btn-action btn-regenerate" data-action="regenerate" aria-label="重新生成">${refreshIcon}</button>`;
     }
 
     /**
@@ -844,9 +888,44 @@
       }
     }
 
+    async function revealToken(tokenId) {
+      try {
+        const data = await fetchDataWithAuth(`${API_BASE}/auth-tokens/${tokenId}/reveal`, {
+          method: 'POST'
+        });
+        document.getElementById('newTokenValue').value = data.token;
+        document.getElementById('tokenResultModalTitle').textContent = '查看令牌';
+        document.getElementById('tokenResultWarning').style.display = 'none';
+        document.getElementById('tokenResultModal').style.display = 'block';
+      } catch (error) {
+        window.showNotification(error.message || '查看令牌失败', 'error');
+      }
+    }
+
+    async function regenerateToken(tokenId) {
+      if (!confirm('确定要重新生成此令牌吗？旧令牌将立即失效，使用该令牌的所有客户端需要更新。')) {
+        return;
+      }
+      try {
+        const data = await fetchDataWithAuth(`${API_BASE}/auth-tokens/${tokenId}/regenerate`, {
+          method: 'POST'
+        });
+        document.getElementById('newTokenValue').value = data.token;
+        document.getElementById('tokenResultModalTitle').textContent = '令牌已重新生成';
+        document.getElementById('tokenResultWarning').style.display = '';
+        document.getElementById('tokenResultModal').style.display = 'block';
+        loadTokens();
+        window.showNotification('令牌已重新生成', 'success');
+      } catch (error) {
+        window.showNotification(error.message || '重新生成失败', 'error');
+      }
+    }
+
     function closeTokenResultModal() {
       document.getElementById('tokenResultModal').style.display = 'none';
       document.getElementById('newTokenValue').value = '';
+      document.getElementById('tokenResultModalTitle').textContent = '令牌创建成功';
+      document.getElementById('tokenResultWarning').style.display = '';
     }
 
     // 待删除的令牌ID
