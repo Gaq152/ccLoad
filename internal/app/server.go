@@ -16,6 +16,7 @@ import (
 
 	"ccLoad/internal/config"
 	"ccLoad/internal/cooldown"
+	"ccLoad/internal/crypto"
 	"ccLoad/internal/model"
 	"ccLoad/internal/storage"
 	"ccLoad/internal/util"
@@ -69,6 +70,9 @@ type Server struct {
 	monitorService   *MonitorService       // 请求监控服务
 	traceStore       *storage.TraceStore   // 追踪数据存储（独立数据库）
 
+	// Token 加密密钥（用于再次查看功能）
+	tokenEncryptionKey []byte
+
 	// 优雅关闭机制
 	shutdownCh     chan struct{}  // 关闭信号channel
 	shutdownDone   chan struct{}  // Shutdown完成信号（幂等）
@@ -93,6 +97,13 @@ func NewServer(store storage.Store) *Server {
 
 	log.Printf("[INFO] 管理员密码已从环境变量加载（长度: %d 字符）", len(password))
 	log.Print("[INFO] API访问令牌将从数据库动态加载（支持Web界面管理）")
+
+	// Token 加密密钥：用于加密存储令牌明文（支持再次查看）
+	var tokenEncryptionKey []byte
+	if tokenKeyStr := os.Getenv("CCLOAD_TOKEN_KEY"); tokenKeyStr != "" {
+		tokenEncryptionKey = crypto.DeriveKey(tokenKeyStr)
+		log.Print("[INFO] Token加密已启用（CCLOAD_TOKEN_KEY已配置，支持令牌再次查看）")
+	}
 
 	// 从ConfigService读取运行时配置（启动时加载一次，修改后重启生效）
 	// 配置验证已移至 ConfigService 的带约束 API（SRP）
@@ -172,6 +183,9 @@ func NewServer(store storage.Store) *Server {
 
 		// Token统计队列（避免每请求起goroutine）
 		tokenStatsCh: make(chan tokenStatsUpdate, config.DefaultTokenStatsBufferSize),
+
+		// Token 加密密钥
+		tokenEncryptionKey: tokenEncryptionKey,
 	}
 
 	// 初始化高性能缓存层（60秒TTL，避免数据库性能杀手查询）
@@ -520,6 +534,8 @@ func (s *Server) SetupRoutes(r *gin.Engine) {
 		admin.POST("/auth-tokens", s.HandleCreateAuthToken)
 		admin.PUT("/auth-tokens/:id", s.HandleUpdateAuthToken)
 		admin.DELETE("/auth-tokens/:id", s.HandleDeleteAuthToken)
+		admin.POST("/auth-tokens/:id/reveal", s.HandleRevealAuthToken)
+		admin.POST("/auth-tokens/:id/regenerate", s.HandleRegenerateAuthToken)
 		admin.GET("/auth-tokens/:id/channels", s.HandleGetTokenChannels) // 获取令牌渠道配置（2025-12新增）
 		admin.PUT("/auth-tokens/:id/channels", s.HandleSetTokenChannels) // 设置令牌渠道配置（2025-12新增）
 

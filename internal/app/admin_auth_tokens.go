@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"ccLoad/internal/crypto"
 	"ccLoad/internal/model"
 
 	"github.com/gin-gonic/gin"
@@ -17,6 +18,9 @@ import (
 // ============================================================================
 // API访问令牌管理 (Admin API)
 // ============================================================================
+
+// Token 前缀（新版密钥标识）
+const TokenPrefix = "sk-ccl-"
 
 // HandleListAuthTokens 列出所有API访问令牌（支持时间范围统计，2025-12扩展）
 // GET /admin/auth-tokens?range=today
@@ -85,7 +89,10 @@ func (s *Server) HandleListAuthTokens(c *gin.Context) {
 		}
 	}
 
-	RespondJSON(c, http.StatusOK, gin.H{"tokens": tokens})
+	RespondJSON(c, http.StatusOK, gin.H{
+		"tokens":         tokens,
+		"reveal_enabled": len(s.tokenEncryptionKey) > 0,
+	})
 }
 
 // HandleCreateAuthToken 创建新的API访问令牌
@@ -102,14 +109,14 @@ func (s *Server) HandleCreateAuthToken(c *gin.Context) {
 		return
 	}
 
-	// 生成安全令牌(64字符十六进制)
+	// 生成安全令牌（带 sk-ccl- 前缀）
 	tokenBytes := make([]byte, 32)
 	if _, err := rand.Read(tokenBytes); err != nil {
 		log.Print("❌ 生成令牌失败: " + err.Error())
 		RespondError(c, http.StatusInternalServerError, err)
 		return
 	}
-	tokenPlain := hex.EncodeToString(tokenBytes)
+	tokenPlain := TokenPrefix + hex.EncodeToString(tokenBytes)
 
 	// 计算SHA256哈希用于存储
 	tokenHash := model.HashToken(tokenPlain)
@@ -125,6 +132,16 @@ func (s *Server) HandleCreateAuthToken(c *gin.Context) {
 		ExpiresAt:   req.ExpiresAt,
 		IsActive:    isActive,
 		AllChannels: true, // 默认允许所有渠道
+	}
+
+	// 如果配置了加密密钥，加密明文用于后续再次查看
+	if len(s.tokenEncryptionKey) > 0 {
+		encrypted, err := crypto.Encrypt(tokenPlain, s.tokenEncryptionKey)
+		if err != nil {
+			log.Printf("[WARN] Token加密失败: %v", err)
+		} else {
+			authToken.TokenEncrypted = &encrypted
+		}
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -264,6 +281,103 @@ func (s *Server) HandleDeleteAuthToken(c *gin.Context) {
 	log.Printf("[INFO] 删除API令牌: ID=%d", id)
 
 	RespondJSON(c, http.StatusOK, gin.H{"id": id})
+}
+
+// HandleRevealAuthToken 解密并返回令牌明文
+// POST /admin/auth-tokens/:id/reveal
+func (s *Server) HandleRevealAuthToken(c *gin.Context) {
+	if len(s.tokenEncryptionKey) == 0 {
+		RespondErrorMsg(c, http.StatusNotFound, "token reveal not available (CCLOAD_TOKEN_KEY not configured)")
+		return
+	}
+
+	id, err := ParseInt64Param(c, "id")
+	if err != nil {
+		RespondErrorMsg(c, http.StatusBadRequest, "invalid token id")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	encrypted, err := s.store.GetAuthTokenEncrypted(ctx, id)
+	if err != nil {
+		RespondErrorMsg(c, http.StatusNotFound, "token not found")
+		return
+	}
+	if encrypted == "" {
+		RespondErrorMsg(c, http.StatusNotFound, "该令牌创建时未启用加密存储，无法查看明文")
+		return
+	}
+
+	plaintext, err := crypto.Decrypt(encrypted, s.tokenEncryptionKey)
+	if err != nil {
+		log.Printf("[WARN] Token解密失败 ID=%d: %v", id, err)
+		RespondErrorMsg(c, http.StatusInternalServerError, "解密失败（密钥可能已更换）")
+		return
+	}
+
+	RespondJSON(c, http.StatusOK, gin.H{"token": plaintext})
+}
+
+// HandleRegenerateAuthToken 重新生成令牌（保留描述、渠道配置等，仅更换密钥值）
+// POST /admin/auth-tokens/:id/regenerate
+func (s *Server) HandleRegenerateAuthToken(c *gin.Context) {
+	id, err := ParseInt64Param(c, "id")
+	if err != nil {
+		RespondErrorMsg(c, http.StatusBadRequest, "invalid token id")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// 验证 token 存在
+	existingToken, err := s.store.GetAuthToken(ctx, id)
+	if err != nil {
+		RespondErrorMsg(c, http.StatusNotFound, "token not found")
+		return
+	}
+
+	// 生成新令牌
+	tokenBytes := make([]byte, 32)
+	if _, err := rand.Read(tokenBytes); err != nil {
+		log.Print("❌ 生成令牌失败: " + err.Error())
+		RespondError(c, http.StatusInternalServerError, err)
+		return
+	}
+	tokenPlain := TokenPrefix + hex.EncodeToString(tokenBytes)
+	tokenHash := model.HashToken(tokenPlain)
+
+	// 加密明文
+	var tokenEncrypted *string
+	if len(s.tokenEncryptionKey) > 0 {
+		encrypted, err := crypto.Encrypt(tokenPlain, s.tokenEncryptionKey)
+		if err != nil {
+			log.Printf("[WARN] Token加密失败: %v", err)
+		} else {
+			tokenEncrypted = &encrypted
+		}
+	}
+
+	// 更新数据库中的 token 哈希和加密值
+	if err := s.store.RegenerateAuthToken(ctx, id, tokenHash, tokenEncrypted); err != nil {
+		log.Print("❌ 重新生成令牌失败: " + err.Error())
+		RespondError(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	// 触发热更新
+	if err := s.authService.ReloadAuthTokens(); err != nil {
+		log.Print("[WARN]  热更新失败: " + err.Error())
+	}
+
+	log.Printf("[INFO] 重新生成API令牌: ID=%d, 描述=%s", id, existingToken.Description)
+
+	RespondJSON(c, http.StatusOK, gin.H{
+		"id":    id,
+		"token": tokenPlain,
+	})
 }
 
 // ============================================================================
