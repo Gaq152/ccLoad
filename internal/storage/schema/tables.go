@@ -84,6 +84,7 @@ func DefineAuthTokensTable() *TableBuilder {
 		Column("cache_creation_tokens_total BIGINT NOT NULL DEFAULT 0").
 		Column("total_cost_usd DOUBLE NOT NULL DEFAULT 0.0").
 		Column("token_encrypted TEXT DEFAULT NULL").
+		Column("token_hint VARCHAR(128) DEFAULT NULL").
 		Index("idx_auth_tokens_active", "is_active").
 		Index("idx_auth_tokens_expires", "expires_at")
 }

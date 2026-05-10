@@ -37,7 +37,12 @@ func (s *Server) HandleListAuthTokens(c *gin.Context) {
 
 	// 脱敏处理 + 计算过期状态
 	for _, t := range tokens {
-		t.Token = model.MaskToken(t.Token)
+		// 优先使用 TokenHint（明文掩码，包含 sk-ccl- 前缀），否则回退到哈希掩码
+		if t.TokenHint != nil && *t.TokenHint != "" {
+			t.Token = *t.TokenHint
+		} else {
+			t.Token = model.MaskToken(t.Token)
+		}
 		t.IsExpiredFlag = t.IsExpired() // 计算是否过期，供前端使用
 	}
 	if tokens == nil {
@@ -132,6 +137,12 @@ func (s *Server) HandleCreateAuthToken(c *gin.Context) {
 		ExpiresAt:   req.ExpiresAt,
 		IsActive:    isActive,
 		AllChannels: true, // 默认允许所有渠道
+	}
+
+	// 生成明文掩码提示（保留前缀+首4+尾4，用于列表展示）
+	hint := model.BuildTokenHint(tokenPlain)
+	if hint != "" {
+		authToken.TokenHint = &hint
 	}
 
 	// 如果配置了加密密钥，加密明文用于后续再次查看
@@ -250,7 +261,11 @@ func (s *Server) HandleUpdateAuthToken(c *gin.Context) {
 	log.Printf("[INFO] 更新API令牌: ID=%d", id)
 
 	// 返回脱敏后的令牌信息 + 计算过期状态
-	token.Token = model.MaskToken(token.Token)
+	if token.TokenHint != nil && *token.TokenHint != "" {
+		token.Token = *token.TokenHint
+	} else {
+		token.Token = model.MaskToken(token.Token)
+	}
 	token.IsExpiredFlag = token.IsExpired()
 	RespondJSON(c, http.StatusOK, token)
 }
@@ -349,6 +364,12 @@ func (s *Server) HandleRegenerateAuthToken(c *gin.Context) {
 	tokenPlain := TokenPrefix + hex.EncodeToString(tokenBytes)
 	tokenHash := model.HashToken(tokenPlain)
 
+	// 生成明文掩码提示
+	var tokenHint *string
+	if hint := model.BuildTokenHint(tokenPlain); hint != "" {
+		tokenHint = &hint
+	}
+
 	// 加密明文
 	var tokenEncrypted *string
 	if len(s.tokenEncryptionKey) > 0 {
@@ -360,8 +381,8 @@ func (s *Server) HandleRegenerateAuthToken(c *gin.Context) {
 		}
 	}
 
-	// 更新数据库中的 token 哈希和加密值
-	if err := s.store.RegenerateAuthToken(ctx, id, tokenHash, tokenEncrypted); err != nil {
+	// 更新数据库中的 token 哈希、加密值和掩码提示
+	if err := s.store.RegenerateAuthToken(ctx, id, tokenHash, tokenEncrypted, tokenHint); err != nil {
 		log.Print("❌ 重新生成令牌失败: " + err.Error())
 		RespondError(c, http.StatusInternalServerError, err)
 		return

@@ -38,6 +38,7 @@ type AuthToken struct {
 
 	// Token 加密存储（AES-256-GCM，用于再次查看）
 	TokenEncrypted *string `json:"-"`             // 加密后的明文（不暴露到 API）
+	TokenHint      *string `json:"token_hint,omitempty"` // 明文掩码（如 sk-ccl-abcd****wxyz），用于列表展示
 	HasEncrypted   bool    `json:"has_encrypted"` // 是否有加密存储（前端判断是否显示查看按钮）
 
 	// API 响应计算字段（不存储到数据库）
@@ -87,6 +88,27 @@ func MaskToken(token string) string {
 		return "****"
 	}
 	return token[:4] + "****" + token[len(token)-4:]
+}
+
+// BuildTokenHint 从明文生成更可读的掩码提示（保留前缀 + 首4 + 尾4）
+// 例如: "sk-ccl-abcd...1234xyz" -> "sk-ccl-abcd****1xyz"
+func BuildTokenHint(plaintext string) string {
+	if plaintext == "" {
+		return ""
+	}
+	// 识别常见前缀：sk-ccl-、sk-ant-、sk- 等
+	prefix := ""
+	for _, p := range []string{"sk-ccl-", "sk-ant-", "sk-"} {
+		if len(plaintext) > len(p) && plaintext[:len(p)] == p {
+			prefix = p
+			break
+		}
+	}
+	rest := plaintext[len(prefix):]
+	if len(rest) <= 8 {
+		return prefix + "****"
+	}
+	return prefix + rest[:4] + "****" + rest[len(rest)-4:]
 }
 
 // UpdateLastUsed 更新最后使用时间为当前时间

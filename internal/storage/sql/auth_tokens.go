@@ -32,12 +32,12 @@ func (s *SQLStore) CreateAuthToken(ctx context.Context, token *model.AuthToken) 
 
 	result, err := s.db.ExecContext(ctx, `
 		INSERT INTO auth_tokens (
-			token, token_encrypted, description, created_at, expires_at, last_used_at, is_active, all_channels,
+			token, token_encrypted, token_hint, description, created_at, expires_at, last_used_at, is_active, all_channels,
 			success_count, failure_count, stream_avg_ttfb, non_stream_avg_rt, stream_count, non_stream_count,
 			prompt_tokens_total, completion_tokens_total, total_cost_usd
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0.0, 0.0, 0, 0, 0, 0, 0.0)
-	`, token.Token, token.TokenEncrypted, token.Description, token.CreatedAt.UnixMilli(), expiresAt, lastUsedAt,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0.0, 0.0, 0, 0, 0, 0, 0.0)
+	`, token.Token, token.TokenEncrypted, token.TokenHint, token.Description, token.CreatedAt.UnixMilli(), expiresAt, lastUsedAt,
 		boolToInt(token.IsActive), boolToInt(token.AllChannels))
 
 	if err != nil {
@@ -63,12 +63,14 @@ func (s *SQLStore) GetAuthToken(ctx context.Context, id int64) (*model.AuthToken
 	var createdAtMs int64
 	var expiresAt, lastUsedAt sql.NullInt64
 	var isActive, allChannels int
+	var tokenHint sql.NullString
 
 	err := s.db.QueryRowContext(ctx, `
 		SELECT
 			id, token, description, created_at, expires_at, last_used_at, is_active, all_channels,
 			success_count, failure_count, stream_avg_ttfb, non_stream_avg_rt, stream_count, non_stream_count,
-			prompt_tokens_total, completion_tokens_total, cache_read_tokens_total, cache_creation_tokens_total, total_cost_usd
+			prompt_tokens_total, completion_tokens_total, cache_read_tokens_total, cache_creation_tokens_total, total_cost_usd,
+			token_hint
 		FROM auth_tokens
 		WHERE id = ?
 	`, id).Scan(
@@ -91,6 +93,7 @@ func (s *SQLStore) GetAuthToken(ctx context.Context, id int64) (*model.AuthToken
 		&token.CacheReadTokensTotal,
 		&token.CacheCreationTokensTotal,
 		&token.TotalCostUSD,
+		&tokenHint,
 	)
 
 	if errors.Is(err, sql.ErrNoRows) {
@@ -110,6 +113,10 @@ func (s *SQLStore) GetAuthToken(ctx context.Context, id int64) (*model.AuthToken
 	}
 	token.IsActive = isActive != 0
 	token.AllChannels = allChannels != 0
+	if tokenHint.Valid && tokenHint.String != "" {
+		hint := tokenHint.String
+		token.TokenHint = &hint
+	}
 
 	return token, nil
 }
@@ -179,7 +186,8 @@ func (s *SQLStore) ListAuthTokens(ctx context.Context) ([]*model.AuthToken, erro
 			id, token, description, created_at, expires_at, last_used_at, is_active, all_channels,
 			success_count, failure_count, stream_avg_ttfb, non_stream_avg_rt, stream_count, non_stream_count,
 			prompt_tokens_total, completion_tokens_total, cache_read_tokens_total, cache_creation_tokens_total, total_cost_usd,
-			(token_encrypted IS NOT NULL AND token_encrypted != '') AS has_encrypted
+			(token_encrypted IS NOT NULL AND token_encrypted != '') AS has_encrypted,
+			token_hint
 		FROM auth_tokens
 		ORDER BY created_at DESC
 	`)
@@ -195,6 +203,7 @@ func (s *SQLStore) ListAuthTokens(ctx context.Context) ([]*model.AuthToken, erro
 		var expiresAt, lastUsedAt sql.NullInt64
 		var isActive, allChannels int
 		var hasEncrypted int
+		var tokenHint sql.NullString
 
 		if err := rows.Scan(
 			&token.ID,
@@ -217,6 +226,7 @@ func (s *SQLStore) ListAuthTokens(ctx context.Context) ([]*model.AuthToken, erro
 			&token.CacheCreationTokensTotal,
 			&token.TotalCostUSD,
 			&hasEncrypted,
+			&tokenHint,
 		); err != nil {
 			return nil, fmt.Errorf("scan auth token: %w", err)
 		}
@@ -232,6 +242,10 @@ func (s *SQLStore) ListAuthTokens(ctx context.Context) ([]*model.AuthToken, erro
 		token.IsActive = isActive != 0
 		token.AllChannels = allChannels != 0
 		token.HasEncrypted = hasEncrypted != 0
+		if tokenHint.Valid && tokenHint.String != "" {
+			hint := tokenHint.String
+			token.TokenHint = &hint
+		}
 
 		tokens = append(tokens, token)
 	}
@@ -369,12 +383,12 @@ func (s *SQLStore) GetAuthTokenEncrypted(ctx context.Context, id int64) (string,
 }
 
 // RegenerateAuthToken 重新生成令牌（仅更新 token 哈希和加密值）
-func (s *SQLStore) RegenerateAuthToken(ctx context.Context, id int64, newTokenHash string, newTokenEncrypted *string) error {
+func (s *SQLStore) RegenerateAuthToken(ctx context.Context, id int64, newTokenHash string, newTokenEncrypted *string, newTokenHint *string) error {
 	result, err := s.db.ExecContext(ctx, `
 		UPDATE auth_tokens
-		SET token = ?, token_encrypted = ?
+		SET token = ?, token_encrypted = ?, token_hint = ?
 		WHERE id = ?
-	`, newTokenHash, newTokenEncrypted, id)
+	`, newTokenHash, newTokenEncrypted, newTokenHint, id)
 
 	if err != nil {
 		return fmt.Errorf("regenerate auth token: %w", err)
