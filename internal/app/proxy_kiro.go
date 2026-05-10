@@ -271,7 +271,28 @@ func sendKiroStreamEndEvents(w http.ResponseWriter, flusher http.Flusher, parser
 
 	// 只有当有未关闭的内容块时才发送 content_block_stop
 	// 思考块、文本块或工具调用块如果已发送 start 但未发送 stop，需要关闭
-	// 工具调用块在 handleKiroToolUseEvent 中已经处理，不需要在这里关闭
+	if parser.toolUseBlockSent {
+		if !parser.toolUseInputSent {
+			emptyDelta := map[string]any{
+				"type":  "content_block_delta",
+				"index": parser.activeToolUseIndex,
+				"delta": map[string]any{
+					"type":         "input_json_delta",
+					"partial_json": "{}",
+				},
+			}
+			emptyDeltaData, _ := sonic.Marshal(emptyDelta)
+			writeSSEEvent(w, flusher, "content_block_delta", emptyDeltaData)
+		}
+		blockStop := map[string]any{
+			"type":  "content_block_stop",
+			"index": parser.activeToolUseIndex,
+		}
+		blockStopData, _ := sonic.Marshal(blockStop)
+		writeSSEEvent(w, flusher, "content_block_stop", blockStopData)
+		parser.toolUseBlockSent = false
+		parser.currentBlockIndex++
+	}
 	if (parser.thinkingBlockSent && !parser.thinkingBlockStopped) ||
 		(parser.textBlockSent && !parser.textBlockStopped) {
 		blockStop := map[string]any{
@@ -778,6 +799,19 @@ func handleKiroToolUseEvent(w http.ResponseWriter, flusher http.Flusher, payload
 	// 如果是停止事件
 	if isStop {
 		if parser.toolUseBlockSent {
+			// 如果从未发送过 input delta，补发空对象
+			if !parser.toolUseInputSent {
+				emptyDelta := map[string]any{
+					"type":  "content_block_delta",
+					"index": parser.activeToolUseIndex,
+					"delta": map[string]any{
+						"type":         "input_json_delta",
+						"partial_json": "{}",
+					},
+				}
+				emptyDeltaData, _ := sonic.Marshal(emptyDelta)
+				writeSSEEvent(w, flusher, "content_block_delta", emptyDeltaData)
+			}
 			// 发送 content_block_stop
 			blockStop := map[string]any{
 				"type":  "content_block_stop",
@@ -798,6 +832,7 @@ func handleKiroToolUseEvent(w http.ResponseWriter, flusher http.Flusher, payload
 		parser.activeToolUseId = ""
 		parser.activeToolUseName = ""
 		parser.toolUseBlockSent = false
+		parser.toolUseInputSent = false
 		return
 	}
 
@@ -863,14 +898,39 @@ func handleKiroToolUseEvent(w http.ResponseWriter, flusher http.Flusher, payload
 		}
 		blockDeltaData, _ := sonic.Marshal(blockDelta)
 		writeSSEEvent(w, flusher, "content_block_delta", blockDeltaData)
+		parser.toolUseInputSent = true
 	}
 }
 
 // handleKiroCompletionEvent 处理 Kiro completionEvent
-// 注意：所有 content_block 应该在各自的处理函数中关闭（thinking、text、tool_use）
-// 这里只负责发送 message_delta 和 message_stop
+// 关闭所有未关闭的 content_block，然后发送 message_delta 和 message_stop
 func handleKiroCompletionEvent(w http.ResponseWriter, flusher http.Flusher, _ map[string]any, parser *kiroSSEParser) {
 	if parser.messageStarted {
+		// 关闭未关闭的 tool_use block（无参数工具可能不发送 stop 事件）
+		if parser.toolUseBlockSent {
+			// 如果从未发送过 input delta，补发空对象（客户端需要至少一个 delta 来组装 input）
+			if !parser.toolUseInputSent {
+				emptyDelta := map[string]any{
+					"type":  "content_block_delta",
+					"index": parser.activeToolUseIndex,
+					"delta": map[string]any{
+						"type":         "input_json_delta",
+						"partial_json": "{}",
+					},
+				}
+				emptyDeltaData, _ := sonic.Marshal(emptyDelta)
+				writeSSEEvent(w, flusher, "content_block_delta", emptyDeltaData)
+			}
+			blockStop := map[string]any{
+				"type":  "content_block_stop",
+				"index": parser.activeToolUseIndex,
+			}
+			blockStopData, _ := sonic.Marshal(blockStop)
+			writeSSEEvent(w, flusher, "content_block_stop", blockStopData)
+			parser.toolUseBlockSent = false
+			parser.currentBlockIndex++
+		}
+
 		// 发送 message_delta
 		stopReason := "end_turn"
 		if parser.hasToolUse {
@@ -934,6 +994,7 @@ type kiroSSEParser struct {
 	activeToolUseName  string // 当前工具名称
 	activeToolUseIndex int    // 当前工具调用的 block 索引
 	toolUseBlockSent   bool   // 是否已发送 tool_use block start
+	toolUseInputSent   bool   // 是否已发送过 input_json_delta
 
 	// 异常处理状态
 	exceptionHandled bool // 是否已处理异常事件
