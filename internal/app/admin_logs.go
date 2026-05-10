@@ -16,7 +16,8 @@ import (
 // 支持实时推送新产生的日志条目到前端
 //
 // 查询参数:
-//   - since_ms: Unix毫秒时间戳，连接时先推送此时间之后的历史日志（优先）
+//   - since_id: 日志 ID，连接时先推送此 ID 之后的历史日志（推荐，精度可靠）
+//   - since_ms: Unix毫秒时间戳（兼容保留）
 //   - since: Unix秒时间戳（向后兼容）
 func (s *Server) HandleLogSSE(c *gin.Context) {
 	// 设置 SSE 响应头
@@ -28,22 +29,35 @@ func (s *Server) HandleLogSSE(c *gin.Context) {
 	// 获取底层响应写入器
 	w := c.Writer
 
-	// 解析 since 参数（支持毫秒和秒，毫秒优先）
+	// 优先使用 since_id（精确），其次 since_ms
+	sinceID := parseSinceID(c)
 	sinceMs := parseSinceMs(c)
 	var sinceTime time.Time
-	if sinceMs > 0 {
-		// 加1毫秒避免重复最后一条
+	if sinceID > 0 {
+		// 基于 ID 恢复时，时间窗口取最近 24 小时即可覆盖常见重连场景
+		sinceTime = time.Now().Add(-24 * time.Hour)
+	} else if sinceMs > 0 {
 		sinceTime = time.UnixMilli(sinceMs + 1)
 	}
 
-	// 如果有 since 参数，先推送历史日志（重连恢复）
+	// 如果有恢复参数，先推送历史日志
 	if !sinceTime.IsZero() {
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
-		// 获取 since 之后的日志，限制500条防止被截断
 		missedLogs, err := s.store.ListLogs(ctx, sinceTime, 500, 0, nil)
 		cancel()
 
 		if err == nil && len(missedLogs) > 0 {
+			// 基于 ID 过滤（精度可靠，避免时间戳精度问题）
+			if sinceID > 0 {
+				filtered := missedLogs[:0]
+				for _, entry := range missedLogs {
+					if entry.ID > sinceID {
+						filtered = append(filtered, entry)
+					}
+				}
+				missedLogs = filtered
+			}
+
 			// 反转顺序：数据库返回 DESC（新→旧），改为 ASC（旧→新）
 			// 前端 prepend 时，旧的先插入，新的后插入到顶部，最终新的在最上面
 			for i, j := 0, len(missedLogs)-1; i < j; i, j = i+1, j-1 {
@@ -107,6 +121,19 @@ func (s *Server) HandleLogSSE(c *gin.Context) {
 			w.Flush()
 		}
 	}
+}
+
+// parseSinceID 解析 since_id 参数
+func parseSinceID(c *gin.Context) int64 {
+	raw := c.Query("since_id")
+	if raw == "" {
+		return 0
+	}
+	id, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || id <= 0 {
+		return 0
+	}
+	return id
 }
 
 // parseSinceMs 解析 since 参数，支持秒/毫秒（13位视为毫秒）

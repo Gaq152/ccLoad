@@ -204,6 +204,8 @@
       for (const entry of data) {
         const rowEl = createLogRow(entry);
         if (rowEl) tbody.appendChild(rowEl);
+        // 将已渲染的日志加入去重集合，避免 SSE 历史补推导致重复
+        displayedLogIds.add(buildLogKey(entry));
       }
     }
 
@@ -1350,7 +1352,8 @@
     let sseEventSource = null;
     let realtimeModeEnabled = false;
     let realtimeLogCount = 0; // 实时接收的日志计数
-    let lastReceivedLogTimeMs = 0; // 最后接收的日志时间戳（毫秒），用于重连恢复
+    let lastReceivedLogTimeMs = 0; // 最后接收的日志时间戳（毫秒，兼容保留）
+    let lastReceivedLogId = 0; // 最后接收的日志 ID（精确游标，推荐使用）
     const displayedLogIds = new Set(); // 已显示的日志ID，用于去重
 
     // 从日志条目中提取毫秒时间戳
@@ -1372,19 +1375,33 @@
       return 0;
     }
 
-    // 从日志列表中同步 lastReceivedLogTimeMs（用于 SSE 重连恢复）
+    // 生成日志去重 key
+    // 有 id 时优先用 id（数据库自增唯一），避免 HTTP 秒级 vs SSE 毫秒级时间戳不一致导致重复
+    function buildLogKey(entry) {
+      if (entry && entry.id) {
+        return `id:${entry.id}`;
+      }
+      const ts = extractLogTimeMs(entry);
+      return `ts:${ts}-${(entry && entry.channel_id) || 0}-${(entry && entry.status_code) || 0}`;
+    }
+
+    // 从日志列表中同步最后接收状态（用于 SSE 重连恢复）
     function syncLastReceivedFromList(logs) {
       if (!Array.isArray(logs) || logs.length === 0) return;
-      let newest = lastReceivedLogTimeMs;
+      let newestMs = lastReceivedLogTimeMs;
+      let newestId = lastReceivedLogId;
       for (const entry of logs) {
         const ts = extractLogTimeMs(entry);
-        if (ts > newest) {
-          newest = ts;
-        }
+        if (ts > newestMs) newestMs = ts;
+        const id = Number(entry && entry.id) || 0;
+        if (id > newestId) newestId = id;
       }
-      if (newest > lastReceivedLogTimeMs) {
-        lastReceivedLogTimeMs = newest;
-        console.log('[SSE DEBUG] 从日志列表同步 lastReceivedLogTimeMs:', newest);
+      if (newestMs > lastReceivedLogTimeMs) {
+        lastReceivedLogTimeMs = newestMs;
+      }
+      if (newestId > lastReceivedLogId) {
+        lastReceivedLogId = newestId;
+        console.log('[SSE DEBUG] 从日志列表同步 lastReceivedLogId:', newestId);
       }
     }
 
@@ -1462,9 +1479,11 @@
       }
 
       // EventSource 不支持自定义头，使用 URL 参数传递 token
-      // 如果有上次接收时间，携带 since_ms 参数用于重连恢复（毫秒精度）
+      // 优先使用 since_id（精确游标），否则回退到 since_ms
       let url = `/admin/logs/stream?token=${encodeURIComponent(token)}`;
-      if (lastReceivedLogTimeMs > 0) {
+      if (lastReceivedLogId > 0) {
+        url += `&since_id=${lastReceivedLogId}`;
+      } else if (lastReceivedLogTimeMs > 0) {
         url += `&since_ms=${lastReceivedLogTimeMs}`;
       }
       console.log('[SSE DEBUG] connectSSE URL:', url);
@@ -1492,8 +1511,8 @@
             return parsed > 1e12 ? parsed : parsed * 1000;
           })();
 
-          // 生成更细粒度的唯一标识（毫秒时间戳+渠道ID+状态码+消息）
-          const logKey = `${entry.id || ''}-${logTimeMs}-${entry.channel_id || 0}-${entry.status_code || 0}`;
+          // 生成日志去重 key（优先 id）
+          const logKey = buildLogKey(entry);
           if (displayedLogIds.has(logKey)) {
             // 重复日志，跳过（重连恢复时可能重复）
             return;
@@ -1504,6 +1523,11 @@
           if (logTimeMs > lastReceivedLogTimeMs) {
             lastReceivedLogTimeMs = logTimeMs;
           }
+          // 更新最后接收的 ID（精确游标）
+          const entryId = Number(entry.id) || 0;
+          if (entryId > lastReceivedLogId) {
+            lastReceivedLogId = entryId;
+          }
 
           // 插入到实时缓冲区
           realtimeBuffer.unshift(entry);
@@ -1512,9 +1536,7 @@
           if (realtimeBuffer.length > BUFFER_MAX_SIZE) {
             const dropped = realtimeBuffer.pop();
             // 从去重集合中删除被丢弃的日志
-            const droppedTimeMs = extractLogTimeMs(dropped);
-            const droppedKey = `${dropped.id || ''}-${droppedTimeMs}-${dropped.channel_id || 0}-${dropped.status_code || 0}`;
-            displayedLogIds.delete(droppedKey);
+            displayedLogIds.delete(buildLogKey(dropped));
           }
 
           // 更新计数器
@@ -1593,6 +1615,7 @@
         stopActiveRequestsPolling();
         // 用户主动关闭时重置状态
         lastReceivedLogTimeMs = 0;
+        lastReceivedLogId = 0;
         displayedLogIds.clear();
       }
     }
