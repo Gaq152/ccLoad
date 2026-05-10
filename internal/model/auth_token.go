@@ -36,6 +36,10 @@ type AuthToken struct {
 	CacheCreationTokensTotal int64   `json:"cache_creation_tokens_total"` // 累计缓存写Token数
 	TotalCostUSD             float64 `json:"total_cost_usd"`              // 累计成本(美元)
 
+	// Token 加密存储（AES-256-GCM，用于再次查看）
+	TokenEncrypted *string `json:"-"`             // 加密后的明文（不暴露到 API）
+	HasEncrypted   bool    `json:"has_encrypted"` // 是否有加密存储（前端判断是否显示查看按钮）
+
 	// API 响应计算字段（不存储到数据库）
 	IsExpiredFlag bool `json:"is_expired"` // 是否已过期（API响应时计算）
 }

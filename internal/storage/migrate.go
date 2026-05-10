@@ -146,12 +146,18 @@ func migrate(ctx context.Context, db *sql.DB, dialect Dialect) error {
 				if err := ensureAuthTokensAllChannels(ctx, db); err != nil {
 					return fmt.Errorf("migrate auth_tokens.all_channels: %w", err)
 				}
+				if err := ensureAuthTokensTokenEncrypted(ctx, db); err != nil {
+					return fmt.Errorf("migrate auth_tokens.token_encrypted: %w", err)
+				}
 			} else {
 				if err := ensureAuthTokensCacheFieldsSQLite(ctx, db); err != nil {
 					return fmt.Errorf("migrate auth_tokens cache fields: %w", err)
 				}
 				if err := ensureAuthTokensAllChannelsSQLite(ctx, db); err != nil {
 					return fmt.Errorf("migrate auth_tokens.all_channels: %w", err)
+				}
+				if err := ensureAuthTokensTokenEncryptedSQLite(ctx, db); err != nil {
+					return fmt.Errorf("migrate auth_tokens.token_encrypted: %w", err)
 				}
 			}
 		}
@@ -1739,5 +1745,66 @@ func migratePricingAliasesAndPredefined(ctx context.Context, db *sql.DB) error {
 	if migrated > 0 {
 		log.Printf("[INFO] [Migrate] 定价别名/预定义迁移完成: %d 条", migrated)
 	}
+	return nil
+}
+
+// ensureAuthTokensTokenEncrypted 确保auth_tokens表有token_encrypted字段(MySQL增量迁移)
+func ensureAuthTokensTokenEncrypted(ctx context.Context, db *sql.DB) error {
+	var count int
+	err := db.QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='auth_tokens' AND COLUMN_NAME='token_encrypted'",
+	).Scan(&count)
+	if err != nil {
+		return fmt.Errorf("check token_encrypted existence: %w", err)
+	}
+
+	if count > 0 {
+		return nil
+	}
+
+	_, err = db.ExecContext(ctx,
+		"ALTER TABLE auth_tokens ADD COLUMN token_encrypted TEXT DEFAULT NULL COMMENT 'AES加密的令牌明文'",
+	)
+	if err != nil {
+		return fmt.Errorf("add token_encrypted column: %w", err)
+	}
+
+	return nil
+}
+
+// ensureAuthTokensTokenEncryptedSQLite 确保auth_tokens表有token_encrypted字段(SQLite增量迁移)
+func ensureAuthTokensTokenEncryptedSQLite(ctx context.Context, db *sql.DB) error {
+	rows, err := db.QueryContext(ctx, "PRAGMA table_info(auth_tokens)")
+	if err != nil {
+		return fmt.Errorf("check table info: %w", err)
+	}
+	defer rows.Close()
+
+	hasColumn := false
+	for rows.Next() {
+		var cid int
+		var name, typ string
+		var notNull, pk int
+		var dfltValue any
+		if err := rows.Scan(&cid, &name, &typ, &notNull, &dfltValue, &pk); err != nil {
+			return fmt.Errorf("scan column info: %w", err)
+		}
+		if name == "token_encrypted" {
+			hasColumn = true
+			break
+		}
+	}
+
+	if hasColumn {
+		return nil
+	}
+
+	_, err = db.ExecContext(ctx,
+		"ALTER TABLE auth_tokens ADD COLUMN token_encrypted TEXT DEFAULT NULL",
+	)
+	if err != nil {
+		return fmt.Errorf("add token_encrypted column: %w", err)
+	}
+
 	return nil
 }

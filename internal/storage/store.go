@@ -87,6 +87,8 @@ type Store interface {
 	CreateAuthToken(ctx context.Context, token *model.AuthToken) error
 	GetAuthToken(ctx context.Context, id int64) (*model.AuthToken, error)
 	GetAuthTokenByValue(ctx context.Context, tokenHash string) (*model.AuthToken, error)
+	GetAuthTokenEncrypted(ctx context.Context, id int64) (string, error)
+	RegenerateAuthToken(ctx context.Context, id int64, newTokenHash string, newTokenEncrypted *string) error
 	ListAuthTokens(ctx context.Context) ([]*model.AuthToken, error)
 	ListActiveAuthTokens(ctx context.Context) ([]*model.AuthToken, error)
 	UpdateAuthToken(ctx context.Context, token *model.AuthToken) error

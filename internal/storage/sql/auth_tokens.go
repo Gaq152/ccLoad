@@ -32,12 +32,12 @@ func (s *SQLStore) CreateAuthToken(ctx context.Context, token *model.AuthToken) 
 
 	result, err := s.db.ExecContext(ctx, `
 		INSERT INTO auth_tokens (
-			token, description, created_at, expires_at, last_used_at, is_active, all_channels,
+			token, token_encrypted, description, created_at, expires_at, last_used_at, is_active, all_channels,
 			success_count, failure_count, stream_avg_ttfb, non_stream_avg_rt, stream_count, non_stream_count,
 			prompt_tokens_total, completion_tokens_total, total_cost_usd
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 0.0, 0.0, 0, 0, 0, 0, 0.0)
-	`, token.Token, token.Description, token.CreatedAt.UnixMilli(), expiresAt, lastUsedAt,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0.0, 0.0, 0, 0, 0, 0, 0.0)
+	`, token.Token, token.TokenEncrypted, token.Description, token.CreatedAt.UnixMilli(), expiresAt, lastUsedAt,
 		boolToInt(token.IsActive), boolToInt(token.AllChannels))
 
 	if err != nil {
@@ -178,7 +178,8 @@ func (s *SQLStore) ListAuthTokens(ctx context.Context) ([]*model.AuthToken, erro
 		SELECT
 			id, token, description, created_at, expires_at, last_used_at, is_active, all_channels,
 			success_count, failure_count, stream_avg_ttfb, non_stream_avg_rt, stream_count, non_stream_count,
-			prompt_tokens_total, completion_tokens_total, cache_read_tokens_total, cache_creation_tokens_total, total_cost_usd
+			prompt_tokens_total, completion_tokens_total, cache_read_tokens_total, cache_creation_tokens_total, total_cost_usd,
+			(token_encrypted IS NOT NULL AND token_encrypted != '') AS has_encrypted
 		FROM auth_tokens
 		ORDER BY created_at DESC
 	`)
@@ -193,6 +194,7 @@ func (s *SQLStore) ListAuthTokens(ctx context.Context) ([]*model.AuthToken, erro
 		var createdAtMs int64
 		var expiresAt, lastUsedAt sql.NullInt64
 		var isActive, allChannels int
+		var hasEncrypted int
 
 		if err := rows.Scan(
 			&token.ID,
@@ -214,6 +216,7 @@ func (s *SQLStore) ListAuthTokens(ctx context.Context) ([]*model.AuthToken, erro
 			&token.CacheReadTokensTotal,
 			&token.CacheCreationTokensTotal,
 			&token.TotalCostUSD,
+			&hasEncrypted,
 		); err != nil {
 			return nil, fmt.Errorf("scan auth token: %w", err)
 		}
@@ -228,6 +231,7 @@ func (s *SQLStore) ListAuthTokens(ctx context.Context) ([]*model.AuthToken, erro
 		}
 		token.IsActive = isActive != 0
 		token.AllChannels = allChannels != 0
+		token.HasEncrypted = hasEncrypted != 0
 
 		tokens = append(tokens, token)
 	}
@@ -339,6 +343,53 @@ func (s *SQLStore) UpdateAuthToken(ctx context.Context, token *model.AuthToken) 
 	}
 
 	// 触发异步Redis同步 (新增 2025-11)
+	s.triggerAsyncSync(syncAuthTokens)
+
+	return nil
+}
+
+// GetAuthTokenEncrypted 获取令牌的加密明文（用于 reveal 端点）
+func (s *SQLStore) GetAuthTokenEncrypted(ctx context.Context, id int64) (string, error) {
+	var encrypted sql.NullString
+	err := s.db.QueryRowContext(ctx, `
+		SELECT token_encrypted FROM auth_tokens WHERE id = ?
+	`, id).Scan(&encrypted)
+
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", fmt.Errorf("auth token not found")
+	}
+	if err != nil {
+		return "", fmt.Errorf("get auth token encrypted: %w", err)
+	}
+
+	if !encrypted.Valid {
+		return "", nil
+	}
+	return encrypted.String, nil
+}
+
+// RegenerateAuthToken 重新生成令牌（仅更新 token 哈希和加密值）
+func (s *SQLStore) RegenerateAuthToken(ctx context.Context, id int64, newTokenHash string, newTokenEncrypted *string) error {
+	result, err := s.db.ExecContext(ctx, `
+		UPDATE auth_tokens
+		SET token = ?, token_encrypted = ?
+		WHERE id = ?
+	`, newTokenHash, newTokenEncrypted, id)
+
+	if err != nil {
+		return fmt.Errorf("regenerate auth token: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("auth token not found")
+	}
+
+	// 触发异步Redis同步
 	s.triggerAsyncSync(syncAuthTokens)
 
 	return nil
