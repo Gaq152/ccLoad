@@ -31,6 +31,11 @@
     .token-table tbody tr:last-child td {
       border-bottom: none;
     }
+    .token-cell {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
     .token-display {
       font-family: monospace;
       background: var(--neutral-100);
@@ -40,16 +45,15 @@
       display: inline-block;
       max-width: 220px;
       overflow-x: auto;
+      overflow-y: hidden;
       white-space: nowrap;
       vertical-align: middle;
+      /* 隐藏滚动条，通过鼠标拖动文本内容查看（类似输入框） */
+      scrollbar-width: none;
+      -ms-overflow-style: none;
     }
-    /* 隐藏横向滚动条但保持可滚动（类似 Excel 单元格） */
     .token-display::-webkit-scrollbar {
-      height: 4px;
-    }
-    .token-display::-webkit-scrollbar-thumb {
-      background: var(--neutral-300);
-      border-radius: 2px;
+      display: none;
     }
     /* Token状态颜色 */
     .token-display-active {

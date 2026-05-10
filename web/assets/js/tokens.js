@@ -72,15 +72,6 @@
           return;
         }
 
-        // 处理查看令牌按钮
-        const revealBtn = target.closest('.btn-reveal');
-        if (revealBtn) {
-          const row = revealBtn.closest('tr');
-          const tokenId = row ? parseInt(row.dataset.tokenId) : null;
-          if (tokenId) revealToken(tokenId);
-          return;
-        }
-
         // 处理复制令牌按钮（直接复制不展示明文）
         const copyBtn = target.closest('.btn-copy');
         if (copyBtn) {
@@ -217,7 +208,6 @@
       const streamAvgHtml = buildResponseTimeHtml(token.stream_avg_ttfb, token.stream_count);
       const nonStreamAvgHtml = buildResponseTimeHtml(token.non_stream_avg_rt, token.non_stream_count);
       const toggleBtnHtml = buildToggleBtnHtml(token);
-      const revealBtnHtml = buildRevealBtnHtml(token);
       const regenerateBtnHtml = buildRegenerateBtnHtml(token);
       const copyBtnHtml = buildCopyBtnHtml(token);
       const canCopy = !!(window._revealEnabled && token.has_encrypted);
@@ -240,23 +230,9 @@
         nonStreamAvgHtml: nonStreamAvgHtml,
         lastUsed: lastUsed,
         toggleBtnHtml: toggleBtnHtml,
-        revealBtnHtml: revealBtnHtml,
         regenerateBtnHtml: regenerateBtnHtml,
         copyBtnHtml: copyBtnHtml
       });
-    }
-
-    /**
-     * 构建查看令牌按钮HTML
-     * @param {Object} token - 令牌对象
-     * @returns {string} 按钮HTML（仅当 reveal_enabled 且 has_encrypted 时显示）
-     */
-    function buildRevealBtnHtml(token) {
-      if (!window._revealEnabled || !token.has_encrypted) {
-        return '';
-      }
-      const eyeIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>';
-      return `<button class="btn-action btn-reveal" data-action="reveal" title="查看令牌明文" aria-label="查看令牌">${eyeIcon}</button>`;
     }
 
     /**
@@ -856,20 +832,6 @@
         textarea.select();
         document.execCommand('copy');
         window.showNotification('已复制到剪贴板', 'success');
-      }
-    }
-
-    async function revealToken(tokenId) {
-      try {
-        const data = await fetchDataWithAuth(`${API_BASE}/auth-tokens/${tokenId}/reveal`, {
-          method: 'POST'
-        });
-        document.getElementById('newTokenValue').value = data.token;
-        document.getElementById('tokenResultModalTitle').textContent = '查看令牌';
-        document.getElementById('tokenResultWarning').style.display = 'none';
-        document.getElementById('tokenResultModal').style.display = 'block';
-      } catch (error) {
-        window.showNotification(error.message || '查看令牌失败', 'error');
       }
     }
 
