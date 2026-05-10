@@ -139,7 +139,7 @@ func TransformToKiroRequest(anthropicBody []byte) ([]byte, error) {
 	histCount := len(kiroReq.ConversationState.History)
 	contentLen := len(kiroReq.ConversationState.CurrentMessage.UserInputMessage.Content)
 	log.Printf("[DEBUG] [Kiro] 转换摘要: model=%s, historyMsgs=%d, tools=%d, currentContent=%d chars, currentToolResults=%d, thinking=%v",
-		modelId, histCount, toolCount, contentLen, trCount, kiroReq.InferenceConfiguration != nil)
+		modelId, histCount, toolCount, contentLen, trCount, generateThinkingPrefix(anthropicReq) != "")
 
 	// 序列化
 	return sonic.Marshal(kiroReq)

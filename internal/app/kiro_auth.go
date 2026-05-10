@@ -334,7 +334,10 @@ func GetKiroModelId(anthropicModel string) string {
 		if strings.Contains(lower, "4-5") || strings.Contains(lower, "4.5") {
 			return "claude-opus-4.5"
 		}
-		return "claude-opus-4.6"
+		if strings.Contains(lower, "4-6") || strings.Contains(lower, "4.6") {
+			return "claude-opus-4.6"
+		}
+		return "claude-opus-4.7"
 	case strings.Contains(lower, "haiku"):
 		return "claude-haiku-4.5"
 	}
