@@ -108,6 +108,15 @@ function resetChannelModalUI() {
     updateKiroFingerprintStatus('');
   }
 
+  // 重置 Kiro IdC 相关状态
+  _pendingKiroIdcCredentials = null;
+  const kiroEnterpriseStartUrl = document.getElementById('kiroEnterpriseStartUrl');
+  if (kiroEnterpriseStartUrl) kiroEnterpriseStartUrl.value = '';
+  const kiroEnterpriseRegion = document.getElementById('kiroEnterpriseRegion');
+  if (kiroEnterpriseRegion) kiroEnterpriseRegion.value = 'us-east-1';
+  // 切回手动配置选项卡
+  if (typeof switchKiroLoginTab === 'function') switchKiroLoginTab('manual');
+
   // 重置用量监控配置
   resetQuotaConfig();
 
@@ -3820,80 +3829,10 @@ function updateKiroTokenEmail(token, result) {
   document.getElementById('kiroApiKey').value = JSON.stringify(token);
 }
 
-// ==================== Kiro Social OAuth 授权 ====================
+// ==================== Kiro OAuth 授权 ====================
 
-const KIRO_OAUTH_CONFIG = {
-  loginUrl: 'https://prod.us-east-1.auth.desktop.kiro.dev/login',
-  tokenUrl: 'https://prod.us-east-1.auth.desktop.kiro.dev/oauth/token',
-  get redirectUri() {
-    return `${window.location.origin}/web/auth/callback.html`;
-  }
-};
-
-/**
- * 启动 Kiro Social OAuth 授权（Google / GitHub）
- * @param {string} provider - 'Google' 或 'Github'
- */
-async function startKiroSocialOAuth(provider) {
-  const btnId = provider === 'Google' ? 'startKiroGoogleOAuthBtn' : 'startKiroGithubOAuthBtn';
-  const startBtn = document.getElementById(btnId);
-  if (startBtn) {
-    startBtn.disabled = true;
-    startBtn.textContent = '生成中...';
-  }
-
-  let codeVerifier, codeChallenge;
-  try {
-    const pkceResult = await fetchAPIWithAuth('/admin/oauth/pkce', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' }
-    });
-
-    if (!pkceResult.success || !pkceResult.data) {
-      throw new Error('生成 PKCE 失败');
-    }
-
-    codeVerifier = pkceResult.data.code_verifier;
-    codeChallenge = pkceResult.data.code_challenge;
-  } catch (e) {
-    console.error('[Kiro OAuth] 生成 PKCE 失败:', e);
-    if (window.showError) showError('生成 PKCE 失败: ' + e.message);
-    if (startBtn) {
-      startBtn.disabled = false;
-      startBtn.textContent = provider === 'Google' ? '🔑 Google 登录' : '🔑 GitHub 登录';
-    }
-    return;
-  }
-
-  // 将 code_verifier 编码到 state 参数中（与 Codex OAuth 相同的模式）
-  const stateData = {
-    random: Math.random().toString(36).substring(2),
-    verifier: codeVerifier,
-    provider: 'kiro',
-    idp: provider
-  };
-  const state = btoa(JSON.stringify(stateData));
-
-  // Kiro 的登录 URL 格式与 Codex/Gemini 不同，使用 idp 参数指定登录提供商
-  const redirectUri = KIRO_OAUTH_CONFIG.redirectUri;
-  const fullUrl = `${KIRO_OAUTH_CONFIG.loginUrl}?idp=${provider}&redirect_uri=${encodeURIComponent(redirectUri)}&code_challenge=${codeChallenge}&code_challenge_method=S256&state=${state}`;
-
-  // 显示链接区域
-  const linkSection = document.getElementById('kiroOAuthLinkSection');
-  const linkInput = document.getElementById('kiroOAuthLinkInput');
-  if (linkSection && linkInput) {
-    linkInput.value = fullUrl;
-    linkSection.style.display = 'block';
-    linkInput.select();
-  }
-
-  if (startBtn) {
-    startBtn.disabled = false;
-    startBtn.textContent = provider === 'Google' ? '🔑 Google 登录' : '🔑 GitHub 登录';
-  }
-
-  if (window.showSuccess) showSuccess('授权链接已生成，请点击打开或复制');
-}
+// IdC 登录流程中暂存的客户端凭证（回调时使用）
+let _pendingKiroIdcCredentials = null;
 
 function copyKiroOAuthLink() {
   const linkInput = document.getElementById('kiroOAuthLinkInput');
@@ -3916,55 +3855,256 @@ function openKiroOAuthLink() {
 }
 
 /**
- * 处理 Kiro OAuth 回调消息（由 callback.html 通过 postMessage 发送）
+ * 处理 Kiro IdC OAuth 回调消息（由 callback.html 通过 postMessage 发送）
  */
 async function handleKiroOAuthMessage(event) {
   const data = event.data;
   if (!data || !data.code || data.provider !== 'kiro') return;
 
-  await exchangeKiroCodeForToken(data.code, data.codeVerifier);
-}
-
-/**
- * 使用授权码交换 Kiro Token
- * @param {string} code - 授权码
- * @param {string} codeVerifier - PKCE code_verifier
- */
-async function exchangeKiroCodeForToken(code, codeVerifier) {
-  if (!codeVerifier) {
-    if (window.showError) showError('找不到 PKCE Verifier，请重新授权');
+  if (!_pendingKiroIdcCredentials) {
+    console.warn('[Kiro OAuth] 收到回调但未找到 IdC 凭证上下文，忽略');
     return;
   }
 
-  const googleBtn = document.getElementById('startKiroGoogleOAuthBtn');
-  const githubBtn = document.getElementById('startKiroGithubOAuthBtn');
-  if (googleBtn) { googleBtn.disabled = true; googleBtn.textContent = '获取 Token 中...'; }
-  if (githubBtn) { githubBtn.disabled = true; githubBtn.textContent = '获取 Token 中...'; }
+  const creds = _pendingKiroIdcCredentials;
+  await exchangeKiroIdcCodeForToken(
+    data.code,
+    creds.codeVerifier,
+    creds.clientId,
+    creds.clientSecret,
+    creds.region,
+    creds.startUrl,
+    creds.redirectUri
+  );
+}
+
+/**
+ * 手动提交 Kiro IdC 授权码（粘贴完整回调 URL 或纯 code）
+ */
+async function submitManualKiroCode() {
+  const input = document.getElementById('kiroManualCodeInput');
+  const code = input?.value?.trim();
+
+  if (!code) {
+    if (window.showError) showError('请输入授权码');
+    return;
+  }
+
+  if (!_pendingKiroIdcCredentials) {
+    if (window.showError) showError('请先在 BuilderId / Enterprise 选项卡发起授权');
+    return;
+  }
+
+  // 支持粘贴完整 URL：提取 code 参数
+  let authCode = code;
+  if (code.includes('code=')) {
+    const match = code.match(/code=([^&]+)/);
+    if (match) authCode = decodeURIComponent(match[1]);
+  }
+
+  const creds = _pendingKiroIdcCredentials;
+  await exchangeKiroIdcCodeForToken(
+    authCode,
+    creds.codeVerifier,
+    creds.clientId,
+    creds.clientSecret,
+    creds.region,
+    creds.startUrl,
+    creds.redirectUri
+  );
+  input.value = '';
+}
+
+// ==================== Kiro 登录方式切换与 IdC OAuth ====================
+
+/**
+ * 切换 Kiro 登录方式选项卡
+ * @param {'manual'|'builderId'|'enterprise'} tab - 要激活的选项卡
+ */
+function switchKiroLoginTab(tab) {
+  const tabs = {
+    manual: { el: 'kiroManualTab', btn: 'kiroTabManual' },
+    builderId: { el: 'kiroBuilderIdTab', btn: 'kiroTabBuilderId' },
+    enterprise: { el: 'kiroEnterpriseTab', btn: 'kiroTabEnterprise' }
+  };
+
+  // 切换选项卡内容和按钮样式
+  Object.entries(tabs).forEach(([key, cfg]) => {
+    const el = document.getElementById(cfg.el);
+    const btn = document.getElementById(cfg.btn);
+    if (el) el.style.display = key === tab ? 'block' : 'none';
+    if (btn) {
+      if (key === tab) {
+        btn.style.background = 'var(--primary-600)';
+        btn.style.color = '#fff';
+        btn.style.borderColor = 'var(--primary-600)';
+      } else {
+        btn.style.background = 'var(--neutral-200)';
+        btn.style.color = 'var(--neutral-700)';
+        btn.style.borderColor = 'var(--neutral-300)';
+      }
+    }
+  });
+
+  // 切换时隐藏 OAuth 链接区域
+  const linkSection = document.getElementById('kiroOAuthLinkSection');
+  if (linkSection) linkSection.style.display = 'none';
+}
+
+/**
+ * 启动 Kiro IdC OAuth 授权（BuilderId / Enterprise）
+ * @param {'BuilderId'|'Enterprise'} type - IdC 登录类型
+ */
+async function startKiroIdcOAuth(type) {
+  let startUrl, region;
+
+  if (type === 'BuilderId') {
+    startUrl = 'https://view.awsapps.com/start';
+    region = 'us-east-1';
+  } else {
+    // Enterprise：从输入框读取
+    startUrl = document.getElementById('kiroEnterpriseStartUrl')?.value?.trim();
+    region = document.getElementById('kiroEnterpriseRegion')?.value || 'us-east-1';
+
+    if (!startUrl) {
+      if (window.showError) showError('请输入 Enterprise Start URL');
+      return;
+    }
+  }
+
+  // AWS OIDC 要求 public 客户端的 redirect_uri 使用 loopback 地址
+  // 本机访问时回调会自动完成；远程访问时用户可手动粘贴回调 URL 中的授权码
+  const idcRedirectUri = `http://127.0.0.1:${window.location.port}/oauth/callback`;
+
+  const btnId = type === 'BuilderId' ? 'startKiroBuilderIdOAuthBtn' : 'startKiroEnterpriseOAuthBtn';
+  const startBtn = document.getElementById(btnId);
+  if (startBtn) {
+    startBtn.disabled = true;
+    startBtn.textContent = '注册客户端中...';
+  }
 
   try {
-    const redirectUri = KIRO_OAUTH_CONFIG.redirectUri;
+    // 1. 生成 PKCE
+    const pkceResult = await fetchAPIWithAuth('/admin/oauth/pkce', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
 
-    // 通过后端代理交换 Token（避免 CORS + 添加 User-Agent）
-    const result = await fetchAPIWithAuth('/admin/kiro/oauth/exchange', {
+    if (!pkceResult.success || !pkceResult.data) {
+      throw new Error('生成 PKCE 失败');
+    }
+
+    const codeVerifier = pkceResult.data.code_verifier;
+    const codeChallenge = pkceResult.data.code_challenge;
+
+    // 2. 注册 OIDC 客户端
+    const registerResult = await fetchAPIWithAuth('/admin/kiro/idc/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        start_url: startUrl,
+        region: region,
+        redirect_uri: idcRedirectUri
+      })
+    });
+
+    if (!registerResult.success || !registerResult.data) {
+      throw new Error(registerResult.error || '注册 OIDC 客户端失败');
+    }
+
+    const clientId = registerResult.data.clientId;
+    const clientSecret = registerResult.data.clientSecret;
+
+    // 3. 暂存 IdC 凭证，回调时使用
+    _pendingKiroIdcCredentials = {
+      clientId,
+      clientSecret,
+      region,
+      startUrl,
+      idpType: type,
+      codeVerifier,
+      redirectUri: idcRedirectUri
+    };
+
+    // 4. 构建授权 URL
+    const scopes = 'codewhisperer:completions,codewhisperer:analysis,codewhisperer:conversations,codewhisperer:transformations,codewhisperer:taskassist';
+    const stateData = {
+      random: Math.random().toString(36).substring(2),
+      verifier: codeVerifier,
+      provider: 'kiro',
+      idp: type
+    };
+    const state = btoa(JSON.stringify(stateData));
+
+    const authorizeUrl = `https://oidc.${region}.amazonaws.com/authorize?response_type=code&client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(idcRedirectUri)}&scopes=${encodeURIComponent(scopes)}&state=${state}&code_challenge=${codeChallenge}&code_challenge_method=S256`;
+
+    // 5. 显示链接区域
+    const linkSection = document.getElementById('kiroOAuthLinkSection');
+    const linkInput = document.getElementById('kiroOAuthLinkInput');
+    if (linkSection && linkInput) {
+      linkInput.value = authorizeUrl;
+      linkSection.style.display = 'block';
+      linkInput.select();
+    }
+
+    if (window.showSuccess) showSuccess('IdC 授权链接已生成，请点击打开或复制');
+  } catch (e) {
+    console.error('[Kiro IdC OAuth] Error:', e);
+    if (window.showError) showError('IdC 授权失败: ' + e.message);
+    _pendingKiroIdcCredentials = null;
+  } finally {
+    if (startBtn) {
+      startBtn.disabled = false;
+      startBtn.textContent = type === 'BuilderId' ? '🔑 BuilderId 登录' : '🔑 Enterprise 登录';
+    }
+  }
+}
+
+/**
+ * 使用授权码交换 Kiro IdC Token
+ * @param {string} code - 授权码
+ * @param {string} codeVerifier - PKCE code_verifier
+ * @param {string} clientId - OIDC 客户端 ID
+ * @param {string} clientSecret - OIDC 客户端密钥
+ * @param {string} region - AWS 区域
+ * @param {string} startUrl - IdC Start URL
+ * @param {string} redirectUri - 注册时使用的 redirect_uri（必须与注册时一致）
+ */
+async function exchangeKiroIdcCodeForToken(code, codeVerifier, clientId, clientSecret, region, startUrl, redirectUri) {
+  const builderIdBtn = document.getElementById('startKiroBuilderIdOAuthBtn');
+  const enterpriseBtn = document.getElementById('startKiroEnterpriseOAuthBtn');
+  if (builderIdBtn) { builderIdBtn.disabled = true; builderIdBtn.textContent = '获取 Token 中...'; }
+  if (enterpriseBtn) { enterpriseBtn.disabled = true; enterpriseBtn.textContent = '获取 Token 中...'; }
+
+  try {
+
+    // 通过后端代理交换 IdC Token
+    const result = await fetchAPIWithAuth('/admin/kiro/idc/exchange', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         code: code,
         code_verifier: codeVerifier,
-        redirect_uri: redirectUri
+        redirect_uri: redirectUri,
+        client_id: clientId,
+        client_secret: clientSecret,
+        region: region
       })
     });
 
     if (result.success && result.data) {
       const tokenData = result.data;
 
-      // 构建与现有 Kiro Token 格式兼容的对象
+      // 构建 IdC Token 对象（包含客户端凭证用于后续刷新）
       const kiroToken = {
         refreshToken: tokenData.refreshToken,
         accessToken: tokenData.accessToken,
         expiresAt: tokenData.expiresAt,
-        profileArn: tokenData.profileArn || '',
-        authMethod: 'Social'
+        authMethod: 'IdC',
+        clientId: clientId,
+        clientSecret: clientSecret,
+        startUrl: startUrl,
+        region: region
       };
 
       // 异步获取用户邮箱和订阅信息
@@ -3980,71 +4120,20 @@ async function exchangeKiroCodeForToken(code, codeVerifier) {
       const linkSection = document.getElementById('kiroOAuthLinkSection');
       if (linkSection) linkSection.style.display = 'none';
 
-      if (window.showSuccess) showSuccess('Kiro OAuth 授权成功！');
+      // 清除暂存的 IdC 凭证
+      _pendingKiroIdcCredentials = null;
+
+      if (window.showSuccess) showSuccess('Kiro IdC 授权成功！');
     } else {
-      throw new Error(result.error || '换取 Token 失败');
+      throw new Error(result.error || '换取 IdC Token 失败');
     }
   } catch (e) {
-    console.error('[Kiro OAuth] Error:', e);
-    if (window.showError) showError('授权失败: ' + e.message);
+    console.error('[Kiro IdC OAuth] Error:', e);
+    if (window.showError) showError('IdC 授权失败: ' + e.message);
   } finally {
-    if (googleBtn) { googleBtn.disabled = false; googleBtn.textContent = '🔑 Google 登录'; }
-    if (githubBtn) { githubBtn.disabled = false; githubBtn.textContent = '🔑 GitHub 登录'; }
+    if (builderIdBtn) { builderIdBtn.disabled = false; builderIdBtn.textContent = '🔑 BuilderId 登录'; }
+    if (enterpriseBtn) { enterpriseBtn.disabled = false; enterpriseBtn.textContent = '🔑 Enterprise 登录'; }
   }
-}
-
-/**
- * 手动提交 Kiro 授权码
- */
-async function submitManualKiroCode() {
-  const input = document.getElementById('kiroManualCodeInput');
-  const code = input?.value?.trim();
-
-  if (!code) {
-    if (window.showError) showError('请输入授权码');
-    return;
-  }
-
-  let authCode = code;
-  let codeVerifier = null;
-
-  // 如果粘贴了完整 URL，提取 code 和 state
-  if (code.includes('code=')) {
-    const match = code.match(/code=([^&]+)/);
-    authCode = match ? decodeURIComponent(match[1]) : code;
-
-    const stateMatch = code.match(/state=([^&]+)/);
-    if (stateMatch) {
-      try {
-        const stateDecoded = decodeURIComponent(stateMatch[1]);
-        const stateData = JSON.parse(atob(stateDecoded));
-        codeVerifier = stateData.verifier;
-      } catch (e) {
-        console.error('[Kiro OAuth] 解析 state 失败:', e);
-      }
-    }
-  }
-
-  if (!codeVerifier) {
-    if (window.showError) showError('无法提取 code_verifier，请重新发起授权');
-    return;
-  }
-
-  await exchangeKiroCodeForToken(authCode, codeVerifier);
-  input.value = '';
-}
-
-/**
- * 切换 Kiro 手动粘贴区域
- */
-function toggleKiroManualPaste() {
-  const content = document.getElementById('kiroManualPasteContent');
-  const icon = document.getElementById('kiroManualPasteToggleIcon');
-  if (!content || !icon) return;
-
-  const isExpanded = content.style.display !== 'none';
-  content.style.display = isExpanded ? 'none' : 'block';
-  icon.style.transform = isExpanded ? '' : 'rotate(180deg)';
 }
 
 // ==================== Kiro 设备指纹配置 ====================

@@ -514,7 +514,8 @@ func (s *Server) SetupRoutes(r *gin.Engine) {
 		// Kiro Token 管理
 		admin.POST("/kiro/refresh", s.HandleKiroRefresh)
 		admin.POST("/kiro/email", s.HandleKiroGetEmail)
-		admin.POST("/kiro/oauth/exchange", s.HandleKiroSocialOAuthExchange)
+		admin.POST("/kiro/idc/register", s.HandleKiroIdcRegisterClient)
+		admin.POST("/kiro/idc/exchange", s.HandleKiroIdcTokenExchange)
 		admin.GET("/kiro/fingerprint/generate", s.HandleKiroGenerateFingerprint)
 
 		// 统计分析
@@ -572,6 +573,11 @@ func (s *Server) SetupRoutes(r *gin.Engine) {
 	// 静态文件服务（安全）：使用框架自带的静态文件路由，自动做路径清理，防止目录遍历
 	// 等价于 http.FileServer，避免手工拼接路径导致的 /web/../ 泄露
 	r.Static("/web", "./web")
+
+	// IdC OAuth 回调路由（AWS OIDC 要求 loopback redirect_uri，路径需匹配注册时的值）
+	r.GET("/oauth/callback", func(c *gin.Context) {
+		c.Redirect(http.StatusFound, "/web/auth/callback.html?"+c.Request.URL.RawQuery)
+	})
 
 	// 默认首页重定向
 	r.GET("/", func(c *gin.Context) {
