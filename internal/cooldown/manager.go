@@ -126,15 +126,28 @@ func (m *Manager) HandleError(
 		}
 	}
 
-	// 2. [TARGET] 提前检查1308错误（在升级逻辑之前）
-	// 1308错误包含精确的重置时间，无论Key级还是Channel级都应该使用
-	// [INFO] 修复（2025-12-09）：不限制状态码，因为1308可能以不同方式返回：
+	// 2. [TARGET] 提前检查带固定冷却截止时间的错误（在升级逻辑之前）
+	// 1308 / 结构化配额错误（API_KEY_QUOTA_EXHAUSTED / DAILY_LIMIT_EXCEEDED / 用量上限）包含精确的重置时间，
+	// 无论 Key 级还是 Channel 级都应该使用
+	// [INFO] 修复（2025-12-09）：1308可能以不同方式返回：
 	//    - HTTP 429 + 错误体包含1308（传统方式）
 	//    - HTTP 200 + SSE error事件包含1308（流式响应方式）
 	var reset1308Time time.Time
 	var has1308Time bool
+	var cooldownReason string
 	if len(errorBody) > 0 {
 		reset1308Time, has1308Time = util.ParseResetTimeFrom1308Error(errorBody)
+		if has1308Time {
+			cooldownReason = "1308"
+		} else if until, reason, ok := util.ParseStructuredQuotaCooldown(errorBody, time.Now()); ok {
+			reset1308Time = until
+			has1308Time = true
+			cooldownReason = reason
+			// 结构化配额错误明确是 Key 级
+			if errLevel == util.ErrorLevelRetry || errLevel == util.ErrorLevelChannel {
+				errLevel = util.ErrorLevelKey
+			}
+		}
 	}
 
 	// 3. [TARGET] 动态调整:单Key渠道的Key级错误应该直接冷却渠道
@@ -182,7 +195,7 @@ func (m *Manager) HandleError(
 	case util.ErrorLevelKey:
 		// Key级错误:冷却当前Key,继续尝试其他Key
 		if keyIndex != NoKeyIndex {
-			// [INFO] 特殊处理: 1308错误自动禁用到指定时间
+			// [INFO] 特殊处理: 带固定冷却截止时间的错误（1308/结构化配额）自动禁用到指定时间
 			if has1308Time {
 				// 直接设置冷却时间到指定时刻
 				if err := m.store.SetKeyCooldown(ctx, channelID, keyIndex, reset1308Time); err != nil {
@@ -190,12 +203,12 @@ func (m *Manager) HandleError(
 						channelID, keyIndex, reset1308Time, err)
 				} else {
 					duration := time.Until(reset1308Time)
-					log.Printf("[COOLDOWN] Key冷却(1308): 渠道=%d Key=%d 禁用至 %s (%.1f分钟)",
-						channelID, keyIndex, reset1308Time.Format("2006-01-02 15:04:05"), duration.Minutes())
+					log.Printf("[COOLDOWN] Key冷却(%s): 渠道=%d Key=%d 禁用至 %s (%.1f分钟)",
+						cooldownReason, channelID, keyIndex, reset1308Time.Format("2006-01-02 15:04:05"), duration.Minutes())
 					// SSE 回调
 					m.notifyKeyCooldown(ctx, channelID, keyIndex, reset1308Time, statusCode)
 				}
-				log.Printf("[COOLDOWN] 执行动作: Key级错误(1308) → 重试同渠道其他Key")
+				log.Printf("[COOLDOWN] 执行动作: Key级错误(%s) → 重试同渠道其他Key", cooldownReason)
 				return ActionRetryKey, nil
 			}
 
@@ -217,19 +230,19 @@ func (m *Manager) HandleError(
 
 	case util.ErrorLevelChannel:
 		// 渠道级错误:冷却整个渠道,切换到其他渠道
-		// [INFO] 特殊处理: 如果有1308精确时间，直接设置（单Key渠道的1308错误会走到这里）
+		// [INFO] 特殊处理: 如果有固定冷却截止时间（1308/结构化配额），直接设置（单Key渠道会走到这里）
 		if has1308Time {
 			if err := m.store.SetChannelCooldown(ctx, channelID, reset1308Time); err != nil {
 				log.Printf("[WARN] Failed to set channel cooldown to reset time (channel=%d, until=%v): %v",
 					channelID, reset1308Time, err)
 			} else {
 				duration := time.Until(reset1308Time)
-				log.Printf("[COOLDOWN] Channel冷却(1308): 渠道=%d 禁用至 %s (%.1f分钟)",
-					channelID, reset1308Time.Format("2006-01-02 15:04:05"), duration.Minutes())
+				log.Printf("[COOLDOWN] Channel冷却(%s): 渠道=%d 禁用至 %s (%.1f分钟)",
+					cooldownReason, channelID, reset1308Time.Format("2006-01-02 15:04:05"), duration.Minutes())
 				// SSE 回调
 				m.notifyChannelCooldown(ctx, channelID, reset1308Time, statusCode)
 			}
-			log.Printf("[COOLDOWN] 执行动作: Channel级错误(1308) → 切换到其他渠道")
+			log.Printf("[COOLDOWN] 执行动作: Channel级错误(%s) → 切换到其他渠道", cooldownReason)
 			return ActionRetryChannel, nil
 		}
 

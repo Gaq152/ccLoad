@@ -22,6 +22,9 @@ var ErrUpstreamFirstByteTimeout = errors.New("upstream first byte timeout")
 // 格式示例: 2025-12-09 18:08:11
 var resetTime1308Regex = regexp.MustCompile(`\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}`)
 
+// beijingTomorrowResetRegex 匹配类似"明天凌晨3点13分（北京时间）恢复"的相对重置时间
+var beijingTomorrowResetRegex = regexp.MustCompile(`明天\s*(?:凌晨|早上|上午)?\s*(\d{1,2})\s*点\s*(?:(\d{1,2})\s*分)?`)
+
 // HTTP 状态码常量（统一定义，避免魔法数字）
 const (
 	// StatusClientClosedRequest 客户端取消请求（Nginx扩展状态码）
@@ -331,6 +334,123 @@ func ParseResetTimeFrom1308Error(responseBody []byte) (time.Time, bool) {
 	}
 
 	return resetTime, true
+}
+
+// structuredQuotaErrorResponse 结构化配额错误（带 code / message 字段的上游响应）
+type structuredQuotaErrorResponse struct {
+	Code    string          `json:"code"`
+	Message string          `json:"message"`
+	Error   json.RawMessage `json:"error"`
+}
+
+type structuredQuotaErrorObject struct {
+	Type    string `json:"type"`
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+// ParseStructuredQuotaCooldown 解析结构化配额错误中的 Key 冷却截止时间
+// 支持的场景：
+//   - API_KEY_QUOTA_EXHAUSTED        → 冷却 30 分钟
+//   - DAILY_LIMIT_EXCEEDED / USAGE_LIMIT_EXCEEDED + DAILY_LIMIT_EXCEEDED → 冷却到次日 0 点（本地时区）
+//   - 消息包含"用量上限" + "北京时间" + "明天 X 点 Y 分" → 冷却到北京时间次日指定时刻
+//
+// 返回: 冷却截止时间、冷却原因、是否解析成功
+func ParseStructuredQuotaCooldown(responseBody []byte, now time.Time) (time.Time, string, bool) {
+	if len(responseBody) == 0 {
+		return time.Time{}, "", false
+	}
+
+	code, message, ok := parseStructuredQuotaError(responseBody)
+	if !ok {
+		return time.Time{}, "", false
+	}
+
+	messageUpper := strings.ToUpper(message)
+
+	switch {
+	case code == "API_KEY_QUOTA_EXHAUSTED":
+		return now.Add(30 * time.Minute), "API_KEY_QUOTA_EXHAUSTED", true
+	case code == "DAILY_LIMIT_EXCEEDED" ||
+		(code == "USAGE_LIMIT_EXCEEDED" && strings.Contains(messageUpper, "DAILY_LIMIT_EXCEEDED")):
+		return nextLocalMidnight(now), "DAILY_LIMIT_EXCEEDED", true
+	case strings.Contains(message, "用量上限"):
+		if until, ok := parseBeijingTomorrowResetTime(message, now); ok {
+			return until, "BEIJING_RELATIVE_QUOTA_RESET", true
+		}
+		return time.Time{}, "", false
+	default:
+		return time.Time{}, "", false
+	}
+}
+
+func parseStructuredQuotaError(responseBody []byte) (string, string, bool) {
+	var errResp structuredQuotaErrorResponse
+	if err := json.Unmarshal(responseBody, &errResp); err != nil {
+		return "", "", false
+	}
+
+	code := strings.ToUpper(strings.TrimSpace(errResp.Code))
+	message := errResp.Message
+
+	if len(errResp.Error) > 0 {
+		var errorText string
+		if err := json.Unmarshal(errResp.Error, &errorText); err == nil {
+			if message == "" {
+				message = errorText
+			}
+		} else {
+			var errorObj structuredQuotaErrorObject
+			if err := json.Unmarshal(errResp.Error, &errorObj); err == nil {
+				if code == "" {
+					code = strings.ToUpper(strings.TrimSpace(errorObj.Code))
+				}
+				if code == "" {
+					code = strings.ToUpper(strings.TrimSpace(errorObj.Type))
+				}
+				if message == "" {
+					message = errorObj.Message
+				}
+			}
+		}
+	}
+
+	return code, message, code != "" || message != ""
+}
+
+func nextLocalMidnight(now time.Time) time.Time {
+	local := now.In(time.Local)
+	y, m, d := local.Date()
+	return time.Date(y, m, d+1, 0, 0, 0, 0, time.Local)
+}
+
+func parseBeijingTomorrowResetTime(message string, now time.Time) (time.Time, bool) {
+	if !strings.Contains(message, "北京时间") {
+		return time.Time{}, false
+	}
+
+	matches := beijingTomorrowResetRegex.FindStringSubmatch(message)
+	if matches == nil {
+		return time.Time{}, false
+	}
+
+	hour, err := strconv.Atoi(matches[1])
+	if err != nil || hour < 0 || hour > 23 {
+		return time.Time{}, false
+	}
+
+	minute := 0
+	if len(matches) > 2 && matches[2] != "" {
+		minute, err = strconv.Atoi(matches[2])
+		if err != nil || minute < 0 || minute > 59 {
+			return time.Time{}, false
+		}
+	}
+
+	loc := time.FixedZone("Asia/Shanghai", 8*60*60)
+	local := now.In(loc)
+	y, mon, d := local.Date()
+	return time.Date(y, mon, d+1, hour, minute, 0, 0, loc), true
 }
 
 // ClassifyError 统一错误分类器（网络错误+HTTP错误）
