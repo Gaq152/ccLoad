@@ -160,6 +160,12 @@ type ChannelSortUpdate struct {
 	SortOrder int
 }
 
+// ChannelPriorityUpdate 渠道优先级更新项（用于行内编辑）
+type ChannelPriorityUpdate struct {
+	ID       int64
+	Priority int
+}
+
 // ModelEntry 模型条目（用于模糊匹配）
 type ModelEntry struct {
 	Model string

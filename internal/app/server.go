@@ -485,6 +485,7 @@ func (s *Server) SetupRoutes(r *gin.Engine) {
 		admin.GET("/channels/export", s.HandleExportChannelsCSV)
 		admin.POST("/channels/import", s.HandleImportChannelsCSV)
 		admin.POST("/channels/reorder", s.HandleReorderChannels) // 批量更新渠道排序（拖拽排序）
+		admin.POST("/channels/batch-priority", s.HandleBatchUpdatePriority) // 批量更新优先级（行内编辑）
 		admin.GET("/channels/:id", s.HandleChannelByID)
 		admin.PUT("/channels/:id", s.HandleChannelByID)
 		admin.DELETE("/channels/:id", s.HandleChannelByID)

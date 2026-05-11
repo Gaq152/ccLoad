@@ -1063,6 +1063,54 @@ html.dark .btn-icon::before {
   font-weight: normal;
 }
 
+.priority-number-editable {
+  display: inline-block;
+  min-width: 2em;
+  padding: 0 4px;
+  border-radius: 4px;
+  border: 1px dashed transparent;
+  cursor: text;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.priority-number-editable:hover {
+  border-color: var(--primary-400);
+  background: rgba(59, 130, 246, 0.08);
+}
+
+.priority-number-editable.is-saving {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.priority-number-input {
+  width: 80px;
+  height: 24px;
+  padding: 0 6px;
+  border: 1px solid var(--primary-400);
+  border-radius: 4px;
+  font-size: inherit;
+  font-weight: inherit;
+  font-family: inherit;
+  text-align: center;
+  background: #ffffff;
+  color: var(--neutral-900);
+  outline: none;
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.priority-number-input::-webkit-outer-spin-button,
+.priority-number-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+html.dark .priority-number-input {
+  background: var(--neutral-800);
+  color: var(--neutral-100);
+}
+
 .priority-header:hover {
   color: var(--primary-500);
 }

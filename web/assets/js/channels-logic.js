@@ -455,6 +455,102 @@
     }, { offset: Number.NEGATIVE_INFINITY }).element;
   }
 
+  // ===== 行内编辑优先级 =====
+
+  const PRIORITY_MIN = -99999;
+  const PRIORITY_MAX = 99999;
+
+  function normalizePriority(value, fallback) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return fallback;
+    return Math.max(PRIORITY_MIN, Math.min(PRIORITY_MAX, Math.trunc(n)));
+  }
+
+  function startInlinePriorityEdit(editable, channelsInGroup) {
+    if (!editable || editable.dataset.editing === '1') return;
+    editable.dataset.editing = '1';
+
+    const originalPriority = normalizePriority(editable.dataset.priority, 0);
+
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.className = 'priority-number-input';
+    input.min = String(PRIORITY_MIN);
+    input.max = String(PRIORITY_MAX);
+    input.step = '1';
+    input.value = String(originalPriority);
+
+    editable.replaceWith(input);
+    input.focus();
+    input.select();
+
+    let committed = false;
+
+    const restore = (priority, saving = false) => {
+      const span = document.createElement('span');
+      span.className = 'priority-number-editable';
+      span.dataset.priority = String(priority);
+      span.dataset.type = editable.dataset.type;
+      span.title = '点击编辑优先级';
+      span.textContent = String(priority);
+      if (saving) span.classList.add('is-saving');
+      input.replaceWith(span);
+      span.addEventListener('click', (e) => {
+        e.stopPropagation();
+        startInlinePriorityEdit(span, channelsInGroup);
+      });
+      return span;
+    };
+
+    const commit = async () => {
+      if (committed) return;
+      committed = true;
+
+      const next = normalizePriority(input.value, originalPriority);
+      if (next === originalPriority) {
+        restore(originalPriority);
+        return;
+      }
+
+      const updates = (channelsInGroup || [])
+        .filter(c => c && Number(c.id) > 0)
+        .map(c => ({ id: Number(c.id), priority: next }));
+
+      if (updates.length === 0) {
+        restore(originalPriority);
+        return;
+      }
+
+      const saving = restore(originalPriority, true);
+      try {
+        await fetchDataWithAuth('/admin/channels/batch-priority', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ updates })
+        });
+        if (typeof clearChannelsCache === 'function') clearChannelsCache();
+        if (window.showSuccess) window.showSuccess(`优先级已更新为 ${next}`);
+        if (typeof filterChannels === 'function') filterChannels();
+      } catch (err) {
+        console.error('Update channel priority failed:', err);
+        if (window.showError) window.showError(err.message || '更新优先级失败');
+        saving.classList.remove('is-saving');
+      }
+    };
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        commit();
+      } else if (e.key === 'Escape') {
+        committed = true;
+        restore(originalPriority);
+      }
+    });
+    input.addEventListener('blur', () => commit());
+    input.addEventListener('click', (e) => e.stopPropagation());
+  }
+
   // ===== 渲染主函数 =====
 
   /**
@@ -535,9 +631,20 @@
         laneHeader.appendChild(selectAllCheckbox);
 
         const headerText = document.createElement('span');
-        headerText.innerHTML = `<span class="priority-icon">⬆</span> 优先级: ${priority} <span class="priority-count">(${channelsInPriority.length})</span>`;
+        headerText.innerHTML = `<span class="priority-icon">⬆</span> 优先级: <span class="priority-number-editable" data-priority="${priority}" data-type="${type}" title="点击编辑优先级">${priority}</span> <span class="priority-count">(${channelsInPriority.length})</span>`;
         headerText.style.cursor = 'pointer';
-        headerText.addEventListener('click', () => togglePriorityLane(type, priority));
+        headerText.addEventListener('click', (e) => {
+          // 点击可编辑数字或其变出的输入框时不触发折叠
+          if (e.target.closest('.priority-number-editable, .priority-number-input')) return;
+          togglePriorityLane(type, priority);
+        });
+        const editable = headerText.querySelector('.priority-number-editable');
+        if (editable) {
+          editable.addEventListener('click', (e) => {
+            e.stopPropagation();
+            startInlinePriorityEdit(editable, channelsInPriority);
+          });
+        }
         laneHeader.appendChild(headerText);
 
         priorityLane.appendChild(laneHeader);

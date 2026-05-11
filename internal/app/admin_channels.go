@@ -817,3 +817,55 @@ func (s *Server) HandleReorderChannels(c *gin.Context) {
 		"updated": updated,
 	})
 }
+
+// HandleBatchUpdatePriority 批量更新渠道优先级（仅优先级）
+// POST /admin/channels/batch-priority
+// 请求体: { "updates": [{ "id": 1, "priority": 100 }, ...] }
+// 用于前端行内编辑（不改 sort_order，避免拖拽和行内编辑冲突）
+func (s *Server) HandleBatchUpdatePriority(c *gin.Context) {
+	var req struct {
+		Updates []struct {
+			ID       int64 `json:"id"`
+			Priority int   `json:"priority"`
+		} `json:"updates"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		RespondError(c, http.StatusBadRequest, err)
+		return
+	}
+	if len(req.Updates) == 0 {
+		RespondErrorMsg(c, http.StatusBadRequest, "updates cannot be empty")
+		return
+	}
+
+	seen := make(map[int64]bool, len(req.Updates))
+	updates := make([]model.ChannelPriorityUpdate, 0, len(req.Updates))
+	for _, u := range req.Updates {
+		if u.ID <= 0 {
+			RespondErrorMsg(c, http.StatusBadRequest, "invalid channel id")
+			return
+		}
+		if seen[u.ID] {
+			RespondErrorMsg(c, http.StatusBadRequest, "duplicate channel id in request")
+			return
+		}
+		seen[u.ID] = true
+		updates = append(updates, model.ChannelPriorityUpdate{ID: u.ID, Priority: u.Priority})
+	}
+
+	ctx := c.Request.Context()
+	rowsAffected, err := s.store.BatchUpdateChannelPriority(ctx, updates)
+	if err != nil {
+		log.Printf("batch-priority: failed: %v", err)
+		RespondError(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	s.InvalidateChannelListCache()
+
+	RespondJSON(c, http.StatusOK, gin.H{
+		"updated": rowsAffected,
+		"total":   len(updates),
+	})
+}

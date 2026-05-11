@@ -483,3 +483,43 @@ func (s *SQLStore) BatchUpdateChannelSort(ctx context.Context, changes []model.C
 
 	return updated, nil
 }
+
+// BatchUpdateChannelPriority 批量更新渠道优先级（不改 sort_order）
+// 用于前端行内编辑优先级
+func (s *SQLStore) BatchUpdateChannelPriority(ctx context.Context, updates []model.ChannelPriorityUpdate) (int, error) {
+	if len(updates) == 0 {
+		return 0, nil
+	}
+
+	nowUnix := timeToUnix(time.Now())
+	updated := 0
+
+	err := s.WithTransaction(ctx, func(tx *sql.Tx) error {
+		stmt, err := tx.PrepareContext(ctx, `
+			UPDATE channels
+			SET priority = ?, updated_at = ?
+			WHERE id = ?
+		`)
+		if err != nil {
+			return err
+		}
+		defer stmt.Close()
+
+		for _, u := range updates {
+			result, err := stmt.ExecContext(ctx, u.Priority, nowUnix, u.ID)
+			if err != nil {
+				return err
+			}
+			affected, _ := result.RowsAffected()
+			updated += int(affected)
+		}
+		return nil
+	})
+
+	if err != nil {
+		return 0, err
+	}
+
+	s.triggerAsyncSync(syncChannels)
+	return updated, nil
+}

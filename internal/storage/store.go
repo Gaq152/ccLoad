@@ -25,6 +25,7 @@ type Store interface {
 	GetEnabledChannelsByModel(ctx context.Context, modelName string) ([]*model.Config, error)
 	GetEnabledChannelsByType(ctx context.Context, channelType string) ([]*model.Config, error)
 	BatchUpdateChannelSort(ctx context.Context, changes []model.ChannelSortUpdate) (int, error)
+	BatchUpdateChannelPriority(ctx context.Context, updates []model.ChannelPriorityUpdate) (int, error)
 
 	// ============================================================================
 	// API Key 管理
