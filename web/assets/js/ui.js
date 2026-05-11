@@ -408,7 +408,12 @@
       }, [icons.doc()]);
 
       // 版本徽章 - 开发模式显示 DEV，构建时由 GitHub Actions 替换为实际版本
-      const versionBadge = h('span', { class: 'version-badge' }, '>DEV<');
+      const versionBadge = h('span', {
+        class: 'version-badge',
+        style: 'cursor: pointer;',
+        title: '点击检查更新',
+        onclick: () => App.ui.checkUpdate(versionBadge.textContent)
+      }, '>DEV<');
 
       const right = h('div', { class: 'topbar-right' }, [
         versionBadge,
@@ -697,6 +702,81 @@
         const btn = modal.querySelector('button');
         if (btn) btn.focus();
       });
+    },
+
+    showUpdateToast: function(current, latest, url) {
+      const { h } = App.ui;
+      let host = document.getElementById('notify-host');
+      if (!host) {
+        host = document.createElement('div');
+        host.id = 'notify-host';
+        host.style.cssText = 'position: fixed; top: var(--space-6); right: var(--space-6); display: flex; flex-direction: column; gap: var(--space-2); z-index: 9999; pointer-events: none;';
+        document.body.appendChild(host);
+      }
+
+      const el = h('div', {
+        style: `
+          background: var(--theme-toast-info-bg);
+          backdrop-filter: blur(16px);
+          border: 1px solid transparent;
+          border-radius: var(--radius-lg);
+          padding: var(--space-4) var(--space-6);
+          color: #ffffff;
+          font-weight: var(--font-medium);
+          opacity: 0;
+          transform: translateX(20px);
+          transition: all var(--duration-normal) var(--timing-function);
+          max-width: 360px;
+          box-shadow: 0 10px 25px rgba(0,0,0,0.12);
+          pointer-events: auto;
+          cursor: pointer;
+          text-shadow: 0 1px 2px rgba(0,0,0,0.2);
+        `
+      }, [
+        h('div', { style: 'font-size: 13px; font-weight: 600; margin-bottom: 4px;' },
+          `发现新版本 ${latest}`),
+        h('div', { style: 'font-size: 11px; opacity: 0.85;' },
+          `当前 ${current}，点击前往查看`)
+      ]);
+
+      if (url) {
+        el.addEventListener('click', () => window.open(url, '_blank'));
+      }
+
+      host.appendChild(el);
+      requestAnimationFrame(() => {
+        el.style.opacity = '1';
+        el.style.transform = 'translateX(0)';
+      });
+
+      setTimeout(() => {
+        el.style.opacity = '0';
+        el.style.transform = 'translateX(20px)';
+        setTimeout(() => { if (el.parentNode) el.remove(); }, 320);
+      }, 8000);
+    },
+
+    checkUpdate: async function(currentVersion) {
+      const current = currentVersion.replace(/^>|<$/g, '').trim();
+      if (!current || current === 'DEV') {
+        showError('开发模式无法检查更新');
+        return;
+      }
+      try {
+        const resp = await fetch('/admin/check-update', { credentials: 'same-origin' });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+        const latest = data.latest_version;
+        if (!latest) throw new Error('未获取到版本信息');
+
+        if (latest === current) {
+          showSuccess('当前已是最新版本 ' + current);
+        } else {
+          App.ui.showUpdateToast(current, latest, data.release_url);
+        }
+      } catch (e) {
+        showError('检查更新失败：' + e.message);
+      }
     }
   };
 

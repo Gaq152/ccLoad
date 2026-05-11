@@ -568,6 +568,9 @@ func (s *Server) SetupRoutes(r *gin.Engine) {
 		admin.GET("/monitor/traces/:id", s.HandleMonitorDetail)
 		admin.DELETE("/monitor/traces", s.HandleMonitorClear)
 		admin.GET("/monitor/stats", s.HandleMonitorStats)
+
+		// 版本更新检查
+		admin.GET("/check-update", s.HandleCheckUpdate)
 	}
 
 	// 静态文件服务（安全）：使用框架自带的静态文件路由，自动做路径清理，防止目录遍历

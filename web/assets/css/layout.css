@@ -91,6 +91,12 @@
   color: var(--theme-text-muted);
   border: 1px solid var(--theme-border-light);
   letter-spacing: 0.3px;
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s;
+}
+.version-badge:hover {
+  border-color: var(--primary-400);
+  color: var(--primary-500);
 }
 
 /* 顶部背景（静态渐变，无动画） */
