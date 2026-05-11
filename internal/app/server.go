@@ -6,9 +6,12 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -571,18 +574,92 @@ func (s *Server) SetupRoutes(r *gin.Engine) {
 	}
 
 	// 静态文件服务（安全）：使用框架自带的静态文件路由，自动做路径清理，防止目录遍历
-	// 等价于 http.FileServer，避免手工拼接路径导致的 /web/../ 泄露
-	r.Static("/web", "./web")
+	// 在静态文件路由之上额外挂载 HTML 访问鉴权中间件，
+	// 防止未登录用户直接通过 /web/xxx.html 看到页面骨架（菜单、面板标题等）造成信息泄露
+	webGroup := r.Group("/web")
+	webGroup.Use(s.htmlAccessGuard())
+	webGroup.StaticFS("/", gin.Dir("./web", false))
 
 	// IdC OAuth 回调路由（AWS OIDC 要求 loopback redirect_uri，路径需匹配注册时的值）
 	r.GET("/oauth/callback", func(c *gin.Context) {
 		c.Redirect(http.StatusFound, "/web/auth/callback.html?"+c.Request.URL.RawQuery)
 	})
 
-	// 默认首页重定向
+	// 默认首页：直接根据登录状态决定跳转目标，避免登录前先暴露 /web/index.html 再二次跳转
 	r.GET("/", func(c *gin.Context) {
-		c.Redirect(http.StatusFound, "/web/index.html")
+		if s.isAdminLoggedInByCookie(c) {
+			c.Redirect(http.StatusFound, "/web/index.html")
+			return
+		}
+		c.Redirect(http.StatusFound, "/web/login.html")
 	})
+}
+
+// publicWebPaths 始终允许匿名访问的 HTML 路径
+// 仅登录页保持公开；OAuth 回调页虽然由弹窗触发，但回调路径同源会自动携带 Cookie，
+// 因此也纳入鉴权范围，避免 authorization code 在未登录情况下被任意访问者看到
+var publicWebPaths = map[string]struct{}{
+	"/web/login.html": {},
+}
+
+// isAdminLoggedInByCookie 仅检查 Cookie 中的管理员会话 Token 是否有效
+// 不依赖 Authorization 头部，专用于 HTML 资源的访问控制
+func (s *Server) isAdminLoggedInByCookie(c *gin.Context) bool {
+	cookie, err := c.Cookie("ccload_token")
+	if err != nil || cookie == "" {
+		return false
+	}
+	return s.authService.IsValidAdminToken(cookie)
+}
+
+// isHTMLRequest 判断请求的资源是否为 HTML 或目录索引
+// 仅扩展名为 .html / .htm 或空扩展名（目录形式）的请求才会触发 HTML 鉴权
+// 其它静态资源（.js / .css / .svg / .woff 等）一律放行
+func isHTMLRequest(reqPath string) bool {
+	base := path.Base(reqPath)
+	ext := strings.ToLower(path.Ext(base))
+	if ext == "" {
+		return true
+	}
+	return ext == ".html" || ext == ".htm"
+}
+
+// htmlAccessGuard /web/*.html 的访问鉴权中间件
+// 未登录时直接 302 到登录页，避免浏览器加载到任何受保护页面的 HTML 骨架
+func (s *Server) htmlAccessGuard() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		reqPath := c.Request.URL.Path
+
+		// 公开 HTML（登录页、OAuth 回调页）直接放行
+		if _, ok := publicWebPaths[reqPath]; ok {
+			c.Next()
+			return
+		}
+
+		// 静态资源（JS/CSS/图片/字体等）不做鉴权
+		if !isHTMLRequest(reqPath) {
+			c.Next()
+			return
+		}
+
+		// HTML 请求：必须凭有效 Cookie 才能访问
+		if s.isAdminLoggedInByCookie(c) {
+			// 受保护 HTML 禁止任何缓存，避免登出后通过浏览器后退看到旧内容
+			c.Header("Cache-Control", "no-store, no-cache, must-revalidate, private")
+			c.Header("Pragma", "no-cache")
+			c.Next()
+			return
+		}
+
+		// 未登录：清除可能残留的失效 Cookie，并跳转到登录页
+		clearAdminSessionCookie(c)
+		returnURL := reqPath
+		if c.Request.URL.RawQuery != "" {
+			returnURL += "?" + c.Request.URL.RawQuery
+		}
+		c.Redirect(http.StatusFound, "/web/login.html?returnUrl="+url.QueryEscape(returnURL))
+		c.Abort()
+	}
 }
 
 // 说明：已改为使用 r.Static("/web", "./web") 提供静态文件服务，

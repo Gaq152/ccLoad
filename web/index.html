@@ -2,6 +2,26 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8" />
+  <script>
+    /* 前端鉴权守卫：服务端 Cookie 鉴权的兜底，未登录时立即跳转，避免 HTML 内容闪现 */
+    (function(){
+      var html = document.documentElement;
+      html.style.visibility = 'hidden';
+      try {
+        var t = localStorage.getItem('ccload_token');
+        var e = localStorage.getItem('ccload_token_expiry');
+        var valid = t && (!e || Date.now() <= parseInt(e, 10));
+        if (!valid) {
+          var ret = encodeURIComponent(location.pathname + location.search);
+          location.replace('/web/login.html?returnUrl=' + ret);
+          return;
+        }
+        html.style.visibility = '';
+      } catch (_) {
+        location.replace('/web/login.html');
+      }
+    })();
+  </script>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="icon" type="image/x-icon" href="/web/favicon.ico">
   <title>AI Proxy Monitor</title>

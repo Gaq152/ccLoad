@@ -172,6 +172,12 @@ func (s *AuthService) generateToken() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
+// IsValidAdminToken 验证管理员会话 Token 有效性（供 HTML 访问鉴权中间件调用）
+// 与内部 isValidToken 行为一致，作为公开 API 暴露
+func (s *AuthService) IsValidAdminToken(token string) bool {
+	return s.isValidToken(token)
+}
+
 // isValidToken 验证Token有效性（检查过期时间）
 // [INFO] 安全修复：通过tokenHash查询(2025-12)
 func (s *AuthService) isValidToken(token string) bool {
@@ -452,6 +458,10 @@ func (s *AuthService) HandleLogin(c *gin.Context) {
 
 	log.Printf("[INFO] 登录成功: IP=%s", clientIP)
 
+	// 同步写入 HttpOnly Cookie，用于 HTML 访问的服务端鉴权
+	// 仅 HTTPS 请求设置 Secure，避免本地 http 开发环境无法登录
+	setAdminSessionCookie(c, token, int(config.TokenExpiry.Seconds()))
+
 	// 返回明文Token给客户端（前端存储到localStorage）
 	RespondJSON(c, http.StatusOK, gin.H{
 		"token":     token,                             // 明文token返回给客户端
@@ -459,14 +469,37 @@ func (s *AuthService) HandleLogin(c *gin.Context) {
 	})
 }
 
+// setAdminSessionCookie 写入管理员会话 Cookie
+// 仅用于服务端在静态 HTML 路由上识别"是否已登录"，避免登录前的 HTML 内容外泄
+// HttpOnly：JS 无法读取，规避 XSS 窃取；SameSite=Lax：避免跨站自动携带；Secure：仅 HTTPS 携带
+func setAdminSessionCookie(c *gin.Context, token string, maxAgeSec int) {
+	secure := c.Request.TLS != nil || strings.EqualFold(c.GetHeader("X-Forwarded-Proto"), "https")
+	c.SetSameSite(http.SameSiteLaxMode)
+	c.SetCookie("ccload_token", token, maxAgeSec, "/", "", secure, true)
+}
+
+// clearAdminSessionCookie 清除管理员会话 Cookie（登出/失效时调用）
+func clearAdminSessionCookie(c *gin.Context) {
+	secure := c.Request.TLS != nil || strings.EqualFold(c.GetHeader("X-Forwarded-Proto"), "https")
+	c.SetSameSite(http.SameSiteLaxMode)
+	c.SetCookie("ccload_token", "", -1, "/", "", secure, true)
+}
+
 // HandleLogout 处理登出请求
 func (s *AuthService) HandleLogout(c *gin.Context) {
-	// 从Authorization头提取Token
+	// 始终清除 HttpOnly Cookie，避免登出后服务端仍因 Cookie 放行 HTML
+	clearAdminSessionCookie(c)
+
+	// 从Authorization头提取Token；若头部缺失则回退到 Cookie，保证登出能命中 token
 	authHeader := c.GetHeader("Authorization")
 	const prefix = "Bearer "
+	token := ""
 	if after, ok := strings.CutPrefix(authHeader, prefix); ok {
-		token := after
-
+		token = after
+	} else if v, err := c.Cookie("ccload_token"); err == nil {
+		token = v
+	}
+	if token != "" {
 		// [INFO] 安全修复：计算tokenHash删除(2025-12)
 		tokenHash := model.HashToken(token)
 

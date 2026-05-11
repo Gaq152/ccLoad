@@ -60,8 +60,9 @@
           loginButton.style.background = 'linear-gradient(135deg, var(--success-500), var(--success-600))';
 
           setTimeout(() => {
+            // 优先回到登录前的 returnUrl（来自 HTML 鉴权中间件或 ui.js），兼容旧 redirect 参数
             const urlParams = new URLSearchParams(window.location.search);
-            const redirect = urlParams.get('redirect') || '/web/index.html';
+            const redirect = urlParams.get('returnUrl') || urlParams.get('redirect') || '/web/index.html';
             window.location.href = redirect;
           }, 500);
         } else {
