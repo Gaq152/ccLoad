@@ -496,18 +496,65 @@
 
                   <!-- Token 配置输入 -->
                   <div id="kiroTokenInputSection" style="margin-bottom: 12px;">
-                    <div style="font-size: 12px; color: var(--neutral-500); margin-bottom: 6px;">
-                      Token 配置 <span style="color: var(--neutral-400);">(支持 Social 和 IdC 两种认证方式)</span>
+                    <!-- OAuth 登录按钮 -->
+                    <div id="kiroOAuthLoginBtns" style="margin-bottom: 12px;">
+                      <div style="font-size: 12px; color: var(--neutral-500); margin-bottom: 8px;">
+                        选择登录方式
+                      </div>
+                      <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                        <button type="button" id="startKiroGoogleOAuthBtn" class="btn btn-primary btn-sm" onclick="startKiroSocialOAuth('Google')" style="padding: 8px 16px; font-size: 13px;">
+                          🔑 Google 登录
+                        </button>
+                        <button type="button" id="startKiroGithubOAuthBtn" class="btn btn-primary btn-sm" onclick="startKiroSocialOAuth('Github')" style="padding: 8px 16px; font-size: 13px;">
+                          🔑 GitHub 登录
+                        </button>
+                      </div>
                     </div>
-                    <textarea id="kiroTokenInput" class="form-input"
-                      placeholder='粘贴 ~/.aws/sso/cache/kiro-auth-token.json 文件内容&#10;&#10;IdC 认证需同时粘贴凭证文件（用换行分隔）：&#10;{"accessToken":"...","refreshToken":"...","authMethod":"IdC",...}&#10;{"clientId":"...","clientSecret":"..."}'
-                      style="font-size: 12px; font-family: monospace; min-height: 100px; resize: vertical; margin-bottom: 8px;"></textarea>
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                      <button type="button" id="applyKiroTokenBtn" class="btn btn-primary btn-sm" onclick="applyKiroToken()" style="padding: 6px 12px; font-size: 12px;">
-                        ✓ 应用配置
-                      </button>
-                      <div style="font-size: 11px; color: var(--neutral-400);">
-                        文件路径: <code style="background: var(--neutral-100); padding: 1px 4px; border-radius: 3px;">~/.aws/sso/cache/</code>
+
+                    <!-- OAuth 链接显示区域（点击登录后显示） -->
+                    <div id="kiroOAuthLinkSection" style="display: none; margin-bottom: 12px;">
+                      <div style="font-size: 12px; color: var(--neutral-500); margin-bottom: 6px;">
+                        登录链接（点击打开或复制）
+                      </div>
+                      <div style="display: flex; gap: 6px; align-items: center;">
+                        <input type="text" id="kiroOAuthLinkInput" class="form-input" readonly style="flex: 1; font-size: 12px; background: var(--neutral-100); cursor: text;" onclick="this.select()">
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="copyKiroOAuthLink()" title="复制链接" style="padding: 6px 10px; min-width: 36px;">
+                          📋
+                        </button>
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="openKiroOAuthLink()" title="在新标签页打开" style="padding: 6px 10px; min-width: 36px;">
+                          ↗️
+                        </button>
+                      </div>
+                    </div>
+
+                    <!-- 手动输入授权码 -->
+                    <div id="kiroManualCodeSection" style="margin-top: 8px;">
+                      <div style="font-size: 12px; color: var(--neutral-500); margin-bottom: 6px;">
+                        授权码（如果回调窗口未自动关闭，请手动粘贴 URL 中 <code style="background: var(--neutral-100); padding: 1px 4px; border-radius: 3px;">code=</code> 后的值）
+                      </div>
+                      <div style="display: flex; gap: 8px;">
+                        <input type="text" id="kiroManualCodeInput" class="form-input" placeholder="粘贴 code=... 后的值" style="flex: 1; font-size: 12px;">
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="submitManualKiroCode()" style="padding: 6px 12px; font-size: 12px;">
+                          提交
+                        </button>
+                      </div>
+                    </div>
+
+                    <!-- 手动粘贴 JSON（折叠） -->
+                    <div style="margin-top: 12px;">
+                      <div style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 12px; color: var(--neutral-400);" onclick="toggleKiroManualPaste()">
+                        <svg id="kiroManualPasteToggleIcon" width="10" height="10" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style="transition: transform 0.2s;">
+                          <path d="M4 6L8 10L12 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                        <span>手动粘贴 Token JSON（适用于已有 token 文件）</span>
+                      </div>
+                      <div id="kiroManualPasteContent" style="display: none; margin-top: 8px;">
+                        <textarea id="kiroTokenInput" class="form-input"
+                          placeholder='粘贴 ~/.aws/sso/cache/kiro-auth-token.json 文件内容&#10;&#10;IdC 认证需同时粘贴凭证文件（用换行分隔）：&#10;{"accessToken":"...","refreshToken":"...","authMethod":"IdC",...}&#10;{"clientId":"...","clientSecret":"..."}'
+                          style="font-size: 12px; font-family: monospace; min-height: 80px; resize: vertical; margin-bottom: 8px;"></textarea>
+                        <button type="button" id="applyKiroTokenBtn" class="btn btn-primary btn-sm" onclick="applyKiroToken()" style="padding: 6px 12px; font-size: 12px;">
+                          ✓ 应用配置
+                        </button>
                       </div>
                     </div>
                   </div>

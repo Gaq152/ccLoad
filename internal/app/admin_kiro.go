@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -172,6 +173,104 @@ func (s *Server) HandleKiroGetEmail(c *gin.Context) {
 		"email":              usageLimits.UserInfo.Email,
 		"user_id":            usageLimits.UserInfo.UserID,
 		"subscription_title": usageLimits.SubscriptionInfo.SubscriptionTitle,
+	})
+}
+
+// HandleKiroSocialOAuthExchange 使用授权码交换 Kiro Social OAuth Token
+// POST /admin/kiro/oauth/exchange
+// 前端在浏览器中完成 Google/GitHub 登录后，回调页面获取 code，
+// 再通过此接口与 Kiro Auth Service 交换 access_token + refresh_token
+func (s *Server) HandleKiroSocialOAuthExchange(c *gin.Context) {
+	var req struct {
+		Code         string `json:"code" binding:"required"`
+		CodeVerifier string `json:"code_verifier" binding:"required"`
+		RedirectURI  string `json:"redirect_uri" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Printf("[ERROR] [Kiro OAuth] 参数解析失败: %v", err)
+		RespondError(c, http.StatusBadRequest, err)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// 构建请求体
+	exchangeBody := map[string]string{
+		"code":          req.Code,
+		"code_verifier": req.CodeVerifier,
+		"redirect_uri":  req.RedirectURI,
+	}
+	bodyBytes, err := sonic.Marshal(exchangeBody)
+	if err != nil {
+		RespondErrorMsg(c, http.StatusInternalServerError, "序列化请求失败: "+err.Error())
+		return
+	}
+
+	// 创建请求
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", KiroSocialTokenURL, bytes.NewReader(bodyBytes))
+	if err != nil {
+		RespondErrorMsg(c, http.StatusInternalServerError, "创建请求失败: "+err.Error())
+		return
+	}
+
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Accept", "application/json")
+	httpReq.Header.Set("User-Agent", "KiroIDE-0.11.107-"+KiroDefaultDeviceFingerprint)
+
+	// 发送请求
+	resp, err := s.client.Do(httpReq)
+	if err != nil {
+		log.Printf("[ERROR] [Kiro OAuth] 请求 Kiro Auth Service 失败: %v", err)
+		RespondErrorMsg(c, http.StatusInternalServerError, "请求 Kiro Auth Service 失败: "+err.Error())
+		return
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		RespondErrorMsg(c, http.StatusInternalServerError, "读取响应失败: "+err.Error())
+		return
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("[ERROR] [Kiro OAuth] Token 交换失败 (status=%d): %s", resp.StatusCode, string(respBody))
+		RespondErrorWithData(c, http.StatusOK, fmt.Sprintf("Token 交换失败 (%d): %s", resp.StatusCode, string(respBody)), gin.H{
+			"status_code": resp.StatusCode,
+		})
+		return
+	}
+
+	// 解析响应: {accessToken, refreshToken, expiresIn, profileArn}
+	var tokenResp struct {
+		AccessToken  string `json:"accessToken"`
+		RefreshToken string `json:"refreshToken"`
+		ExpiresIn    int64  `json:"expiresIn"`
+		ProfileArn   string `json:"profileArn"`
+	}
+	if err := sonic.Unmarshal(respBody, &tokenResp); err != nil {
+		log.Printf("[ERROR] [Kiro OAuth] 解析响应失败: %v, body=%s", err, string(respBody))
+		RespondErrorMsg(c, http.StatusInternalServerError, "解析响应失败: "+err.Error())
+		return
+	}
+
+	if tokenResp.AccessToken == "" || tokenResp.RefreshToken == "" {
+		RespondErrorMsg(c, http.StatusInternalServerError, "响应缺少 accessToken 或 refreshToken")
+		return
+	}
+
+	log.Printf("[INFO] [Kiro OAuth] Token 交换成功, expiresIn=%d", tokenResp.ExpiresIn)
+
+	// 计算过期时间（毫秒时间戳，与项目中 Kiro expiresAt 格式一致）
+	expiresAt := time.Now().UnixMilli() + tokenResp.ExpiresIn*1000
+
+	RespondJSON(c, http.StatusOK, gin.H{
+		"accessToken":  tokenResp.AccessToken,
+		"refreshToken": tokenResp.RefreshToken,
+		"expiresIn":    tokenResp.ExpiresIn,
+		"expiresAt":    expiresAt,
+		"profileArn":   tokenResp.ProfileArn,
 	})
 }
 

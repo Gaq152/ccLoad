@@ -511,11 +511,10 @@ func (s *Server) SetupRoutes(r *gin.Engine) {
 		admin.POST("/oauth/token", s.HandleOAuthToken)
 		admin.POST("/oauth/pkce", s.HandleGeneratePKCE)
 
-		// Kiro Token 刷新
+		// Kiro Token 管理
 		admin.POST("/kiro/refresh", s.HandleKiroRefresh)
-		// Kiro 获取邮箱
 		admin.POST("/kiro/email", s.HandleKiroGetEmail)
-		// Kiro 生成设备指纹
+		admin.POST("/kiro/oauth/exchange", s.HandleKiroSocialOAuthExchange)
 		admin.GET("/kiro/fingerprint/generate", s.HandleKiroGenerateFingerprint)
 
 		// 统计分析

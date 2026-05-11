@@ -113,24 +113,28 @@
       const codeBox = document.getElementById('codeBox');
       const hint = document.getElementById('hint');
 
-      // 检测是 Codex 还是 Gemini（根据 scope 判断）
+      // 检测 provider（根据 state 或 scope 判断）
       const scope = urlParams.get('scope') || '';
       let provider = 'unknown';
       let codeVerifier = null;
 
-      if (scope.includes('googleapis.com') || scope.includes('userinfo.email')) {
-        provider = 'gemini';
-      } else if (scope.includes('openai') || state) {
-        provider = 'codex';
-        // 尝试从 state 中提取 code_verifier
-        if (state) {
-          try {
-            const stateData = JSON.parse(atob(state));
-            codeVerifier = stateData.verifier;
-            provider = stateData.provider || 'codex';
-          } catch (e) {
-            console.warn('无法解析 state:', e);
-          }
+      // 优先从 state 中解析 provider 和 code_verifier
+      if (state) {
+        try {
+          const stateData = JSON.parse(atob(state));
+          codeVerifier = stateData.verifier;
+          provider = stateData.provider || 'codex';
+        } catch (e) {
+          console.warn('无法解析 state:', e);
+        }
+      }
+
+      // state 未解析出 provider 时，根据 scope 判断
+      if (provider === 'unknown') {
+        if (scope.includes('googleapis.com') || scope.includes('userinfo.email')) {
+          provider = 'gemini';
+        } else if (scope.includes('openai')) {
+          provider = 'codex';
         }
       }
 

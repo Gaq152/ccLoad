@@ -94,7 +94,13 @@ function resetChannelModalUI() {
   if (geminiCodeInput) geminiCodeInput.value = '';
   updateGeminiTokenUI(null);
 
-  // 重置 Kiro Token UI
+  // 重置 Kiro OAuth UI
+  const kiroLinkSection = document.getElementById('kiroOAuthLinkSection');
+  if (kiroLinkSection) kiroLinkSection.style.display = 'none';
+  const kiroLinkInput = document.getElementById('kiroOAuthLinkInput');
+  if (kiroLinkInput) kiroLinkInput.value = '';
+  const kiroCodeInput = document.getElementById('kiroManualCodeInput');
+  if (kiroCodeInput) kiroCodeInput.value = '';
   updateKiroTokenUI(null);
   const kiroDeviceFingerprint = document.getElementById('kiroDeviceFingerprint');
   if (kiroDeviceFingerprint) {
@@ -143,6 +149,7 @@ function showAddModal() {
   // 添加 OAuth 回调消息监听
   window.addEventListener('message', handleCodexOAuthMessage);
   window.addEventListener('message', handleGeminiOAuthMessage);
+  window.addEventListener('message', handleKiroOAuthMessage);
 
   // 使用焦点管理显示模态框
   showModalWithFocus('channelModal');
@@ -398,6 +405,7 @@ async function editChannel(id) {
   // 添加 OAuth 回调消息监听
   window.addEventListener('message', handleCodexOAuthMessage);
   window.addEventListener('message', handleGeminiOAuthMessage);
+  window.addEventListener('message', handleKiroOAuthMessage);
 
   // 启动冷却倒计时（包括 Key 冷却）
   checkAndStartCooldownCountdown();
@@ -415,6 +423,7 @@ function closeModal() {
   // 移除 OAuth 回调消息监听
   window.removeEventListener('message', handleCodexOAuthMessage);
   window.removeEventListener('message', handleGeminiOAuthMessage);
+  window.removeEventListener('message', handleKiroOAuthMessage);
 }
 
 async function saveChannel(event) {
@@ -897,6 +906,7 @@ async function copyChannel(id, name) {
 
     // 添加 OAuth 回调消息监听
     window.addEventListener('message', handleCodexOAuthMessage);
+    window.addEventListener('message', handleKiroOAuthMessage);
 
   } finally {
     // 恢复交互状态
@@ -3808,6 +3818,233 @@ function updateKiroTokenEmail(token, result) {
 
   // 更新隐藏的 input（用于保存）
   document.getElementById('kiroApiKey').value = JSON.stringify(token);
+}
+
+// ==================== Kiro Social OAuth 授权 ====================
+
+const KIRO_OAUTH_CONFIG = {
+  loginUrl: 'https://prod.us-east-1.auth.desktop.kiro.dev/login',
+  tokenUrl: 'https://prod.us-east-1.auth.desktop.kiro.dev/oauth/token',
+  get redirectUri() {
+    return `${window.location.origin}/web/auth/callback.html`;
+  }
+};
+
+/**
+ * 启动 Kiro Social OAuth 授权（Google / GitHub）
+ * @param {string} provider - 'Google' 或 'Github'
+ */
+async function startKiroSocialOAuth(provider) {
+  const btnId = provider === 'Google' ? 'startKiroGoogleOAuthBtn' : 'startKiroGithubOAuthBtn';
+  const startBtn = document.getElementById(btnId);
+  if (startBtn) {
+    startBtn.disabled = true;
+    startBtn.textContent = '生成中...';
+  }
+
+  let codeVerifier, codeChallenge;
+  try {
+    const pkceResult = await fetchAPIWithAuth('/admin/oauth/pkce', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+
+    if (!pkceResult.success || !pkceResult.data) {
+      throw new Error('生成 PKCE 失败');
+    }
+
+    codeVerifier = pkceResult.data.code_verifier;
+    codeChallenge = pkceResult.data.code_challenge;
+  } catch (e) {
+    console.error('[Kiro OAuth] 生成 PKCE 失败:', e);
+    if (window.showError) showError('生成 PKCE 失败: ' + e.message);
+    if (startBtn) {
+      startBtn.disabled = false;
+      startBtn.textContent = provider === 'Google' ? '🔑 Google 登录' : '🔑 GitHub 登录';
+    }
+    return;
+  }
+
+  // 将 code_verifier 编码到 state 参数中（与 Codex OAuth 相同的模式）
+  const stateData = {
+    random: Math.random().toString(36).substring(2),
+    verifier: codeVerifier,
+    provider: 'kiro',
+    idp: provider
+  };
+  const state = btoa(JSON.stringify(stateData));
+
+  // Kiro 的登录 URL 格式与 Codex/Gemini 不同，使用 idp 参数指定登录提供商
+  const redirectUri = KIRO_OAUTH_CONFIG.redirectUri;
+  const fullUrl = `${KIRO_OAUTH_CONFIG.loginUrl}?idp=${provider}&redirect_uri=${encodeURIComponent(redirectUri)}&code_challenge=${codeChallenge}&code_challenge_method=S256&state=${state}`;
+
+  // 显示链接区域
+  const linkSection = document.getElementById('kiroOAuthLinkSection');
+  const linkInput = document.getElementById('kiroOAuthLinkInput');
+  if (linkSection && linkInput) {
+    linkInput.value = fullUrl;
+    linkSection.style.display = 'block';
+    linkInput.select();
+  }
+
+  if (startBtn) {
+    startBtn.disabled = false;
+    startBtn.textContent = provider === 'Google' ? '🔑 Google 登录' : '🔑 GitHub 登录';
+  }
+
+  if (window.showSuccess) showSuccess('授权链接已生成，请点击打开或复制');
+}
+
+function copyKiroOAuthLink() {
+  const linkInput = document.getElementById('kiroOAuthLinkInput');
+  if (linkInput && linkInput.value) {
+    navigator.clipboard.writeText(linkInput.value).then(() => {
+      if (window.showSuccess) showSuccess('链接已复制');
+    }).catch(() => {
+      linkInput.select();
+      document.execCommand('copy');
+      if (window.showSuccess) showSuccess('链接已复制');
+    });
+  }
+}
+
+function openKiroOAuthLink() {
+  const linkInput = document.getElementById('kiroOAuthLinkInput');
+  if (linkInput && linkInput.value) {
+    window.open(linkInput.value, '_blank', 'width=600,height=700');
+  }
+}
+
+/**
+ * 处理 Kiro OAuth 回调消息（由 callback.html 通过 postMessage 发送）
+ */
+async function handleKiroOAuthMessage(event) {
+  const data = event.data;
+  if (!data || !data.code || data.provider !== 'kiro') return;
+
+  await exchangeKiroCodeForToken(data.code, data.codeVerifier);
+}
+
+/**
+ * 使用授权码交换 Kiro Token
+ * @param {string} code - 授权码
+ * @param {string} codeVerifier - PKCE code_verifier
+ */
+async function exchangeKiroCodeForToken(code, codeVerifier) {
+  if (!codeVerifier) {
+    if (window.showError) showError('找不到 PKCE Verifier，请重新授权');
+    return;
+  }
+
+  const googleBtn = document.getElementById('startKiroGoogleOAuthBtn');
+  const githubBtn = document.getElementById('startKiroGithubOAuthBtn');
+  if (googleBtn) { googleBtn.disabled = true; googleBtn.textContent = '获取 Token 中...'; }
+  if (githubBtn) { githubBtn.disabled = true; githubBtn.textContent = '获取 Token 中...'; }
+
+  try {
+    const redirectUri = KIRO_OAUTH_CONFIG.redirectUri;
+
+    // 通过后端代理交换 Token（避免 CORS + 添加 User-Agent）
+    const result = await fetchAPIWithAuth('/admin/kiro/oauth/exchange', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        code: code,
+        code_verifier: codeVerifier,
+        redirect_uri: redirectUri
+      })
+    });
+
+    if (result.success && result.data) {
+      const tokenData = result.data;
+
+      // 构建与现有 Kiro Token 格式兼容的对象
+      const kiroToken = {
+        refreshToken: tokenData.refreshToken,
+        accessToken: tokenData.accessToken,
+        expiresAt: tokenData.expiresAt,
+        profileArn: tokenData.profileArn || '',
+        authMethod: 'Social'
+      };
+
+      // 异步获取用户邮箱和订阅信息
+      const emailResult = await fetchKiroEmail(tokenData.accessToken);
+      if (emailResult) {
+        kiroToken.email = emailResult.email || '';
+        kiroToken.subscriptionTitle = emailResult.subscriptionTitle || '';
+      }
+
+      updateKiroTokenUI(kiroToken);
+
+      // 隐藏链接区域
+      const linkSection = document.getElementById('kiroOAuthLinkSection');
+      if (linkSection) linkSection.style.display = 'none';
+
+      if (window.showSuccess) showSuccess('Kiro OAuth 授权成功！');
+    } else {
+      throw new Error(result.error || '换取 Token 失败');
+    }
+  } catch (e) {
+    console.error('[Kiro OAuth] Error:', e);
+    if (window.showError) showError('授权失败: ' + e.message);
+  } finally {
+    if (googleBtn) { googleBtn.disabled = false; googleBtn.textContent = '🔑 Google 登录'; }
+    if (githubBtn) { githubBtn.disabled = false; githubBtn.textContent = '🔑 GitHub 登录'; }
+  }
+}
+
+/**
+ * 手动提交 Kiro 授权码
+ */
+async function submitManualKiroCode() {
+  const input = document.getElementById('kiroManualCodeInput');
+  const code = input?.value?.trim();
+
+  if (!code) {
+    if (window.showError) showError('请输入授权码');
+    return;
+  }
+
+  let authCode = code;
+  let codeVerifier = null;
+
+  // 如果粘贴了完整 URL，提取 code 和 state
+  if (code.includes('code=')) {
+    const match = code.match(/code=([^&]+)/);
+    authCode = match ? decodeURIComponent(match[1]) : code;
+
+    const stateMatch = code.match(/state=([^&]+)/);
+    if (stateMatch) {
+      try {
+        const stateDecoded = decodeURIComponent(stateMatch[1]);
+        const stateData = JSON.parse(atob(stateDecoded));
+        codeVerifier = stateData.verifier;
+      } catch (e) {
+        console.error('[Kiro OAuth] 解析 state 失败:', e);
+      }
+    }
+  }
+
+  if (!codeVerifier) {
+    if (window.showError) showError('无法提取 code_verifier，请重新发起授权');
+    return;
+  }
+
+  await exchangeKiroCodeForToken(authCode, codeVerifier);
+  input.value = '';
+}
+
+/**
+ * 切换 Kiro 手动粘贴区域
+ */
+function toggleKiroManualPaste() {
+  const content = document.getElementById('kiroManualPasteContent');
+  const icon = document.getElementById('kiroManualPasteToggleIcon');
+  if (!content || !icon) return;
+
+  const isExpanded = content.style.display !== 'none';
+  content.style.display = isExpanded ? 'none' : 'block';
+  icon.style.transform = isExpanded ? '' : 'rotate(180deg)';
 }
 
 // ==================== Kiro 设备指纹配置 ====================

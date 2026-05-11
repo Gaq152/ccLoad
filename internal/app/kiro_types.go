@@ -7,8 +7,17 @@ package app
 
 // Kiro 常量
 const (
+	// Kiro Desktop Auth API 基础 URL
+	KiroDesktopAuthAPI = "https://prod.us-east-1.auth.desktop.kiro.dev"
+
+	// Kiro Social OAuth 登录 URL
+	KiroSocialLoginURL = KiroDesktopAuthAPI + "/login"
+
+	// Kiro Social OAuth Token 交换 URL
+	KiroSocialTokenURL = KiroDesktopAuthAPI + "/oauth/token"
+
 	// Kiro Social 方式 Token 刷新 URL
-	KiroRefreshTokenURL = "https://prod.us-east-1.auth.desktop.kiro.dev/refreshToken"
+	KiroRefreshTokenURL = KiroDesktopAuthAPI + "/refreshToken"
 
 	// Kiro IdC 方式 Token 刷新 URL
 	KiroIdCRefreshTokenURL = "https://oidc.us-east-1.amazonaws.com/token"
