@@ -58,7 +58,7 @@ func (s *SQLStore) getAuthTokenStatsFromLogs(ctx context.Context, startTime, end
 		SELECT
 			auth_token_id,
 			SUM(CASE WHEN status_code >= 200 AND status_code < 300 THEN 1 ELSE 0 END) AS success_count,
-			SUM(CASE WHEN status_code < 200 OR status_code >= 300 THEN 1 ELSE 0 END) AS failure_count,
+			SUM(CASE WHEN (status_code < 200 OR status_code >= 300) AND status_code != 499 THEN 1 ELSE 0 END) AS failure_count,
 			SUM(input_tokens) AS prompt_tokens,
 			SUM(output_tokens) AS completion_tokens,
 			SUM(cache_read_input_tokens) AS cache_read_tokens,
@@ -66,8 +66,8 @@ func (s *SQLStore) getAuthTokenStatsFromLogs(ctx context.Context, startTime, end
 			SUM(cost) AS total_cost,
 			AVG(CASE WHEN is_streaming = 1 THEN first_byte_time ELSE NULL END) AS stream_avg_ttfb,
 			AVG(CASE WHEN is_streaming = 0 THEN duration ELSE NULL END) AS non_stream_avg_rt,
-			SUM(CASE WHEN is_streaming = 1 THEN 1 ELSE 0 END) AS stream_count,
-			SUM(CASE WHEN is_streaming = 0 THEN 1 ELSE 0 END) AS non_stream_count
+			SUM(CASE WHEN is_streaming = 1 AND status_code != 499 THEN 1 ELSE 0 END) AS stream_count,
+			SUM(CASE WHEN is_streaming = 0 AND status_code != 499 THEN 1 ELSE 0 END) AS non_stream_count
 		FROM logs
 		WHERE time >= ? AND time <= ? AND auth_token_id > 0
 		GROUP BY auth_token_id

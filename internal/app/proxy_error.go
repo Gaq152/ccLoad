@@ -102,8 +102,9 @@ func (s *Server) handleNetworkError(
 	s.AddLogAsync(buildLogEntry(actualModel, cfg.ID, cfg.Name, cfg.GetChannelType(), statusCode,
 		duration, false, selectedKey, cfg.URL, authTokenID, authTokenName, clientIP, res, err.Error(), attemptStart))
 
-	// [FIX] 保留 499 取消场景下已消耗的 token 统计
-	if res != nil && reqCtx != nil && hasConsumedTokens(res) {
+	// [FIX] 保留 499 取消场景下已消耗的 token 统计（但不计入 failure_count）
+	// 499（客户端取消）与 logs 表聚合逻辑保持一致，不计入失败统计
+	if statusCode != 499 && res != nil && reqCtx != nil && hasConsumedTokens(res) {
 		s.updateTokenStatsAsync(reqCtx.tokenHash, false, duration, reqCtx.isStreaming, res, actualModel)
 	}
 
@@ -386,7 +387,10 @@ func (s *Server) handleProxyErrorResponse(
 		duration, reqCtx.isStreaming, selectedKey, cfg.URL, reqCtx.tokenID, reqCtx.tokenName, reqCtx.clientIP, res, errMsg, reqCtx.attemptStartTime))
 
 	// 异步更新Token统计（失败请求不计费）
-	s.updateTokenStatsAsync(reqCtx.tokenHash, false, duration, reqCtx.isStreaming, res, actualModel)
+	// 499（客户端取消）不计入成功/失败统计，与 logs 表聚合逻辑保持一致
+	if res.Status != 499 {
+		s.updateTokenStatsAsync(reqCtx.tokenHash, false, duration, reqCtx.isStreaming, res, actualModel)
+	}
 
 	action, _ := s.handleProxyError(ctx, cfg, keyIndex, res, nil)
 	if action == cooldown.ActionReturnClient {

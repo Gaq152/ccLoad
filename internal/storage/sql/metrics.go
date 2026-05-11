@@ -403,15 +403,17 @@ func (s *SQLStore) AggregateRange(ctx context.Context, since, until time.Time, b
 
 // GetStats 实现统计功能，按渠道和模型统计成功/失败次数
 // 性能优化：批量查询渠道名称消除N+1问题（100渠道场景提升50-100倍）
+// [FIX] 2025-12: 排除499（客户端取消）避免污染成功率和调用次数统计
 func (s *SQLStore) GetStats(ctx context.Context, startTime, endTime time.Time, filter *model.LogFilter) ([]model.StatsEntry, error) {
 	// 使用查询构建器构建统计查询
+	// 排除499：客户端取消不应计入成功/失败统计
 	baseQuery := `
 		SELECT
 			channel_id,
 			COALESCE(model, '') AS model,
 			SUM(CASE WHEN status_code >= 200 AND status_code < 300 THEN 1 ELSE 0 END) AS success,
-			SUM(CASE WHEN status_code < 200 OR status_code >= 300 THEN 1 ELSE 0 END) AS error,
-			COUNT(*) AS total,
+			SUM(CASE WHEN (status_code < 200 OR status_code >= 300) AND status_code != 499 THEN 1 ELSE 0 END) AS error,
+			SUM(CASE WHEN status_code != 499 THEN 1 ELSE 0 END) AS total,
 			ROUND(
 				AVG(CASE WHEN is_streaming = 1 AND first_byte_time > 0 AND status_code >= 200 AND status_code < 300 THEN first_byte_time ELSE NULL END),
 				3
