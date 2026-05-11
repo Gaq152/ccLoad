@@ -763,10 +763,8 @@
         return;
       }
       try {
-        const resp = await fetch('/admin/check-update', { credentials: 'same-origin' });
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        const data = await resp.json();
-        const latest = data.latest_version;
+        const data = await fetchDataWithAuth('/admin/check-update');
+        const latest = data && data.latest_version;
         if (!latest) throw new Error('未获取到版本信息');
 
         if (latest === current) {
