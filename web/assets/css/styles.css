@@ -2818,9 +2818,9 @@ body.dashboard-theme .app-container {
   height: 460px; /* 固定高度：header + 10条记录的空间 */
 }
 
-.console-row {
-  grid-template-columns: 1fr;
-  min-height: 300px;
+.chart-row .console-panel .console-table-wrapper {
+  max-height: none;
+  flex: 1;
 }
 
 .dash-panel {
@@ -3155,519 +3155,230 @@ body.dashboard-theme .app-container {
   }
 }
 
-/* =================================================================
-   Channel Health Matrix (Grafana Style Extension)
-   ================================================================= */
-
-.health-matrix-panel {
-  /* Grid Item 默认自动拉伸填满行高，无需显式 height */
-  display: flex;
-  flex-direction: column;
-  overflow: hidden; /* 防止溢出 */
-}
-
-.health-matrix-panel.loading {
-  opacity: 0.6;
-  pointer-events: none;
-}
-
-.service-group {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  flex: 1;
-  min-height: 0; /* 允许flex子项收缩 */
-  overflow-y: auto; /* 启用垂直滚动 */
-}
-
-/* 概览页滚动条美化（健康矩阵和渠道状态） */
-.service-group::-webkit-scrollbar,
+/* 概览页滚动条美化 */
 .status-list::-webkit-scrollbar {
   width: 6px;
 }
 
-.service-group::-webkit-scrollbar-track,
 .status-list::-webkit-scrollbar-track {
   background: var(--theme-scrollbar-track, transparent);
 }
 
-.service-group::-webkit-scrollbar-thumb,
 .status-list::-webkit-scrollbar-thumb {
   background: var(--theme-scrollbar-thumb, rgba(128, 128, 128, 0.4));
   border-radius: 3px;
 }
 
-.service-group::-webkit-scrollbar-thumb:hover,
 .status-list::-webkit-scrollbar-thumb:hover {
   background: var(--theme-scrollbar-thumb-hover, rgba(128, 128, 128, 0.6));
 }
 
-/* Firefox 滚动条 */
-.service-group,
 .status-list {
   scrollbar-width: thin;
   scrollbar-color: var(--theme-scrollbar-thumb, rgba(128, 128, 128, 0.4)) var(--theme-scrollbar-track, transparent);
 }
 
-.service-header {
-  display: flex;
-  align-items: center;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-  padding-bottom: 8px;
+/* =================================================================
+   Quick Start Guide
+   ================================================================= */
+
+.guide-row {
+  grid-template-columns: 1fr;
 }
 
-.service-tag {
-  font-size: 12px;
-  font-weight: 700;
-  padding: 2px 8px;
-  border-radius: 2px;
-  text-transform: uppercase;
-  letter-spacing: 1px;
+.guide-panel {
+  padding: 16px;
 }
 
-.tag-cc {
-  background: rgba(217, 119, 6, 0.2);
-  color: #fbbf24;
-  border: 1px solid rgba(217, 119, 6, 0.3);
-}
-
-.tag-cx {
-  background: rgba(16, 185, 129, 0.2);
-  color: #34d399;
-  border: 1px solid rgba(16, 185, 129, 0.3);
-}
-
-.health-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: var(--space-3);
-}
-
-.health-card {
-  position: relative; /* 为绝对定位的隐藏按钮提供定位上下文 */
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid var(--dash-border);
-  border-radius: 4px;
-  padding: 12px;
-  transition: transform 0.2s, border-color 0.2s;
+.guide-content {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 20px;
 }
 
-.health-card:hover {
-  transform: translateY(-2px);
-  border-color: var(--dash-text-muted);
-  background: rgba(255, 255, 255, 0.05);
+.guide-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
 }
 
-.card-header {
+.guide-card {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  background: var(--theme-bg-card);
+  border: 1px solid var(--theme-border);
+  border-radius: 6px;
+  transition: border-color 0.2s, background 0.2s;
 }
 
-.channel-info {
+.guide-card:hover {
+  border-color: var(--theme-border-focus);
+  background: var(--theme-bg-hover);
+}
+
+.guide-card.clickable {
+  cursor: pointer;
+}
+
+.guide-card.clickable:hover {
+  border-color: var(--dash-accent-blue);
+}
+
+.guide-card-icon {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
+  border-radius: 8px;
+  background: rgba(59, 130, 246, 0.1);
+  color: var(--dash-accent-blue);
+}
+
+.guide-card-body {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
-.channel-name {
+.guide-card-title {
+  font-size: 13px;
   font-weight: 600;
-  font-size: 14px;
   color: var(--dash-text-main);
+}
+
+.guide-card-desc {
+  font-size: 12px;
+  color: var(--dash-text-muted);
+  line-height: 1.5;
+}
+
+.guide-card-hint {
+  font-size: 12px;
+  color: var(--dash-accent-blue);
+  margin-top: 4px;
+}
+
+.guide-code-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.guide-code-row code {
+  flex: 1;
+  padding: 6px 10px;
+  background: var(--theme-bg-hover);
+  border: 1px solid var(--theme-border);
+  border-radius: 4px;
+  font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+  font-size: 12px;
+  color: var(--theme-text-main);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
+.guide-copy-btn {
+  flex-shrink: 0;
+  padding: 6px;
+  background: var(--theme-bg-hover);
+  border: 1px solid var(--theme-border);
+  border-radius: 4px;
+  color: var(--theme-text-muted);
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.guide-copy-btn:hover {
+  background: var(--theme-border-light);
+  color: var(--theme-text-main);
+  border-color: var(--theme-border-focus);
+}
+
+.guide-code-block {
+  display: block;
+  margin-top: 6px;
+  padding: 6px 10px;
+  background: var(--theme-bg-hover);
+  border: 1px solid var(--theme-border);
+  border-radius: 4px;
+  font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+  font-size: 12px;
+  color: var(--theme-text-main);
+  word-break: break-all;
+}
+
+/* 端点列表 */
+.guide-endpoints {
+  padding-top: 4px;
+}
+
+.guide-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--dash-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 10px;
+}
+
+.guide-endpoint-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 8px;
+}
+
+.guide-endpoint-group {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--theme-bg-hover);
+  border-radius: 4px;
+  flex-wrap: wrap;
+}
+
+.guide-endpoint-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--dash-text-main);
+  min-width: 80px;
   flex-shrink: 0;
 }
 
-.health-metric .metric-value {
-  font-family: 'Inter', monospace;
-  font-weight: 700;
-  font-size: 16px;
+.guide-endpoint-group code {
+  font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+  font-size: 11px;
+  color: var(--theme-border-focus);
+  background: var(--theme-bg-hover);
+  padding: 2px 6px;
+  border-radius: 3px;
+  border: 1px solid var(--theme-border-light);
 }
 
-.status-operational .metric-value {
-  color: var(--dash-accent-green);
-}
-
-.status-operational .status-dot {
-  background: var(--dash-accent-green);
-  box-shadow: 0 0 6px var(--dash-accent-green);
-}
-
-.status-degraded .metric-value {
-  color: var(--dash-accent-yellow);
-}
-
-.status-degraded .status-dot {
-  background: var(--dash-accent-yellow);
-  box-shadow: 0 0 6px var(--dash-accent-yellow);
-}
-
-.status-down .metric-value {
-  color: var(--dash-accent-red);
-}
-
-.status-down .status-dot {
-  background: var(--dash-accent-red);
-  box-shadow: 0 0 6px var(--dash-accent-red);
-}
-
-.card-stats {
-  display: flex;
-  justify-content: space-between;
+.guide-endpoint-tag {
   font-size: 11px;
   color: var(--dash-text-muted);
-  gap: 8px;
-}
-
-.stat-item {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.error-text {
-  color: var(--dash-accent-red);
-}
-
-.uptime-timeline {
-  display: flex;
-  height: 24px;
-  gap: 2px;
-  margin-top: 4px;
-  align-items: flex-end;
-}
-
-.uptime-bar {
-  flex: 1;
-  min-width: 4px;
-  background: var(--dash-panel-bg);
-  border-radius: 1px;
-  cursor: pointer;
-  transition: opacity 0.2s, transform 0.2s;
-  height: 100%;
-}
-
-.uptime-bar:hover {
-  opacity: 0.8;
-  transform: scaleY(1.1);
-}
-
-.uptime-bar.status-ok {
-  background: var(--dash-accent-green);
-}
-
-.uptime-bar.status-warn {
-  background: var(--dash-accent-yellow);
-}
-
-.uptime-bar.status-down {
-  background: var(--dash-accent-red);
-}
-
-.uptime-bar.status-nodata {
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.uptime-bar[data-avail="100"] {
-  opacity: 1;
-}
-
-.uptime-bar[data-avail="high"] {
-  opacity: 0.8;
-}
-
-.uptime-bar[data-avail="mid"] {
-  opacity: 0.6;
-}
-
-.uptime-bar[data-avail="low"] {
-  opacity: 0.4;
-}
-
-.no-data-hint,
-.error-hint {
-  padding: 20px;
-  text-align: center;
-  color: var(--dash-text-muted);
-  font-size: 14px;
-}
-
-.error-hint {
-  color: var(--dash-accent-red);
-}
-
-.matrix-controls {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-/* ===== Tab 切换样式 ===== */
-.tab-content {
-  display: none;
-  animation: fadeIn 0.25s ease-out;
-}
-
-.tab-content.active {
-  display: flex; /* 使用flex以支持滚动布局 */
-}
-
-.separator-vertical {
-  width: 1px;
-  height: 20px;
-  background-color: rgba(255, 255, 255, 0.1);
-  margin: 0 8px;
-  align-self: center;
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(5px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-/* ===== 渠道隐藏功能样式 ===== */
-.hide-channel-btn {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  padding: 4px 6px;
-  background: rgba(0, 0, 0, 0.6);
-  border: none;
-  border-radius: 4px;
-  color: var(--dash-text-muted);
-  opacity: 0;
-  transition: all 0.2s;
-  cursor: pointer;
-  z-index: 10;
-}
-
-.health-card:hover .hide-channel-btn {
-  opacity: 1;
-}
-
-.hide-channel-btn:hover {
-  background: var(--dash-accent-red);
-  color: white;
-}
-
-.hidden-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  max-height: 400px;
-  overflow-y: auto;
-}
-
-.hidden-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--dash-border);
-  border-radius: 4px;
-}
-
-.hidden-item .name {
-  font-weight: 500;
-  color: var(--dash-text-main);
-}
-
-.hidden-empty {
-  text-align: center;
-  padding: 40px 20px;
-  color: var(--dash-text-muted);
-  font-size: 14px;
-}
-
-/* 隐藏渠道模态框深色主题 */
-#hidden-channels-modal .modal-content {
-  background: var(--dash-panel-bg);
-  border: 1px solid var(--dash-border);
-  max-width: 600px;
-  width: 90%;
-  padding: 20px;
-}
-
-#hidden-channels-modal .modal-title {
-  color: var(--dash-text-main);
-  font-size: 18px;
-  font-weight: 600;
-}
-
-#hidden-channels-modal .close-btn {
-  color: var(--dash-text-muted);
-  background: transparent;
-  transition: all 0.2s;
-}
-
-#hidden-channels-modal .close-btn:hover {
-  color: var(--dash-text-main);
-  background: rgba(255, 255, 255, 0.1);
-}
-
-#hidden-channels-modal .modal-body {
-  margin-top: 16px;
-}
-
-/* 隐藏渠道 Tab 导航样式（Gemini 优化） */
-.hidden-tabs {
-  display: flex;
-  border-bottom: 1px solid var(--dash-border);
-  margin-bottom: 16px;
-}
-
-.hidden-tab-btn {
-  background: none;
-  border: none;
-  padding: 10px 16px;
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--dash-text-muted);
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
-  transition: all 0.2s;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.hidden-tab-btn:hover {
-  color: var(--dash-text-main);
-  background-color: rgba(255, 255, 255, 0.05);
-}
-
-.hidden-tab-btn.active {
-  color: var(--dash-accent);
-  border-bottom-color: var(--dash-accent);
-}
-
-/* 数量徽章 */
-.hidden-badge {
-  background-color: rgba(255, 255, 255, 0.1);
-  color: var(--dash-text-muted);
-  padding: 2px 8px;
-  border-radius: 10px;
-  font-size: 12px;
-  line-height: 1.2;
-  min-width: 20px;
-  text-align: center;
-}
-
-.hidden-tab-btn.active .hidden-badge {
-  background-color: rgba(59, 130, 246, 0.2);
-  color: var(--dash-accent);
-}
-
-/* 列表容器 */
-.hidden-list-container {
-  min-height: 200px;
-}
-
-.hidden-list-panel {
-  display: none;
-  max-height: 360px;
-  overflow-y: auto;
-}
-
-.hidden-list-panel.active {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  animation: fadeIn 0.2s ease-out;
-}
-
-/* 改进的列表项 */
-.hidden-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 10px 14px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid var(--dash-border);
-  border-radius: 6px;
-  transition: all 0.2s;
-}
-
-.hidden-item:hover {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: var(--dash-border-light, rgba(255, 255, 255, 0.15));
-}
-
-.hidden-item .name {
-  font-family: 'SF Mono', 'Menlo', monospace;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--dash-text-main);
-}
-
-/* 恢复动画 */
-.hidden-item.removing {
-  opacity: 0;
-  transform: translateX(20px);
-  transition: all 0.25s ease-out;
-}
-
-/* 空状态 */
-.hidden-empty {
-  text-align: center;
-  padding: 40px 20px;
-  color: var(--dash-text-muted);
-  font-size: 13px;
-  border: 1px dashed var(--dash-border);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.02);
-}
-
-.hidden-empty-hint {
-  font-size: 12px;
-  color: var(--dash-text-muted);
   opacity: 0.7;
-  margin-top: 8px;
 }
 
-/* 底部操作按钮 */
-.text-btn.danger {
-  background: none;
-  border: none;
-  color: var(--error-500);
-  cursor: pointer;
-  font-size: 13px;
-  padding: 6px 12px;
-  border-radius: 4px;
-  transition: all 0.2s;
-}
-
-.text-btn.danger:hover {
-  background: rgba(239, 68, 68, 0.1);
-}
-
-.text-btn.danger:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+@media (max-width: 1200px) {
+  .guide-cards {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 768px) {
-  .health-grid {
+  .guide-endpoint-grid {
     grid-template-columns: 1fr;
   }
 }

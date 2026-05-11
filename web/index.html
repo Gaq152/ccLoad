@@ -85,90 +85,9 @@
       </div>
     </div>
 
-    <!-- 图表行 -->
+    <!-- 主内容行：最近请求 + 渠道状态 -->
     <div class="dash-grid chart-row">
-      <!-- 渠道健康矩阵 -->
-      <div class="dash-panel health-matrix-panel">
-        <div class="panel-header-row">
-          <div class="panel-title">渠道健康矩阵</div>
-          <div class="dash-actions matrix-controls">
-            <!-- 周期切换按钮组 -->
-            <button class="dash-btn active" data-period="24h">24H</button>
-            <button class="dash-btn" data-period="7d">7D</button>
-            <button class="dash-btn" data-period="30d">30D</button>
-
-            <!-- 垂直分隔线 -->
-            <div class="separator-vertical"></div>
-
-            <!-- Tab 切换按钮组 -->
-            <button class="dash-btn tab-btn active" data-tab="cc">CC (Claude)</button>
-            <button class="dash-btn tab-btn" data-tab="cx">CX (Codex)</button>
-
-            <!-- 垂直分隔线 -->
-            <div class="separator-vertical"></div>
-
-            <!-- 刷新倒计时和按钮 -->
-            <div class="refresh-timer">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="10"/>
-                <path d="M12 6v6l4 2"/>
-              </svg>
-              <span id="health-matrix-countdown">5:00</span>
-              <button class="refresh-btn" id="health-matrix-refresh-btn" title="手动刷新">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M23 4v6h-6M1 20v-6h6"/>
-                  <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
-                </svg>
-              </button>
-            </div>
-
-            <!-- 垂直分隔线 -->
-            <div class="separator-vertical"></div>
-
-            <!-- 管理隐藏渠道按钮 -->
-            <button class="dash-btn btn-icon" id="manage-hidden-btn" title="管理已隐藏渠道">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                <circle cx="12" cy="12" r="3"/>
-              </svg>
-            </button>
-          </div>
-        </div>
-
-        <!-- CC (Claude) 分组 - 默认显示 -->
-        <div class="service-group tab-content active" id="tab-cc">
-          <div class="health-grid" id="grid-cc">
-            <!-- 动态填充 -->
-          </div>
-        </div>
-
-        <!-- CX (Codex) 分组 - 默认隐藏 -->
-        <div class="service-group tab-content" id="tab-cx">
-          <div class="health-grid" id="grid-cx">
-            <!-- 动态填充 -->
-          </div>
-        </div>
-      </div>
-
-      <!-- 渠道状态 -->
-      <div class="dash-panel">
-        <div class="panel-header-row">
-          <div class="panel-title">渠道状态</div>
-          <div class="dash-actions">
-            <button class="dash-btn active" data-channel-tab="all">全部</button>
-            <button class="dash-btn" data-channel-tab="anthropic">Claude</button>
-            <button class="dash-btn" data-channel-tab="codex">Codex</button>
-            <button class="dash-btn" data-channel-tab="gemini">Google</button>
-          </div>
-        </div>
-        <div class="status-list" id="channel-status-list">
-          <!-- 动态填充 -->
-        </div>
-      </div>
-    </div>
-
-    <!-- 实时日志 -->
-    <div class="dash-grid console-row">
+      <!-- 最近请求 -->
       <div class="dash-panel console-panel">
         <div class="panel-header-row">
           <div class="panel-title">最近请求</div>
@@ -192,48 +111,131 @@
           </table>
         </div>
       </div>
+
+      <!-- 渠道状态 -->
+      <div class="dash-panel">
+        <div class="panel-header-row">
+          <div class="panel-title">渠道状态</div>
+          <div class="dash-actions">
+            <button class="dash-btn active" data-channel-tab="all">全部</button>
+            <button class="dash-btn" data-channel-tab="anthropic">Claude</button>
+            <button class="dash-btn" data-channel-tab="codex">Codex</button>
+            <button class="dash-btn" data-channel-tab="gemini">Google</button>
+          </div>
+        </div>
+        <div class="status-list" id="channel-status-list">
+          <!-- 动态填充 -->
+        </div>
+      </div>
+    </div>
+
+    <!-- 快速开始 -->
+    <div class="dash-grid guide-row">
+      <div class="dash-panel guide-panel" id="guide-section">
+        <div class="panel-header-row">
+          <div class="panel-title">快速开始</div>
+        </div>
+        <div class="guide-content">
+          <div class="guide-cards">
+            <!-- 接口地址 -->
+            <div class="guide-card">
+              <div class="guide-card-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+              </div>
+              <div class="guide-card-body">
+                <div class="guide-card-title">接口地址</div>
+                <div class="guide-card-desc">将以下地址配置为你的 API Base URL</div>
+                <div class="guide-code-row">
+                  <code id="guide-base-url"></code>
+                  <button class="guide-copy-btn" onclick="copyGuideUrl()" title="复制">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- API 令牌 -->
+            <div class="guide-card clickable" onclick="location.href='/web/tokens.html'">
+              <div class="guide-card-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              </div>
+              <div class="guide-card-body">
+                <div class="guide-card-title">API 令牌</div>
+                <div class="guide-card-desc">创建或管理你的 API Key，用于请求认证</div>
+                <div class="guide-card-hint">前往令牌管理 &rarr;</div>
+              </div>
+            </div>
+
+            <!-- 认证方式 -->
+            <div class="guide-card">
+              <div class="guide-card-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              </div>
+              <div class="guide-card-body">
+                <div class="guide-card-title">认证方式</div>
+                <div class="guide-card-desc">在请求 Header 中携带令牌</div>
+                <code class="guide-code-block">Authorization: Bearer &lt;your-token&gt;</code>
+              </div>
+            </div>
+          </div>
+
+          <!-- API 端点列表 -->
+          <div class="guide-endpoints">
+            <div class="guide-section-title">支持的 API 端点</div>
+            <div class="guide-endpoint-grid">
+              <div class="guide-endpoint-group">
+                <div class="guide-endpoint-label">Claude</div>
+                <code>POST /v1/messages</code>
+                <span class="guide-endpoint-tag">支持流式 / Prompt Caching</span>
+              </div>
+              <div class="guide-endpoint-group">
+                <div class="guide-endpoint-label">Codex</div>
+                <code>POST /v1/responses</code>
+                <span class="guide-endpoint-tag">Responses API</span>
+              </div>
+              <div class="guide-endpoint-group">
+                <div class="guide-endpoint-label">Gemini</div>
+                <code>POST /v1beta/models/{model}:generateContent</code>
+                <code>POST /v1beta/models/{model}:streamGenerateContent</code>
+              </div>
+              <div class="guide-endpoint-group">
+                <div class="guide-endpoint-label">OpenAI 兼容</div>
+                <code>POST /v1/chat/completions</code>
+                <span class="guide-endpoint-tag">Chat Completions API</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 公开端点 -->
+          <div class="guide-endpoints">
+            <div class="guide-section-title">公开端点（无需认证）</div>
+            <div class="guide-endpoint-grid">
+              <div class="guide-endpoint-group">
+                <div class="guide-endpoint-label">健康检查</div>
+                <code>GET /health</code>
+              </div>
+              <div class="guide-endpoint-group">
+                <div class="guide-endpoint-label">调用统计</div>
+                <code>GET /public/summary</code>
+              </div>
+              <div class="guide-endpoint-group">
+                <div class="guide-endpoint-label">渠道类型</div>
+                <code>GET /public/channel-types</code>
+              </div>
+              <div class="guide-endpoint-group">
+                <div class="guide-endpoint-label">模型列表</div>
+                <code>GET /public/models</code>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
   </div>
-  </div>
-
-  <!-- 隐藏渠道管理模态框 -->
-  <div id="hidden-channels-modal" class="modal">
-    <div class="modal-content" style="max-width: 520px;">
-      <div class="modal-header">
-        <h3 class="modal-title">已隐藏渠道管理</h3>
-        <button class="close-btn" onclick="closeHiddenManager()">&times;</button>
-      </div>
-      <div class="modal-body">
-        <!-- Tab 导航 -->
-        <div class="hidden-tabs">
-          <button class="hidden-tab-btn active" onclick="switchHiddenTab('cc')" id="hidden-tab-btn-cc">
-            CC (Claude) <span class="hidden-badge" id="hidden-count-cc">0</span>
-          </button>
-          <button class="hidden-tab-btn" onclick="switchHiddenTab('cx')" id="hidden-tab-btn-cx">
-            CX (Codex) <span class="hidden-badge" id="hidden-count-cx">0</span>
-          </button>
-        </div>
-
-        <!-- 列表容器 -->
-        <div class="hidden-list-container">
-          <div id="hidden-list-cc" class="hidden-list-panel active">
-            <!-- JS 动态渲染 CC 列表 -->
-          </div>
-          <div id="hidden-list-cx" class="hidden-list-panel">
-            <!-- JS 动态渲染 CX 列表 -->
-          </div>
-        </div>
-      </div>
-      <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
-        <button class="text-btn danger" onclick="restoreAllHidden()">全部恢复</button>
-        <button class="dash-btn primary" onclick="closeHiddenManager()">完成</button>
-      </div>
-    </div>
   </div>
 
   <script src="/web/assets/js/ui.js"></script>
-  <script src="/web/assets/js/health-matrix.js"></script>
   <script src="/web/assets/js/index.js"></script>
 </body>
 </html>

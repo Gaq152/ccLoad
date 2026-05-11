@@ -395,7 +395,14 @@
 
       const docBtn = h('button', {
         class: 'btn btn-icon',
-        onclick: () => App.ui.showDocModal(),
+        onclick: () => {
+          const guide = document.getElementById('guide-section');
+          if (guide) {
+            guide.scrollIntoView({ behavior: 'smooth' });
+          } else {
+            window.location.href = '/web/index.html#guide-section';
+          }
+        },
         title: '使用文档',
         style: 'padding: 6px; margin-right: 8px;'
       }, [icons.doc()]);
@@ -525,76 +532,6 @@
           if (el.parentNode) el.parentNode.removeChild(el);
         }, 320);
       }, 3600);
-    },
-
-    /**
-     * 显示使用文档弹窗
-     */
-    showDocModal: function() {
-      const { h } = App.ui;
-
-      // 如果已存在则移除
-      const existing = document.getElementById('doc-modal');
-      if (existing) existing.remove();
-
-      const docContent = `
-<p>本服务支持以下 AI 模型的 API 代理转发：</p>
-
-<h4>Claude</h4>
-<ul>
-  <li><code>POST /v1/messages</code> - Claude Messages API</li>
-  <li>支持流式响应、Prompt Caching</li>
-</ul>
-
-<h4>Codex</h4>
-<ul>
-  <li><code>POST /v1/responses</code> - Responses API</li>
-</ul>
-
-<h4>Google Gemini</h4>
-<ul>
-  <li><code>POST /v1beta/models/{model}:generateContent</code> - 单次生成</li>
-  <li><code>POST /v1beta/models/{model}:streamGenerateContent</code> - 流式生成</li>
-</ul>
-
-<h4>OpenAI 兼容</h4>
-<ul>
-  <li><code>POST /v1/chat/completions</code> - Chat Completions API</li>
-</ul>
-
-<h3>🔓 公开端点（无需认证）</h3>
-<ul>
-  <li><code>GET /health</code> - 健康检查</li>
-  <li><code>GET /public/summary</code> - 调用统计摘要</li>
-  <li><code>GET /public/channel-types</code> - 渠道类型列表</li>
-  <li><code>GET /public/models</code> - 支持的模型列表（按渠道类型分组，自动去重）</li>
-</ul>
-
-<h3>🔑 认证方式</h3>
-<p>API 请求需在 Header 中携带令牌：</p>
-<code>Authorization: Bearer &lt;your-token&gt;</code>
-`;
-
-      const modal = h('div', { id: 'doc-modal', class: 'modal show' }, [
-        h('div', { class: 'modal-content', style: 'max-width: 680px; max-height: 80vh; overflow-y: auto;' }, [
-          h('div', { class: 'modal-header' }, [
-            h('h2', { class: 'modal-title' }, '使用文档'),
-            h('button', {
-              class: 'modal-close',
-              onclick: () => modal.remove(),
-              innerHTML: '&times;'
-            })
-          ]),
-          h('div', { class: 'modal-body doc-content', innerHTML: docContent })
-        ])
-      ]);
-
-      // 点击背景关闭
-      modal.addEventListener('click', (e) => {
-        if (e.target === modal) modal.remove();
-      });
-
-      document.body.appendChild(modal);
     },
 
     /**

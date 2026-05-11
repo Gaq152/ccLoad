@@ -1,5 +1,5 @@
 // 仪表盘状态
-window.currentTimeRange = 'today'; // 全局时间范围（供健康矩阵同步）
+window.currentTimeRange = 'today';
 let currentChannelType = ''; // 空表示全部
 let currentChannelStatusTab = 'all'; // 渠道状态 Tab：all/anthropic/codex/gemini
 let refreshCountdown = 30;
@@ -411,13 +411,35 @@ document.addEventListener('DOMContentLoaded', async function() {
   document.getElementById('refresh-countdown').textContent = refreshCountdown + 's';
   startCountdown();
 
-  // 初始化渠道健康矩阵
-  if (typeof initHealthMatrix === 'function') {
-    await initHealthMatrix();
-  }
+  // 初始化快速开始区域
+  initGuideSection();
 
   // 手动刷新按钮
   document.getElementById('refresh-btn').addEventListener('click', function() {
     refreshAll();
   });
 });
+
+// 初始化快速开始区域
+function initGuideSection() {
+  const urlEl = document.getElementById('guide-base-url');
+  if (urlEl) {
+    urlEl.textContent = location.origin;
+  }
+}
+
+// 复制接口地址
+function copyGuideUrl() {
+  const url = location.origin;
+  navigator.clipboard.writeText(url).then(() => {
+    if (typeof showToast === 'function') showToast('已复制到剪贴板');
+  }).catch(() => {
+    const input = document.createElement('input');
+    input.value = url;
+    document.body.appendChild(input);
+    input.select();
+    document.execCommand('copy');
+    document.body.removeChild(input);
+    if (typeof showToast === 'function') showToast('已复制到剪贴板');
+  });
+}
