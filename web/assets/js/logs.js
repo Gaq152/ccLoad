@@ -187,6 +187,12 @@
       tbody.innerHTML = '';
       if (errorRow) tbody.appendChild(errorRow);
     }
+    // [FIX] 避免本地 showError 污染全局 window.showError（toast）
+    // logs.js 未用 IIFE 包裹，脚本顶层的 function 声明会覆盖 window.showError
+    // 还原 ui.js 注册的 toast 版本
+    if (typeof App !== 'undefined' && App.ui && App.ui.showToast) {
+      window.showError = (msg) => App.ui.showToast(msg, 'error');
+    }
 
     function renderLogs(data) {
       const tbody = document.getElementById('tbody');

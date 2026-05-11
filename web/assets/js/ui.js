@@ -759,7 +759,7 @@
     checkUpdate: async function(currentVersion) {
       const current = currentVersion.replace(/^>|<$/g, '').trim();
       if (!current || current === 'DEV') {
-        showError('开发模式无法检查更新');
+        App.ui.showToast('开发模式无法检查更新', 'error');
         return;
       }
       try {
@@ -768,12 +768,12 @@
         if (!latest) throw new Error('未获取到版本信息');
 
         if (latest === current) {
-          showSuccess('当前已是最新版本 ' + current);
+          App.ui.showToast('当前已是最新版本 ' + current, 'success');
         } else {
           App.ui.showUpdateToast(current, latest, data.release_url);
         }
       } catch (e) {
-        showError('检查更新失败：' + e.message);
+        App.ui.showToast('检查更新失败：' + e.message, 'error');
       }
     }
   };
