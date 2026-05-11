@@ -569,6 +569,8 @@
     editable.dataset.editing = '1';
 
     const originalPriority = normalizePriority(editable.dataset.priority, 0);
+    const parentCol = editable.closest('.col-priority');
+    if (parentCol) parentCol.classList.add('is-editing');
 
     const input = document.createElement('input');
     input.type = 'number';
@@ -593,6 +595,7 @@
       span.title = '点击编辑优先级';
       span.textContent = String(priority);
       input.replaceWith(span);
+      if (parentCol) parentCol.classList.remove('is-editing');
       return span;
     };
 
