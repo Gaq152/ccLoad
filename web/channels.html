@@ -1114,10 +1114,10 @@ function(response) {
         <div class="channel-col col-manage">
           <button type="button" class="endpoint-manage-btn" data-action="endpoints" data-channel-id="{{id}}" title="管理与测速">⚡管理</button>
         </div>
-        <!-- 优先级（固定宽度） -->
+        <!-- 优先级（固定宽度，支持点击行内编辑） -->
         <div class="channel-col col-priority">
           <span class="col-label">优先级</span>
-          <span class="col-value">{{priority}}</span>
+          <span class="col-value channel-priority-editable" data-channel-id="{{id}}" data-priority="{{priority}}" title="点击编辑优先级">{{priority}}</span>
         </div>
         <!-- 状态（固定宽度） -->
         <div class="channel-col col-status">

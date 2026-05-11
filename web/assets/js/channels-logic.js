@@ -40,6 +40,17 @@
 
     container.dataset.delegated = 'true';
 
+    // 单渠道优先级行内编辑（点击渠道卡上的优先级数字）
+    container.addEventListener('click', (e) => {
+      const editable = e.target.closest('.channel-priority-editable');
+      if (!editable) return;
+      // 排序模式下不开启行内编辑，避免与拖拽冲突
+      if (sortModeEnabled) return;
+      e.preventDefault();
+      e.stopPropagation();
+      startSingleChannelPriorityEdit(editable);
+    });
+
     // 事件委托：处理所有渠道操作按钮
     container.addEventListener('click', (e) => {
       // 排序模式下阻止所有操作按钮
@@ -528,6 +539,95 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ updates })
         });
+        if (typeof clearChannelsCache === 'function') clearChannelsCache();
+        if (window.showSuccess) window.showSuccess(`优先级已更新为 ${next}`);
+        if (typeof filterChannels === 'function') filterChannels();
+      } catch (err) {
+        console.error('Update channel priority failed:', err);
+        if (window.showError) window.showError(err.message || '更新优先级失败');
+        saving.classList.remove('is-saving');
+      }
+    };
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        commit();
+      } else if (e.key === 'Escape') {
+        committed = true;
+        restore(originalPriority);
+      }
+    });
+    input.addEventListener('blur', () => commit());
+    input.addEventListener('click', (e) => e.stopPropagation());
+  }
+
+  function startSingleChannelPriorityEdit(editable) {
+    if (!editable || editable.dataset.editing === '1') return;
+    const channelId = Number(editable.dataset.channelId);
+    if (!Number.isFinite(channelId) || channelId <= 0) return;
+    editable.dataset.editing = '1';
+
+    const originalPriority = normalizePriority(editable.dataset.priority, 0);
+
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.className = 'channel-priority-input';
+    input.min = String(PRIORITY_MIN);
+    input.max = String(PRIORITY_MAX);
+    input.step = '1';
+    input.value = String(originalPriority);
+
+    editable.replaceWith(input);
+    input.focus();
+    input.select();
+
+    let committed = false;
+
+    const restore = (priority, saving = false) => {
+      const span = document.createElement('span');
+      span.className = 'col-value channel-priority-editable';
+      if (saving) span.classList.add('is-saving');
+      span.dataset.channelId = String(channelId);
+      span.dataset.priority = String(priority);
+      span.title = '点击编辑优先级';
+      span.textContent = String(priority);
+      input.replaceWith(span);
+      return span;
+    };
+
+    const commit = async () => {
+      if (committed) return;
+      committed = true;
+
+      const next = normalizePriority(input.value, originalPriority);
+      if (next === originalPriority) {
+        restore(originalPriority);
+        return;
+      }
+
+      const saving = restore(originalPriority, true);
+      try {
+        await fetchDataWithAuth('/admin/channels/batch-priority', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ updates: [{ id: channelId, priority: next }] })
+        });
+        // 同步内存中的渠道数据
+        const update = (list) => {
+          if (!Array.isArray(list)) return;
+          list.forEach(c => {
+            if (Number(c && c.id) === channelId) {
+              c.priority = next;
+              if (c.effective_priority !== undefined && c.effective_priority !== null) {
+                const offset = Number(c.effective_priority) - originalPriority;
+                if (Number.isFinite(offset)) c.effective_priority = next + offset;
+              }
+            }
+          });
+        };
+        if (typeof channels !== 'undefined') update(channels);
+        if (typeof filteredChannels !== 'undefined') update(filteredChannels);
         if (typeof clearChannelsCache === 'function') clearChannelsCache();
         if (window.showSuccess) window.showSuccess(`优先级已更新为 ${next}`);
         if (typeof filterChannels === 'function') filterChannels();
