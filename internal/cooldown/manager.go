@@ -95,14 +95,19 @@ func (m *Manager) HandleError(
 
 	// 1. 区分网络错误和HTTP错误的分类策略
 	if isNetworkError {
-		// [INFO] 网络错误特殊处理: 区分首字节超时、整体超时、上游异常以及普通网络波动
-		// util.StatusFirstByteTimeout (598) → 渠道级错误（首字节超时，固定1分钟冷却）
-		// 504 Gateway Timeout → 渠道级错误（上游整体超时）
+		// [INFO] 网络错误特殊处理: 区分首字节超时、上游异常以及普通网络波动/超时
+		// util.StatusFirstByteTimeout (598) → 渠道级错误（首字节超时，说明上游服务不可用）
+		// 504 Gateway Timeout → Retry级错误（网络超时/i/o timeout，可能是偶发抖动）
 		// 空响应/HTTP2流错误等 → 渠道级错误（上游服务异常）
 		// 其他可重试错误(502等) → 默认Key级错误（可能只是单个Key的连接问题）
-		if statusCode == util.StatusFirstByteTimeout || statusCode == 504 {
+		if statusCode == util.StatusFirstByteTimeout {
 			errLevel = util.ErrorLevelChannel
-			log.Printf("[COOLDOWN] 网络错误分类: 状态码=%d → Channel级(首字节超时/整体超时)", statusCode)
+			log.Printf("[COOLDOWN] 网络错误分类: 状态码=%d → Channel级(首字节超时)", statusCode)
+		} else if statusCode == 504 {
+			// 504 网络超时（i/o timeout、context deadline exceeded）视为偶发抖动
+			// 不冷却渠道，允许后续请求继续尝试
+			errLevel = util.ErrorLevelRetry
+			log.Printf("[COOLDOWN] 网络错误分类: 状态码=%d → Retry级(网络超时/抖动，不冷却)", statusCode)
 		} else if isUpstreamServiceError(errorBody) {
 			// [FIX] 检测上游服务异常（空响应、HTTP2流错误等），应触发渠道级冷却
 			errLevel = util.ErrorLevelChannel

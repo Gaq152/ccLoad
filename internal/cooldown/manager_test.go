@@ -234,8 +234,8 @@ func TestHandleError_NetworkError(t *testing.T) {
 		{
 			name:           "网关超时(504)",
 			statusCode:     504,
-			expectedAction: ActionRetryChannel,
-			description:    "Gateway timeout should trigger channel-level cooldown",
+			expectedAction: ActionRetrySameChannel,
+			description:    "Gateway timeout (i/o timeout) should retry same channel without cooldown",
 		},
 		{
 			name:           "连接重置(ErrCodeNetworkRetryable)",
