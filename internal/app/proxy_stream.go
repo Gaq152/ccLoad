@@ -4,7 +4,14 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"time"
 )
+
+// SSEKeepaliveInterval SSE 心跳间隔（CF 免费计划 proxy read timeout ~100s，留余量）
+const SSEKeepaliveInterval = 60 * time.Second
+
+// sseKeepalivePayload SSE 心跳数据（注释行，客户端忽略）
+var sseKeepalivePayload = []byte(": keepalive\n\n")
 
 // ============================================================================
 // 流式传输数据结构
@@ -93,47 +100,113 @@ func streamCopy(ctx context.Context, src io.Reader, dst http.ResponseWriter, onD
 	}
 }
 
-// streamCopySSE SSE专用流式复制（使用小缓冲区优化延迟）
+// streamCopySSE SSE专用流式复制（使用小缓冲区优化延迟 + 心跳保活）
 // [INFO] SSE优化（2025-10-17）：4KB缓冲区降低首Token延迟60~80%
 // [INFO] 支持数据钩子（2025-11）：允许SSE usage解析器增量处理数据流
+// [INFO] 心跳保活（2026-05）：每60秒发送SSE注释行，防止CDN空闲断开
 // 设计原则：SSE事件通常200B-2KB，小缓冲区避免事件积压
 func streamCopySSE(ctx context.Context, src io.Reader, dst http.ResponseWriter, onData func([]byte) error) error {
-	buf := make([]byte, SSEBufferSize) // 4KB SSE专用缓冲区
+	type readResult struct {
+		n   int
+		err error
+	}
+
+	buf := make([]byte, SSEBufferSize)
+	readCh := make(chan readResult, 1)
+	keepalive := time.NewTimer(SSEKeepaliveInterval)
+	defer keepalive.Stop()
+
+	flusher, _ := dst.(http.Flusher)
+
+	// 启动首次读取
+	go func() {
+		n, err := src.Read(buf)
+		readCh <- readResult{n, err}
+	}()
+
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		default:
-		}
 
-		n, err := src.Read(buf)
-		if n > 0 {
-			if _, writeErr := dst.Write(buf[:n]); writeErr != nil {
+		case <-keepalive.C:
+			if _, writeErr := dst.Write(sseKeepalivePayload); writeErr != nil {
 				return writeErr
 			}
-			if flusher, ok := dst.(http.Flusher); ok {
+			if flusher != nil {
 				flusher.Flush()
 			}
-			// 触发数据钩子（例如：SSE usage解析）
-			if onData != nil {
-				if hookErr := onData(buf[:n]); hookErr != nil {
-					// 钩子错误不中断流传输（容错设计）
-					// 实际场景：解析失败不应影响用户接收响应
-					// 错误已在钩子内部记录日志
+			keepalive.Reset(SSEKeepaliveInterval)
+
+		case res := <-readCh:
+			if res.n > 0 {
+				if _, writeErr := dst.Write(buf[:res.n]); writeErr != nil {
+					return writeErr
 				}
+				if flusher != nil {
+					flusher.Flush()
+				}
+				if onData != nil {
+					if hookErr := onData(buf[:res.n]); hookErr != nil {
+						// 钩子错误不中断流传输（容错设计）
+					}
+				}
+				keepalive.Reset(SSEKeepaliveInterval)
 			}
+			if res.err != nil {
+				if res.err == io.EOF {
+					return nil
+				}
+				if ctx.Err() != nil {
+					return ctx.Err()
+				}
+				return res.err
+			}
+			// 启动下一次读取
+			go func() {
+				n, err := src.Read(buf)
+				readCh <- readResult{n, err}
+			}()
 		}
-		if err != nil {
-			if err == io.EOF {
-				return nil
+	}
+}
+
+// readWithKeepalive 带心跳的完整读取（用于 Kiro 渠道）
+// 在读取上游数据期间，每 SSEKeepaliveInterval 向客户端发送心跳注释
+// 防止 CDN 因长时间无数据而断开客户端连接
+func readWithKeepalive(ctx context.Context, src io.Reader, dst http.ResponseWriter) ([]byte, error) {
+	type readResult struct {
+		data []byte
+		err  error
+	}
+
+	readCh := make(chan readResult, 1)
+	go func() {
+		data, err := io.ReadAll(src)
+		readCh <- readResult{data, err}
+	}()
+
+	keepalive := time.NewTimer(SSEKeepaliveInterval)
+	defer keepalive.Stop()
+
+	flusher, _ := dst.(http.Flusher)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+
+		case <-keepalive.C:
+			if _, writeErr := dst.Write(sseKeepalivePayload); writeErr != nil {
+				return nil, writeErr
 			}
-			// [FIX] 检查 context 是否在 Read 期间被取消
-			// 场景：客户端取消请求 → HTTP/2 流关闭 → Read 返回 "http2: response body closed"
-			// 此时应返回 context.Canceled，让上层正确识别为客户端断开（499）而非上游错误（502）
-			if ctx.Err() != nil {
-				return ctx.Err()
+			if flusher != nil {
+				flusher.Flush()
 			}
-			return err
+			keepalive.Reset(SSEKeepaliveInterval)
+
+		case res := <-readCh:
+			return res.data, res.err
 		}
 	}
 }

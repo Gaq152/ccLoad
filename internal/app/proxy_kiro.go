@@ -94,65 +94,92 @@ func (s *Server) forwardKiroRequest(
 	// 处理响应
 	contentType := resp.Header.Get("Content-Type")
 
-	// 读取完整响应体
+	// 流式请求：先写 SSE 响应头，然后带心跳读取上游数据
+	// 防止 CDN（如 Cloudflare）因长时间无数据而断开连接
+	if reqCtx.isStreaming {
+		// 立即写入 SSE 响应头，让 CDN 知道连接是活跃的
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+		w.WriteHeader(http.StatusOK)
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
+		}
+
+		// 带心跳的分块读取
+		body, err := readWithKeepalive(ctx, resp.Body, w)
+		if err != nil {
+			return nil, time.Since(startTime).Seconds(), fmt.Errorf("read response body: %w", err)
+		}
+
+		// 检测是否是 AWS Event Stream 二进制格式
+		isAWSEventStream := strings.Contains(contentType, "event-stream") ||
+			strings.Contains(contentType, "amazon") ||
+			isAWSEventStreamBinary(body)
+
+		if isAWSEventStream {
+			parser, err := ProcessKiroAWSEventStream(ctx, body, w, reqCtx.originalModel, estimatedInputTokens)
+			if err != nil && err != io.EOF {
+				log.Printf("[WARN] [Kiro] AWS Event Stream 处理错误: %v", err)
+			}
+			_, outputTokens := parser.GetUsage()
+			return &fwResult{
+				Status:        http.StatusOK,
+				Header:        resp.Header.Clone(),
+				InputTokens:   estimatedInputTokens,
+				OutputTokens:  outputTokens,
+				FirstByteTime: firstByteTime,
+			}, time.Since(startTime).Seconds(), nil
+		}
+
+		// 非 AWS Event Stream（纯 JSON，罕见）
+		w.Write(body)
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
+		}
+		return &fwResult{
+			Status:        http.StatusOK,
+			Header:        resp.Header.Clone(),
+			Body:          body,
+			FirstByteTime: firstByteTime,
+		}, time.Since(startTime).Seconds(), nil
+	}
+
+	// 非流式请求：直接读取完整响应体
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, time.Since(startTime).Seconds(), fmt.Errorf("read response body: %w", err)
 	}
 
 	// 检测是否是 AWS Event Stream 二进制格式
-	// 方法1: Content-Type 包含 event-stream 或 amazon
-	// 方法2: 响应体包含 AWS Event Stream 二进制特征（:event-type 头部）
 	isAWSEventStream := strings.Contains(contentType, "event-stream") ||
 		strings.Contains(contentType, "amazon") ||
 		isAWSEventStreamBinary(body)
 
 	if isAWSEventStream {
-		// 检查是否为非流式请求
-		if !reqCtx.isStreaming {
-			// 非流式请求：解析 AWS Event Stream 并构建完整的 JSON 响应
-			jsonResp, inputTokens, outputTokens, err := ConvertKiroAWSEventStreamToJSON(body, reqCtx.originalModel, estimatedInputTokens)
-			if err != nil {
-				log.Printf("[ERROR] [Kiro] 非流式响应转换失败: %v", err)
-				return nil, time.Since(startTime).Seconds(), fmt.Errorf("convert kiro response to json: %w", err)
-			}
-
-			// 写入 JSON 响应
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			w.Write(jsonResp)
-
-			return &fwResult{
-				Status:        http.StatusOK,
-				Header:        resp.Header.Clone(),
-				Body:          jsonResp,
-				InputTokens:   inputTokens,
-				OutputTokens:  outputTokens,
-				FirstByteTime: firstByteTime,
-			}, time.Since(startTime).Seconds(), nil
+		// 非流式请求：解析 AWS Event Stream 并构建完整的 JSON 响应
+		jsonResp, inputTokens, outputTokens, err := ConvertKiroAWSEventStreamToJSON(body, reqCtx.originalModel, estimatedInputTokens)
+		if err != nil {
+			log.Printf("[ERROR] [Kiro] 非流式响应转换失败: %v", err)
+			return nil, time.Since(startTime).Seconds(), fmt.Errorf("convert kiro response to json: %w", err)
 		}
 
-		// 流式请求：解析 AWS Event Stream 并转换为 Anthropic SSE 格式
-		// 使用请求中的模型名称和估算的输入 token
-		parser, err := ProcessKiroAWSEventStream(ctx, body, w, reqCtx.originalModel, estimatedInputTokens)
-		if err != nil && err != io.EOF {
-			log.Printf("[WARN] [Kiro] AWS Event Stream 处理错误: %v", err)
-		}
-
-		// 获取输出 token（从响应中提取）
-		_, outputTokens := parser.GetUsage()
+		// 写入 JSON 响应
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write(jsonResp)
 
 		return &fwResult{
 			Status:        http.StatusOK,
 			Header:        resp.Header.Clone(),
-			InputTokens:   estimatedInputTokens, // 使用估算的输入 token
-			OutputTokens:  outputTokens,          // 使用实际的输出 token
+			Body:          jsonResp,
+			InputTokens:   inputTokens,
+			OutputTokens:  outputTokens,
 			FirstByteTime: firstByteTime,
 		}, time.Since(startTime).Seconds(), nil
 	}
 
 	// 非 AWS Event Stream 响应（纯 JSON）
-	// 处理 JSON 响应
 	processedBody, err := ProcessKiroJSONResponse(body)
 	if err != nil {
 		log.Printf("[WARN] [Kiro] JSON 响应处理失败: %v", err)
