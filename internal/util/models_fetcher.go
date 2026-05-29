@@ -247,7 +247,9 @@ func (f *CodexModelsFetcher) FetchModels(ctx context.Context, baseURL string, ap
 
 var predefinedModelSets = map[string][]string{
 	ChannelTypeAnthropic: {
-		// Claude 4.6 系列（2026年最新，无日期后缀）
+		// Claude 4.8 系列（最新）
+		"claude-opus-4-8",
+		// Claude 4.6 系列
 		"claude-opus-4-6",
 		"claude-sonnet-4-6",
 		// Claude 4.5 系列
@@ -261,7 +263,12 @@ var predefinedModelSets = map[string][]string{
 		"claude-opus-4-20250514",
 	},
 	ChannelTypeCodex: {
-		// GPT-5.3 系列（2026年2月最新）
+		// GPT-5.5 系列（2026年4月最新）
+		"gpt-5.5",
+		// GPT-5.4 系列
+		"gpt-5.4",
+		"gpt-5.4-mini",
+		// GPT-5.3 系列
 		"gpt-5.3-codex",
 		"gpt-5.3-codex-spark",
 		// GPT-5.2 系列
