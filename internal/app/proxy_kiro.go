@@ -94,53 +94,29 @@ func (s *Server) forwardKiroRequest(
 	// 处理响应
 	contentType := resp.Header.Get("Content-Type")
 
-	// 流式请求：先写 SSE 响应头，然后带心跳读取上游数据
-	// 防止 CDN（如 Cloudflare）因长时间无数据而断开连接
+	// 流式请求：边读边解析边转发（真正的流式）
 	if reqCtx.isStreaming {
-		// 立即写入 SSE 响应头，让 CDN 知道连接是活跃的
+		// 立即写入 SSE 响应头
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Header().Set("Connection", "keep-alive")
+		w.Header().Set("X-Accel-Buffering", "no")
 		w.WriteHeader(http.StatusOK)
 		if flusher, ok := w.(http.Flusher); ok {
 			flusher.Flush()
 		}
 
-		// 带心跳的分块读取
-		body, err := readWithKeepalive(ctx, resp.Body, w)
-		if err != nil {
-			return nil, time.Since(startTime).Seconds(), fmt.Errorf("read response body: %w", err)
+		// 流式转发：每读到一个完整帧就立即转发给客户端
+		parser, err := streamKiroAWSEventStream(ctx, resp.Body, w, reqCtx.originalModel, estimatedInputTokens)
+		if err != nil && err != io.EOF && ctx.Err() == nil {
+			log.Printf("[WARN] [Kiro] 流式转发错误: %v", err)
 		}
-
-		// 检测是否是 AWS Event Stream 二进制格式
-		isAWSEventStream := strings.Contains(contentType, "event-stream") ||
-			strings.Contains(contentType, "amazon") ||
-			isAWSEventStreamBinary(body)
-
-		if isAWSEventStream {
-			parser, err := ProcessKiroAWSEventStream(ctx, body, w, reqCtx.originalModel, estimatedInputTokens)
-			if err != nil && err != io.EOF {
-				log.Printf("[WARN] [Kiro] AWS Event Stream 处理错误: %v", err)
-			}
-			_, outputTokens := parser.GetUsage()
-			return &fwResult{
-				Status:        http.StatusOK,
-				Header:        resp.Header.Clone(),
-				InputTokens:   estimatedInputTokens,
-				OutputTokens:  outputTokens,
-				FirstByteTime: firstByteTime,
-			}, time.Since(startTime).Seconds(), nil
-		}
-
-		// 非 AWS Event Stream（纯 JSON，罕见）
-		w.Write(body)
-		if flusher, ok := w.(http.Flusher); ok {
-			flusher.Flush()
-		}
+		_, outputTokens := parser.GetUsage()
 		return &fwResult{
 			Status:        http.StatusOK,
 			Header:        resp.Header.Clone(),
-			Body:          body,
+			InputTokens:   estimatedInputTokens,
+			OutputTokens:  outputTokens,
 			FirstByteTime: firstByteTime,
 		}, time.Since(startTime).Seconds(), nil
 	}
@@ -242,6 +218,92 @@ func (s *Server) ForwardKiroRequest(
 	}
 
 	return resp, nil
+}
+
+// streamKiroAWSEventStream 真正的流式转发：边读边解析边转发
+// 替代 readWithKeepalive + ProcessKiroAWSEventStream 的组合
+// 每读到一个完整的 AWS Event Stream 帧就立即解析并转发 SSE 事件给客户端
+func streamKiroAWSEventStream(ctx context.Context, src io.Reader, w http.ResponseWriter, model string, inputTokens int) (*kiroSSEParser, error) {
+	parser := newKiroSSEParser()
+	if model != "" {
+		parser.requestedModel = model
+	}
+	parser.inputTokens = inputTokens
+
+	flusher, _ := w.(http.Flusher)
+
+	type readResult struct {
+		n   int
+		err error
+	}
+
+	chunk := make([]byte, SSEBufferSize) // 4KB 读取缓冲区
+	readCh := make(chan readResult, 1)
+	keepalive := time.NewTimer(SSEKeepaliveInterval)
+	defer keepalive.Stop()
+
+	var buf []byte // 累积 buffer，存放跨 chunk 的不完整帧
+
+	// 启动首次读取
+	go func() {
+		n, err := src.Read(chunk)
+		readCh <- readResult{n, err}
+	}()
+
+	var readDone bool
+	for !readDone {
+		select {
+		case <-ctx.Done():
+			return parser, ctx.Err()
+
+		case <-keepalive.C:
+			if _, err := w.Write(sseKeepalivePayload); err != nil {
+				return parser, err
+			}
+			if flusher != nil {
+				flusher.Flush()
+			}
+			keepalive.Reset(SSEKeepaliveInterval)
+
+		case res := <-readCh:
+			if res.n > 0 {
+				buf = append(buf, chunk[:res.n]...)
+				keepalive.Reset(SSEKeepaliveInterval)
+
+				// 循环解析所有完整帧
+				for len(buf) >= 16 {
+					frameLen, frame, remaining := parseAWSEventStreamFrame(buf)
+					if frameLen == 0 {
+						break // 数据不足，等待更多
+					}
+					processAWSEventStreamFrame(w, flusher, frame, parser)
+					buf = remaining
+				}
+			}
+			if res.err != nil {
+				if res.err == io.EOF {
+					readDone = true
+				} else if ctx.Err() != nil {
+					return parser, ctx.Err()
+				} else {
+					return parser, res.err
+				}
+			} else {
+				// 启动下一次读取
+				go func() {
+					n, err := src.Read(chunk)
+					readCh <- readResult{n, err}
+				}()
+			}
+		}
+	}
+
+	// 流结束，发送结束事件
+	if parser.messageStarted && !parser.exceptionHandled {
+		sendKiroStreamEndEvents(w, flusher, parser)
+	}
+
+	return parser, nil
 }
 
 // ProcessKiroAWSEventStream 处理已读取的 AWS Event Stream 响应并转换为 Anthropic SSE 格式
