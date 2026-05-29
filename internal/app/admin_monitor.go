@@ -133,7 +133,7 @@ func writeSSETrace(w gin.ResponseWriter, trace *storage.TraceListItem) error {
 }
 
 // HandleMonitorList 获取追踪记录列表
-// GET /admin/monitor/traces?limit=50&offset=0
+// GET /admin/monitor/traces?limit=50&offset=0&status=success|error
 func (s *Server) HandleMonitorList(c *gin.Context) {
 	if s.monitorService == nil {
 		RespondErrorMsg(c, 503, "监控服务不可用")
@@ -154,7 +154,9 @@ func (s *Server) HandleMonitorList(c *gin.Context) {
 		}
 	}
 
-	traces, err := s.monitorService.GetStore().List(c.Request.Context(), limit, offset)
+	statusFilter := c.Query("status") // "success" / "error" / ""
+
+	traces, err := s.monitorService.GetStore().List(c.Request.Context(), limit, offset, statusFilter)
 	if err != nil {
 		RespondErrorMsg(c, 500, "获取追踪记录失败")
 		return
@@ -180,9 +182,9 @@ func (s *Server) HandleMonitorList(c *gin.Context) {
 		}
 	}
 
-	// 获取统计信息和总数
+	// 获取统计信息和总数（total 带筛选条件，stats 始终是全量）
 	stats, _ := s.monitorService.GetStore().Stats(c.Request.Context())
-	total, _ := s.monitorService.GetStore().Count(c.Request.Context())
+	total, _ := s.monitorService.GetStore().Count(c.Request.Context(), statusFilter)
 
 	RespondJSON(c, 200, gin.H{
 		"data":  traces,

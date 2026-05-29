@@ -164,7 +164,11 @@ function disconnectSSE() {
 async function loadTraces() {
   try {
     const offset = (currentPage - 1) * pageSize;
-    const data = await fetchDataWithAuth(`/admin/monitor/traces?limit=${pageSize}&offset=${offset}`);
+    const params = new URLSearchParams({ limit: pageSize, offset });
+    if (currentFilter && currentFilter !== 'all') {
+      params.set('status', currentFilter);
+    }
+    const data = await fetchDataWithAuth(`/admin/monitor/traces?${params}`);
     traces = data.data || [];
     totalTraces = data.total || 0;
     totalPages = Math.ceil(totalTraces / pageSize) || 1;
@@ -210,8 +214,9 @@ function updateStatsUI() {
 // 设置筛选条件（状态筛选）
 function setFilter(filter) {
   currentFilter = filter;
-  applyFilters();
+  currentPage = 1;
   updateFilterUI();
+  loadTraces();
 }
 
 // 应用所有筛选条件
@@ -220,18 +225,10 @@ function applyFilters() {
   const tokenSelect = document.getElementById('tokenFilter');
   currentTokenFilter = tokenSelect ? tokenSelect.value : '';
 
-  // 先按状态筛选
+  // 状态筛选已由后端处理，前端仅做令牌筛选
   let result = traces;
-  switch (currentFilter) {
-    case 'success':
-      result = result.filter(t => t.status_code === 200);
-      break;
-    case 'error':
-      result = result.filter(t => t.status_code !== 200);
-      break;
-  }
 
-  // 再按令牌筛选
+  // 按令牌筛选
   if (currentTokenFilter) {
     result = result.filter(t => t.auth_token_name === currentTokenFilter);
   }

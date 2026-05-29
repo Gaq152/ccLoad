@@ -154,7 +154,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 }
 
 // List 获取追踪记录列表（按时间倒序，不含请求体/响应体）
-func (s *TraceStore) List(ctx context.Context, limit, offset int) ([]*TraceListItem, error) {
+func (s *TraceStore) List(ctx context.Context, limit, offset int, statusFilter string) ([]*TraceListItem, error) {
 	if limit <= 0 {
 		limit = 100
 	}
@@ -165,13 +165,25 @@ func (s *TraceStore) List(ctx context.Context, limit, offset int) ([]*TraceListI
 		offset = 0
 	}
 
-	query := `
+	var whereClause string
+	var args []any
+	switch statusFilter {
+	case "success":
+		whereClause = "WHERE status_code >= 200 AND status_code < 400"
+	case "error":
+		whereClause = "WHERE (status_code >= 400 OR status_code = 0)"
+	}
+
+	query := fmt.Sprintf(`
 SELECT id, time, channel_id, channel_name, channel_type, model, request_path, status_code, duration, is_streaming, is_test, input_tokens, output_tokens, client_ip, api_key_used, token_id
 FROM traces
+%s
 ORDER BY time DESC
 LIMIT ? OFFSET ?
-`
-	rows, err := s.db.QueryContext(ctx, query, limit, offset)
+`, whereClause)
+	args = append(args, limit, offset)
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -236,9 +248,16 @@ func (s *TraceStore) Clear(ctx context.Context) error {
 }
 
 // Count 获取追踪记录总数
-func (s *TraceStore) Count(ctx context.Context) (int, error) {
+func (s *TraceStore) Count(ctx context.Context, statusFilter string) (int, error) {
+	var whereClause string
+	switch statusFilter {
+	case "success":
+		whereClause = "WHERE status_code >= 200 AND status_code < 400"
+	case "error":
+		whereClause = "WHERE (status_code >= 400 OR status_code = 0)"
+	}
 	var count int
-	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM traces").Scan(&count)
+	err := s.db.QueryRowContext(ctx, fmt.Sprintf("SELECT COUNT(*) FROM traces %s", whereClause)).Scan(&count)
 	return count, err
 }
 
