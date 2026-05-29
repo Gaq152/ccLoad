@@ -51,7 +51,8 @@ func (s *Server) forwardKiroRequest(
 	}
 	defer resp.Body.Close()
 
-	duration := time.Since(startTime).Seconds()
+	// 首字节时间 = HTTP 响应头到达的时刻
+	firstByteTime := time.Since(startTime).Seconds()
 
 	// 检查响应状态码
 	if resp.StatusCode != http.StatusOK {
@@ -65,10 +66,11 @@ func (s *Server) forwardKiroRequest(
 			// 构建 max_tokens 响应并直接写入
 			BuildKiroContentLengthExceedsResponse(w, reqCtx.originalModel, estimatedInputTokens)
 			return &fwResult{
-				Status:       http.StatusOK, // 返回 200，因为已经写入了有效的 SSE 响应
-				InputTokens:  estimatedInputTokens,
-				OutputTokens: 0,
-			}, duration, nil
+				Status:        http.StatusOK, // 返回 200，因为已经写入了有效的 SSE 响应
+				InputTokens:   estimatedInputTokens,
+				OutputTokens:  0,
+				FirstByteTime: firstByteTime,
+			}, time.Since(startTime).Seconds(), nil
 		}
 
 		// 检测 AWS 账户暂停错误（TEMPORARILY_SUSPENDED）
@@ -82,10 +84,11 @@ func (s *Server) forwardKiroRequest(
 		}
 
 		return &fwResult{
-			Status: actualStatus,
-			Header: resp.Header.Clone(),
-			Body:   errorBody,
-		}, duration, nil
+			Status:        actualStatus,
+			Header:        resp.Header.Clone(),
+			Body:          errorBody,
+			FirstByteTime: firstByteTime,
+		}, time.Since(startTime).Seconds(), nil
 	}
 
 	// 处理响应
@@ -94,7 +97,7 @@ func (s *Server) forwardKiroRequest(
 	// 读取完整响应体
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, duration, fmt.Errorf("read response body: %w", err)
+		return nil, time.Since(startTime).Seconds(), fmt.Errorf("read response body: %w", err)
 	}
 
 	// 检测是否是 AWS Event Stream 二进制格式
@@ -111,7 +114,7 @@ func (s *Server) forwardKiroRequest(
 			jsonResp, inputTokens, outputTokens, err := ConvertKiroAWSEventStreamToJSON(body, reqCtx.originalModel, estimatedInputTokens)
 			if err != nil {
 				log.Printf("[ERROR] [Kiro] 非流式响应转换失败: %v", err)
-				return nil, duration, fmt.Errorf("convert kiro response to json: %w", err)
+				return nil, time.Since(startTime).Seconds(), fmt.Errorf("convert kiro response to json: %w", err)
 			}
 
 			// 写入 JSON 响应
@@ -120,12 +123,13 @@ func (s *Server) forwardKiroRequest(
 			w.Write(jsonResp)
 
 			return &fwResult{
-				Status:       http.StatusOK,
-				Header:       resp.Header.Clone(),
-				Body:         jsonResp,
-				InputTokens:  inputTokens,
-				OutputTokens: outputTokens,
-			}, duration, nil
+				Status:        http.StatusOK,
+				Header:        resp.Header.Clone(),
+				Body:          jsonResp,
+				InputTokens:   inputTokens,
+				OutputTokens:  outputTokens,
+				FirstByteTime: firstByteTime,
+			}, time.Since(startTime).Seconds(), nil
 		}
 
 		// 流式请求：解析 AWS Event Stream 并转换为 Anthropic SSE 格式
@@ -139,11 +143,12 @@ func (s *Server) forwardKiroRequest(
 		_, outputTokens := parser.GetUsage()
 
 		return &fwResult{
-			Status:       http.StatusOK,
-			Header:       resp.Header.Clone(),
-			InputTokens:  estimatedInputTokens, // 使用估算的输入 token
-			OutputTokens: outputTokens,          // 使用实际的输出 token
-		}, duration, nil
+			Status:        http.StatusOK,
+			Header:        resp.Header.Clone(),
+			InputTokens:   estimatedInputTokens, // 使用估算的输入 token
+			OutputTokens:  outputTokens,          // 使用实际的输出 token
+			FirstByteTime: firstByteTime,
+		}, time.Since(startTime).Seconds(), nil
 	}
 
 	// 非 AWS Event Stream 响应（纯 JSON）
@@ -164,10 +169,11 @@ func (s *Server) forwardKiroRequest(
 	w.Write(processedBody)
 
 	return &fwResult{
-		Status: resp.StatusCode,
-		Header: resp.Header.Clone(),
-		Body:   processedBody,
-	}, duration, nil
+		Status:        resp.StatusCode,
+		Header:        resp.Header.Clone(),
+		Body:          processedBody,
+		FirstByteTime: firstByteTime,
+	}, time.Since(startTime).Seconds(), nil
 }
 
 // isAWSEventStreamBinary 检测响应体是否是 AWS Event Stream 二进制格式
