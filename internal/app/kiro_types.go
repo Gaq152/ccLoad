@@ -51,6 +51,9 @@ var KiroModelMap = map[string]string{
 	"claude-3-7-sonnet-20250219": "claude-sonnet-4.5",
 	"claude-3-7-sonnet":          "claude-sonnet-4.5",
 
+	// Opus 4.8 系列
+	"claude-opus-4-8": "claude-opus-4.8",
+
 	// Opus 4.7 系列
 	"claude-opus-4-7": "claude-opus-4.7",
 
