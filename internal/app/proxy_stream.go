@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"sync"
 	"time"
 )
 
@@ -171,42 +172,53 @@ func streamCopySSE(ctx context.Context, src io.Reader, dst http.ResponseWriter, 
 	}
 }
 
-// readWithKeepalive 带心跳的完整读取（用于 Kiro 渠道）
-// 在读取上游数据期间，每 SSEKeepaliveInterval 向客户端发送心跳注释
-// 防止 CDN 因长时间无数据而断开客户端连接
-func readWithKeepalive(ctx context.Context, src io.Reader, dst http.ResponseWriter) ([]byte, error) {
-	type readResult struct {
-		data []byte
-		err  error
-	}
-
-	readCh := make(chan readResult, 1)
-	go func() {
-		data, err := io.ReadAll(src)
-		readCh <- readResult{data, err}
-	}()
-
-	keepalive := time.NewTimer(SSEKeepaliveInterval)
-	defer keepalive.Stop()
-
-	flusher, _ := dst.(http.Flusher)
-
-	for {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-
-		case <-keepalive.C:
-			if _, writeErr := dst.Write(sseKeepalivePayload); writeErr != nil {
-				return nil, writeErr
-			}
-			if flusher != nil {
-				flusher.Flush()
-			}
-			keepalive.Reset(SSEKeepaliveInterval)
-
-		case res := <-readCh:
-			return res.data, res.err
-		}
+// writeSSEHeaderOnce 写入 SSE 响应头并 flush（用于提前发头保活）
+func writeSSEHeaderOnce(w http.ResponseWriter) {
+	h := w.Header()
+	h.Set("Content-Type", "text/event-stream")
+	h.Set("Cache-Control", "no-cache")
+	h.Set("Connection", "keep-alive")
+	h.Set("X-Accel-Buffering", "no")
+	w.WriteHeader(http.StatusOK)
+	if flusher, ok := w.(http.Flusher); ok {
+		flusher.Flush()
 	}
 }
+
+// startKeepalive 启动心跳 goroutine，每 interval 向客户端写一次 SSE 注释行。
+// 返回 stop 函数：调用后阻塞直到心跳 goroutine 完全退出（保证之后主流程独占写 w，无并发写竞争）。
+// onWriteErr 在心跳写入失败时回调（通常表示客户端已断开），可为 nil。
+func startKeepalive(w http.ResponseWriter, interval time.Duration, onWriteErr func(error)) (stop func()) {
+	flusher, _ := w.(http.Flusher)
+	stopCh := make(chan struct{})
+	doneCh := make(chan struct{})
+
+	go func() {
+		defer close(doneCh)
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-stopCh:
+				return
+			case <-ticker.C:
+				if _, err := w.Write(sseKeepalivePayload); err != nil {
+					if onWriteErr != nil {
+						onWriteErr(err)
+					}
+					return
+				}
+				if flusher != nil {
+					flusher.Flush()
+				}
+			}
+		}
+	}()
+
+	var once sync.Once
+	return func() {
+		once.Do(func() { close(stopCh) })
+		<-doneCh // 等待心跳 goroutine 退出，确保不再写 w
+	}
+}
+
