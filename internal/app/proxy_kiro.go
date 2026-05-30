@@ -44,9 +44,66 @@ func (s *Server) forwardKiroRequest(
 	estimatedInputTokens := estimateKiroInputTokens(reqCtx.body)
 
 	// 发送请求到 Kiro API（使用配置的设备指纹）
-	resp, err := s.ForwardKiroRequest(ctx, kiroBody, reqCtx.kiroAccessToken, reqCtx.isStreaming, reqCtx.kiroDeviceFingerprint)
+	// [INFO] SSE 心跳保活：流式请求若上游 N 秒内未返回，提前发 SSE 头并启动心跳，防 CDN 切断。
+	var resp *http.Response
+	var err error
+	headerSent := false
+	keepaliveSec := s.configService.GetInt("sse_keepalive_seconds", 0)
+	if keepaliveSec > 0 && reqCtx.isStreaming {
+		interval := time.Duration(keepaliveSec) * time.Second
+		type doResult struct {
+			resp *http.Response
+			err  error
+		}
+		doCh := make(chan doResult, 1)
+		go func() {
+			r, e := s.ForwardKiroRequest(ctx, kiroBody, reqCtx.kiroAccessToken, reqCtx.isStreaming, reqCtx.kiroDeviceFingerprint)
+			doCh <- doResult{r, e}
+		}()
+
+		var stopKeepalive func()
+	kiroWaitLoop:
+		for {
+			select {
+			case dr := <-doCh:
+				resp, err = dr.resp, dr.err
+				if stopKeepalive != nil {
+					stopKeepalive()
+				}
+				break kiroWaitLoop
+			case <-time.After(interval):
+				if !headerSent {
+					writeSSEHeaderOnce(w)
+					headerSent = true
+					stopKeepalive = startKeepalive(w, interval, nil)
+				}
+			case <-ctx.Done():
+				if stopKeepalive != nil {
+					stopKeepalive()
+				}
+				go func() {
+					if dr := <-doCh; dr.resp != nil {
+						dr.resp.Body.Close()
+					}
+				}()
+				return nil, time.Since(startTime).Seconds(), ctx.Err()
+			}
+		}
+	} else {
+		resp, err = s.ForwardKiroRequest(ctx, kiroBody, reqCtx.kiroAccessToken, reqCtx.isStreaming, reqCtx.kiroDeviceFingerprint)
+	}
 	if err != nil {
 		duration := time.Since(startTime).Seconds()
+		// 已提前发头则无法返回错误码/切换渠道，在流内发 SSE error 事件，
+		// 返回 Status=200 让上层视为已完成、不重试
+		if headerSent {
+			s.writeStreamErrorAndFinish(w, fmt.Errorf("forward kiro request: %w", err))
+			return &fwResult{
+				Status:        http.StatusOK,
+				FirstByteTime: duration,
+				StreamDiagMsg: fmt.Sprintf("SSE保活已发头后 Kiro 上游失败: %v", err),
+			}, duration, nil
+		}
 		return nil, duration, fmt.Errorf("forward kiro request: %w", err)
 	}
 	defer resp.Body.Close()
@@ -63,8 +120,8 @@ func (s *Server) forwardKiroRequest(
 		// 参考 kiro2api: 将此错误映射为 Claude API 的 max_tokens stop_reason
 		if resp.StatusCode == http.StatusBadRequest && IsKiroContentLengthExceeds(errorBody) {
 			log.Printf("[INFO] [Kiro] 检测到内容长度超限错误，转换为 max_tokens stop_reason")
-			// 构建 max_tokens 响应并直接写入
-			BuildKiroContentLengthExceedsResponse(w, reqCtx.originalModel, estimatedInputTokens)
+			// 构建 max_tokens 响应并直接写入（headerSent 时跳过内部重复写头）
+			BuildKiroContentLengthExceedsResponseWithHeader(w, reqCtx.originalModel, estimatedInputTokens, !headerSent)
 			return &fwResult{
 				Status:        http.StatusOK, // 返回 200，因为已经写入了有效的 SSE 响应
 				InputTokens:   estimatedInputTokens,
@@ -83,6 +140,19 @@ func (s *Server) forwardKiroRequest(
 			log.Printf("[ERROR] [Kiro] 上游返回错误: status=%d, body=%s", resp.StatusCode, string(errorBody))
 		}
 
+		// 已提前发头：无法返回错误码触发重试/切换，改为在流内发 SSE error 事件，
+		// 返回 Status=200 让上层视为已完成、不重试
+		if headerSent {
+			s.writeStreamErrorAndFinish(w, fmt.Errorf("kiro upstream status %d: %s", resp.StatusCode, string(errorBody)))
+			return &fwResult{
+				Status:        http.StatusOK,
+				Header:        resp.Header.Clone(),
+				Body:          errorBody,
+				FirstByteTime: firstByteTime,
+				StreamDiagMsg: fmt.Sprintf("SSE保活已发头后 Kiro 上游返回 %d", resp.StatusCode),
+			}, time.Since(startTime).Seconds(), nil
+		}
+
 		return &fwResult{
 			Status:        actualStatus,
 			Header:        resp.Header.Clone(),
@@ -96,14 +166,9 @@ func (s *Server) forwardKiroRequest(
 
 	// 流式请求：边读边解析边转发（真正的流式）
 	if reqCtx.isStreaming {
-		// 立即写入 SSE 响应头
-		w.Header().Set("Content-Type", "text/event-stream")
-		w.Header().Set("Cache-Control", "no-cache")
-		w.Header().Set("Connection", "keep-alive")
-		w.Header().Set("X-Accel-Buffering", "no")
-		w.WriteHeader(http.StatusOK)
-		if flusher, ok := w.(http.Flusher); ok {
-			flusher.Flush()
+		// 写入 SSE 响应头（若已提前发头则跳过，避免重复 WriteHeader）
+		if !headerSent {
+			writeSSEHeaderOnce(w)
 		}
 
 		// 流式转发：每读到一个完整帧就立即转发给客户端
@@ -221,7 +286,7 @@ func (s *Server) ForwardKiroRequest(
 }
 
 // streamKiroAWSEventStream 真正的流式转发：边读边解析边转发
-// 替代 readWithKeepalive + ProcessKiroAWSEventStream 的组合
+// 替代 ProcessKiroAWSEventStream 的批量处理
 // 每读到一个完整的 AWS Event Stream 帧就立即解析并转发 SSE 事件给客户端
 func streamKiroAWSEventStream(ctx context.Context, src io.Reader, w http.ResponseWriter, model string, inputTokens int) (*kiroSSEParser, error) {
 	parser := newKiroSSEParser()
@@ -1356,11 +1421,19 @@ func sendKiroMaxTokensResponse(w http.ResponseWriter, flusher http.Flusher, pars
 // Claude API 兼容的 max_tokens stop_reason 响应
 // 参考 kiro2api: error_mapper.go ContentLengthExceedsStrategy
 func BuildKiroContentLengthExceedsResponse(w http.ResponseWriter, model string, inputTokens int) {
+	BuildKiroContentLengthExceedsResponseWithHeader(w, model, inputTokens, true)
+}
+
+// BuildKiroContentLengthExceedsResponseWithHeader 同上，writeHeader 控制是否写 SSE 响应头
+// （提前发头保活场景下头已发出，需跳过避免重复 WriteHeader）
+func BuildKiroContentLengthExceedsResponseWithHeader(w http.ResponseWriter, model string, inputTokens int, writeHeader bool) {
 	// 设置 SSE 响应头
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.WriteHeader(http.StatusOK)
+	if writeHeader {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+		w.WriteHeader(http.StatusOK)
+	}
 
 	flusher, _ := w.(http.Flusher)
 
