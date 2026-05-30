@@ -64,6 +64,14 @@ func (rc *ResponseCapture) Flush() {
 	}
 }
 
+// Unwrap 返回被包装的底层 ResponseWriter。
+// [FIX] http.NewResponseController 通过 Unwrap 逐层解包以访问底层连接
+// (如 SetWriteDeadline)。缺少此方法会导致流式请求禁用 WriteTimeout 失败，
+// 长响应(如 compact)在 120s 被 HTTP Server 强制砍断。
+func (rc *ResponseCapture) Unwrap() http.ResponseWriter {
+	return rc.ResponseWriter
+}
+
 // StatusCode 获取捕获的状态码
 func (rc *ResponseCapture) StatusCode() int {
 	return rc.statusCode

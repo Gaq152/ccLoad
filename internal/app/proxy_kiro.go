@@ -44,7 +44,11 @@ func (s *Server) forwardKiroRequest(
 	// 导致 compact 等长响应在 120s 被截断、客户端降级为非流式后又被 CDN 524。
 	if reqCtx.isStreaming {
 		rc := http.NewResponseController(w)
-		_ = rc.SetWriteDeadline(time.Time{}) // 某些环境不支持，静默忽略
+		if err := rc.SetWriteDeadline(time.Time{}); err != nil {
+			log.Printf("[WARN] [Kiro] 禁用 WriteTimeout 失败(将受120s限制): %v", err)
+		} else {
+			log.Printf("[DEBUG] [Kiro] 已禁用 WriteTimeout")
+		}
 	}
 
 	// 估算输入 token（使用原始 Anthropic 请求体）
