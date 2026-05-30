@@ -58,6 +58,10 @@ func main() {
 		log.Printf("No .env file found: %v", err)
 	}
 
+	// 装配日志级别过滤器（读 LOG_LEVEL 环境变量，默认 info，DEBUG 不输出）。
+	// 必须在 .env 加载之后、其余初始化之前，使早期日志也受级别控制。
+	app.SetupLogLevel()
+
 	// 设置Gin运行模式
 	if os.Getenv("GIN_MODE") == "" {
 		gin.SetMode(gin.ReleaseMode) // 生产模式

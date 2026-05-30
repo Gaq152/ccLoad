@@ -74,7 +74,7 @@ func TransformToKiroRequest(anthropicBody []byte) ([]byte, error) {
 			if lastUserIdx < 0 {
 				return nil, fmt.Errorf("no user message found")
 			}
-			log.Printf("[INFO] [Kiro] 截断末尾 assistant 消息（prefill），从 %d 条截断到 %d 条", len(messages), lastUserIdx+1)
+			log.Printf("[DEBUG] [Kiro] 截断末尾 assistant 消息（prefill），从 %d 条截断到 %d 条", len(messages), lastUserIdx+1)
 			messages = messages[:lastUserIdx+1]
 		}
 	}

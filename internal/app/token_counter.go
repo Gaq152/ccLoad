@@ -104,8 +104,9 @@ func (s *Server) handleCountTokens(c *gin.Context) {
 			s.captureCountTokensForMonitor(c, bodyBytes, resp, http.StatusOK, startTime, source, req.Model)
 			return
 		}
-		// 上游失败，降级到本地计算
-		log.Printf("[INFO] [CountTokens] 上游调用失败，降级到本地计算")
+		// 上游失败或不适用（如 Kiro/官方预设无第三方上游），降级到本地计算。
+		// 这是三层降级的正常路径，非异常，故用 DEBUG。
+		log.Printf("[DEBUG] [CountTokens] 上游不可用，降级到本地计算")
 	}
 
 	// 第二层：使用 tiktoken 本地计算

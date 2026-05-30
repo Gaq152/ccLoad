@@ -19,6 +19,13 @@ services:
       # 可选：令牌加密密钥，启用后可在管理界面再次查看令牌明文
       # - CCLOAD_TOKEN_KEY=your_random_encryption_key_here
       - TZ=Asia/Shanghai
+      # 日志级别（可选）：debug / info / warn / error，大小写不敏感，默认 info。
+      #   debug - 输出全部日志，含转发耗时、token 降级等调试细节，排查问题时用
+      #   info  - 默认，常规运行信息（不含 debug 噪音）
+      #   warn  - 仅警告及以上
+      #   error - 仅错误
+      # 修改后需重启容器生效。
+      - LOG_LEVEL=info
       # AnyRouter 反爬 Cookie 服务（可选，仅用量监控需要）
       # - ANYROUTER_COOKIE_SERVICE=https://your-cookie-service.deno.dev/
       # API访问令牌通过Web界面管理: http://localhost:8080/web/tokens.html

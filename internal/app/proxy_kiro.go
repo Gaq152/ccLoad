@@ -47,8 +47,6 @@ func (s *Server) forwardKiroRequest(
 	rc := http.NewResponseController(w)
 	if err := rc.SetWriteDeadline(time.Time{}); err != nil {
 		log.Printf("[WARN] [Kiro] 禁用 WriteTimeout 失败(将受120s限制, isStreaming=%v): %v", reqCtx.isStreaming, err)
-	} else {
-		log.Printf("[DEBUG] [Kiro] 已禁用 WriteTimeout (isStreaming=%v)", reqCtx.isStreaming)
 	}
 
 	// 估算输入 token（使用原始 Anthropic 请求体）
@@ -201,10 +199,9 @@ func (s *Server) forwardKiroRequest(
 	}
 
 	// 非流式请求：直接读取完整响应体
-	log.Printf("[DEBUG] [Kiro耗时] 非流式分支，开始读取上游 body (已耗时 %.2fs)", time.Since(startTime).Seconds())
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Printf("[DEBUG] [Kiro耗时] 非流式读取 body 失败 (已耗时 %.2fs): %v", time.Since(startTime).Seconds(), err)
+		log.Printf("[WARN] [Kiro] 非流式读取响应体失败 (已耗时 %.2fs): %v", time.Since(startTime).Seconds(), err)
 		return nil, time.Since(startTime).Seconds(), fmt.Errorf("read response body: %w", err)
 	}
 
