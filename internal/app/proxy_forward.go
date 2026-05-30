@@ -153,6 +153,29 @@ func (s *Server) handleRequestError(
 	}, duration, err
 }
 
+// writeStreamErrorAndFinish 在已开启的 SSE 流中写入 error 事件并结束。
+// 用于"已提前发头"后上游失败的场景：此时 HTTP 200 头已发出，无法再返回错误码或切换渠道，
+// 只能在流内发送 Anthropic 格式的 SSE error 事件，客户端能识别并报错（不会混流）。
+func (s *Server) writeStreamErrorAndFinish(w http.ResponseWriter, cause error) {
+	flusher, _ := w.(http.Flusher)
+	msg := cause.Error()
+	if len(msg) > 500 {
+		msg = msg[:500]
+	}
+	payload, _ := sonic.Marshal(map[string]any{
+		"type": "error",
+		"error": map[string]any{
+			"type":    "api_error",
+			"message": msg,
+		},
+	})
+	fmt.Fprintf(w, "event: error\ndata: %s\n\n", payload)
+	if flusher != nil {
+		flusher.Flush()
+	}
+	log.Printf("[WARN] [SSE保活] 已提前发头后上游失败，已发送 SSE error 事件: %v", cause)
+}
+
 // handleErrorResponse 处理错误响应（读取完整响应体）
 // 从proxy.go提取，遵循SRP原则
 // 限制错误体大小防止 OOM（与入站 DefaultMaxBodyBytes 限制对称）
@@ -304,6 +327,7 @@ func (s *Server) handleSuccessResponse(
 	requestURL string,
 	isGeminiCLI bool,
 	onBytesRead func(int64),
+	headerSent bool, // 是否已提前发送响应头（SSE 心跳保活）
 ) (*fwResult, float64, error) {
 	// 流式请求：尝试禁用 WriteTimeout，避免长时间流被服务器自己切断
 	// 注意：某些环境（Docker、反向代理、HTTP/2）的底层连接不支持此操作，静默忽略
@@ -312,9 +336,11 @@ func (s *Server) handleSuccessResponse(
 		_ = rc.SetWriteDeadline(time.Time{}) // 忽略错误，不影响功能
 	}
 
-	// 写入响应头
-	filterAndWriteResponseHeaders(w, resp.Header)
-	w.WriteHeader(resp.StatusCode)
+	// 写入响应头（若已提前发头则跳过，避免重复 WriteHeader）
+	if !headerSent {
+		filterAndWriteResponseHeaders(w, resp.Header)
+		w.WriteHeader(resp.StatusCode)
+	}
 
 	// 设置读取统计（流式和非流式都需要，用于判断数据是否传输）
 	actualFirstByteTime := firstByteTime
@@ -413,6 +439,7 @@ func (s *Server) handleResponse(
 	requestPath string,
 	isGeminiCLI bool,
 	onBytesRead func(int64),
+	headerSent bool, // 是否已提前发送响应头（SSE 心跳保活）
 ) (*fwResult, float64, error) {
 	hdrClone := resp.Header.Clone()
 
@@ -469,6 +496,20 @@ func (s *Server) handleResponse(
 			log.Printf("[DEBUG-524] 首字节耗时: %.2fs", firstByteTime)
 			log.Printf("[DEBUG-524] 响应头: %v", resp.Header)
 		}
+		// 若已提前发头（SSE 流已开启），无法再返回错误码/切换渠道，
+		// 改为在已开启的流里发 SSE error 事件并结束（客户端可识别，不混流）。
+		// 返回 Status=200 让上层视为已完成、不重试。
+		if headerSent {
+			errBody, _ := io.ReadAll(io.LimitReader(resp.Body, int64(config.DefaultMaxBodyBytes)))
+			s.writeStreamErrorAndFinish(w, fmt.Errorf("upstream status %d: %s", resp.StatusCode, safeBodyToString(errBody)))
+			return &fwResult{
+				Status:        http.StatusOK,
+				Header:        hdrClone,
+				Body:          errBody,
+				FirstByteTime: firstByteTime,
+				StreamDiagMsg: fmt.Sprintf("SSE保活已发头后上游返回 %d", resp.StatusCode),
+			}, reqCtx.Duration(), nil
+		}
 		return s.handleErrorResponse(reqCtx, resp, firstByteTime, hdrClone)
 	}
 
@@ -489,7 +530,7 @@ func (s *Server) handleResponse(
 	// 成功状态：流式转发（传递渠道信息用于日志记录）
 	channelID := &cfg.ID
 	requestURL := cfg.URL + requestPath // 构建完整请求URL用于调试日志
-	return s.handleSuccessResponse(reqCtx, resp, firstByteTime, hdrClone, w, channelType, channelID, apiKey, requestPath, requestURL, isGeminiCLI, onBytesRead)
+	return s.handleSuccessResponse(reqCtx, resp, firstByteTime, hdrClone, w, channelType, channelID, apiKey, requestPath, requestURL, isGeminiCLI, onBytesRead, headerSent)
 }
 
 // ============================================================================
@@ -514,7 +555,57 @@ func (s *Server) forwardOnceAsync(ctx context.Context, cfg *model.Config, apiKey
 	}
 
 	// 3. 发送请求
-	resp, err := s.client.Do(req)
+	// [INFO] SSE 心跳保活：流式请求若上游 N 秒内未返回首字节，提前发 SSE 头并启动心跳，
+	// 防止 Cloudflare 等 CDN 因长时间无数据而切断连接（504 origin timeout）。
+	// 仅在 sse_keepalive_seconds > 0 且为流式请求时启用；否则走原有阻塞 Do（保留完整故障切换）。
+	var resp *http.Response
+	headerSent := false
+	keepaliveSec := s.configService.GetInt("sse_keepalive_seconds", 0)
+	if keepaliveSec > 0 && reqCtx.isStreaming {
+		interval := time.Duration(keepaliveSec) * time.Second
+		type doResult struct {
+			resp *http.Response
+			err  error
+		}
+		doCh := make(chan doResult, 1)
+		go func() {
+			r, e := s.client.Do(req)
+			doCh <- doResult{r, e}
+		}()
+
+		var stopKeepalive func()
+	waitLoop:
+		for {
+			select {
+			case dr := <-doCh:
+				resp, err = dr.resp, dr.err
+				if stopKeepalive != nil {
+					stopKeepalive() // 首字节到达，停止心跳并确保不再并发写 w
+				}
+				break waitLoop
+			case <-time.After(interval):
+				if !headerSent {
+					// 上游迟迟未响应，提前发 SSE 头并启动心跳保活
+					writeSSEHeaderOnce(w)
+					headerSent = true
+					stopKeepalive = startKeepalive(w, interval, nil)
+				}
+			case <-ctx.Done():
+				if stopKeepalive != nil {
+					stopKeepalive()
+				}
+				// 等待 Do goroutine 结束并清理 resp，避免泄漏
+				go func() {
+					if dr := <-doCh; dr.resp != nil {
+						dr.resp.Body.Close()
+					}
+				}()
+				return nil, reqCtx.Duration(), ctx.Err()
+			}
+		}
+	} else {
+		resp, err = s.client.Do(req)
+	}
 
 	// [INFO] 修复（2025-12）：客户端取消时主动关闭 response body，立即中断上游传输
 	// 问题：streamCopy 中的 Read 阻塞时，无法立即响应 context 取消，上游继续生成完整响应
@@ -540,6 +631,18 @@ func (s *Server) forwardOnceAsync(ctx context.Context, cfg *model.Config, apiKey
 	}
 
 	if err != nil {
+		// 若已提前发头（SSE 流已开启），无法再切换渠道/返回错误码，
+		// 只能在已开启的流里发 SSE error 事件并结束（不混流，客户端可识别）。
+		// 返回 Status=200 让上层视为已完成、不重试（HTTP 层确实已回 200）。
+		if headerSent {
+			s.writeStreamErrorAndFinish(w, err)
+			d := reqCtx.Duration()
+			return &fwResult{
+				Status:        http.StatusOK,
+				FirstByteTime: d,
+				StreamDiagMsg: fmt.Sprintf("SSE保活已发头后上游失败: %v", err),
+			}, d, nil
+		}
 		return s.handleRequestError(reqCtx, cfg, err)
 	}
 
@@ -548,7 +651,7 @@ func (s *Server) forwardOnceAsync(ctx context.Context, cfg *model.Config, apiKey
 	firstByteTime := reqCtx.Duration()
 
 	// 5. 处理响应(传递channelType用于精确识别usage格式,传递渠道信息用于日志记录)
-	res, duration, err := s.handleResponse(reqCtx, resp, firstByteTime, w, cfg.ChannelType, cfg, apiKey, requestPath, isGeminiCLI, onBytesRead)
+	res, duration, err := s.handleResponse(reqCtx, resp, firstByteTime, w, cfg.ChannelType, cfg, apiKey, requestPath, isGeminiCLI, onBytesRead, headerSent)
 
 	// 流式传输过程中首字节超时：确保错误被正确标记为首字节超时
 	if err != nil && reqCtx.firstByteTimeoutTriggered() {
