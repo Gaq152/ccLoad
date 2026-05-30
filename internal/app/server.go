@@ -112,9 +112,13 @@ func NewServer(store storage.Store) *Server {
 	// 配置验证已移至 ConfigService 的带约束 API（SRP）
 	maxKeyRetries := configService.GetIntMin("max_key_retries", config.DefaultMaxKeyRetries, 1)
 
-	// 超时配置（固定值，不再支持Web管理）
-	firstByteTimeout := time.Duration(0)  // 流式请求首字节超时（0=禁用）
-	nonStreamTimeout := 120 * time.Second // 非流式请求超时
+	// 超时配置
+	firstByteTimeout := time.Duration(0) // 流式请求首字节超时（0=禁用）
+	// 非流式请求整体超时：可通过 non_stream_timeout_seconds 配置（默认 300s，最小 30s，修改后重启生效）。
+	// [FIX 第一档] 此前写死 120s，对 compact 等大非流式请求偏紧。这是业务层安全网，
+	// 同时 GetWriteTimeout() 会据此推导 HTTP Server 的 WriteTimeout，确保传输层不早于业务层切断。
+	nonStreamTimeoutSec := configService.GetIntMin("non_stream_timeout_seconds", 300, 30)
+	nonStreamTimeout := time.Duration(nonStreamTimeoutSec) * time.Second
 
 	logRetentionDays := configService.GetInt("log_retention_days", 7)
 	statsRetentionDays := configService.GetInt("stats_retention_days", 365)

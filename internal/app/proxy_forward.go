@@ -329,9 +329,11 @@ func (s *Server) handleSuccessResponse(
 	onBytesRead func(int64),
 	headerSent bool, // 是否已提前发送响应头（SSE 心跳保活）
 ) (*fwResult, float64, error) {
-	// 流式请求：尝试禁用 WriteTimeout，避免长时间流被服务器自己切断
-	// 注意：某些环境（Docker、反向代理、HTTP/2）的底层连接不支持此操作，静默忽略
-	if reqCtx.isStreaming {
+	// 禁用 WriteTimeout，避免长时间响应被服务器自己切断（流式和非流式都需要）。
+	// [FIX 第一档] 此前仅流式禁用；非流式大请求(如 compact)整体耗时也可能超过 120s WriteTimeout，
+	// 业务层 nonStreamTimeout(context) 才是非流式的真正安全网。
+	// 注意：某些环境（Docker、反向代理、HTTP/2）的底层连接不支持此操作，静默忽略。
+	{
 		rc := http.NewResponseController(w)
 		_ = rc.SetWriteDeadline(time.Time{}) // 忽略错误，不影响功能
 	}

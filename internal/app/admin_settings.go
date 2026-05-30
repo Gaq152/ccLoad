@@ -200,6 +200,10 @@ func validateSettingValue(key, valueType, value string) error {
 			if intVal < 0 || intVal > 100 {
 				return fmt.Errorf("sse_keepalive_seconds must be 0-100 (0=关闭)")
 			}
+		case "non_stream_timeout_seconds":
+			if intVal < 30 || intVal > 3600 {
+				return fmt.Errorf("non_stream_timeout_seconds must be 30-3600 (秒)")
+			}
 		default:
 			if intVal < -1 {
 				return fmt.Errorf("value must be >= -1")

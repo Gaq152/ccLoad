@@ -927,6 +927,7 @@ func initDefaultSettings(ctx context.Context, db *sql.DB, dialect Dialect) error
 		{"quota_batch_concurrency", "10", "int", "批量查询并发数(手动刷新,1-50)", "10"},
 		{"monitor_enabled", "false", "bool", "请求监控开关(重启后保持状态)", "false"},
 		{"sse_keepalive_seconds", "0", "int", "SSE心跳保活间隔(秒,0=关闭,1-100)。优化Cloudflare免费CDN约100秒长连接超时:上游响应慢时提前发送SSE心跳防止连接被切断,建议60", "0"},
+		{"non_stream_timeout_seconds", "300", "int", "非流式请求整体超时(秒,30-3600,修改后重启生效)。大请求(如压缩上下文)耗时较长时调大,HTTP传输层WriteTimeout会据此自动放宽", "300"},
 	}
 
 	var query string
