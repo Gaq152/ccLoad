@@ -110,6 +110,8 @@ func (s *Server) forwardKiroRequest(
 
 	// 首字节时间 = HTTP 响应头到达的时刻
 	firstByteTime := time.Since(startTime).Seconds()
+	log.Printf("[DEBUG] [Kiro耗时] 上游响应头到达: %.2fs (status=%d, isStreaming=%v, keepaliveSec=%d, headerSent=%v)",
+		firstByteTime, resp.StatusCode, reqCtx.isStreaming, keepaliveSec, headerSent)
 
 	// 检查响应状态码
 	if resp.StatusCode != http.StatusOK {
@@ -187,8 +189,10 @@ func (s *Server) forwardKiroRequest(
 	}
 
 	// 非流式请求：直接读取完整响应体
+	log.Printf("[DEBUG] [Kiro耗时] 非流式分支，开始读取上游 body (已耗时 %.2fs)", time.Since(startTime).Seconds())
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
+		log.Printf("[DEBUG] [Kiro耗时] 非流式读取 body 失败 (已耗时 %.2fs): %v", time.Since(startTime).Seconds(), err)
 		return nil, time.Since(startTime).Seconds(), fmt.Errorf("read response body: %w", err)
 	}
 
