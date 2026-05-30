@@ -19,7 +19,7 @@ jobs:
   build-and-push:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write          # 创建 GitHub Release 需要写权限
       packages: write
       attestations: write
       id-token: write
@@ -27,6 +27,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0        # 拉取完整历史与 tag，供生成更新日志使用
 
       - name: Replace version placeholder
         run: |
@@ -87,3 +89,88 @@ jobs:
           subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
+
+      # ============================================================
+      # 仅在 push tag(v*)时生成更新日志并创建 GitHub Release。
+      # - 正式版(tag 不含 "-")：对比上一个正式版 tag，完整覆盖 beta 期间所有改动；标记为正式 release。
+      # - 预发布版(tag 含 "-"，如 v1.6.4-beta.4)：对比上一个任意 tag，看增量；标记为 prerelease。
+      # 更新日志按 Conventional Commits 前缀(feat/fix/perf/refactor 等)自动分组。
+      # ============================================================
+      - name: Generate changelog
+        if: startsWith(github.ref, 'refs/tags/v')
+        id: changelog
+        run: |
+          CUR_TAG=${GITHUB_REF#refs/tags/}
+          echo "当前 tag: $CUR_TAG"
+
+          # 选取对比基准 tag(PREV_TAG)
+          if [[ "$CUR_TAG" == *-* ]]; then
+            IS_PRERELEASE=true
+            # 预发布版：上一个任意 tag(排除自己)
+            PREV_TAG=$(git describe --tags --abbrev=0 "$CUR_TAG^" 2>/dev/null || echo "")
+          else
+            IS_PRERELEASE=false
+            # 正式版：上一个正式版 tag(排除所有带 - 的预发布)
+            PREV_TAG=$(git describe --tags --abbrev=0 --exclude='*-*' "$CUR_TAG^" 2>/dev/null || echo "")
+          fi
+          echo "对比基准 tag: ${PREV_TAG:-(无,取全部历史)}"
+          echo "is_prerelease=$IS_PRERELEASE" >> "$GITHUB_OUTPUT"
+
+          # 提交范围
+          if [[ -n "$PREV_TAG" ]]; then
+            RANGE="$PREV_TAG..$CUR_TAG"
+          else
+            RANGE="$CUR_TAG"
+          fi
+
+          # 收集各分组(只取 commit 标题首行)。%s=subject
+          FEAT=$(git log "$RANGE" --no-merges --pretty=format:'%s' | grep -E '^feat(\(.+\))?!?:' || true)
+          FIX=$(git log "$RANGE" --no-merges --pretty=format:'%s' | grep -E '^fix(\(.+\))?!?:' || true)
+          PERF=$(git log "$RANGE" --no-merges --pretty=format:'%s' | grep -E '^perf(\(.+\))?!?:' || true)
+          REFACTOR=$(git log "$RANGE" --no-merges --pretty=format:'%s' | grep -E '^refactor(\(.+\))?!?:' || true)
+          OTHER=$(git log "$RANGE" --no-merges --pretty=format:'%s' | grep -vE '^(feat|fix|perf|refactor|docs|test|chore|style|ci|build)(\(.+\))?!?:' || true)
+
+          # 去掉前缀、转成 markdown 列表项的辅助函数
+          fmt() {
+            sed -E 's/^[a-z]+(\([^)]*\))?!?:[[:space:]]*//' | sed 's/^/- /'
+          }
+
+          {
+            echo "## 🐳 Docker 镜像"
+            echo ""
+            echo '```'
+            echo "docker pull ${REGISTRY}/${IMAGE_NAME}:${CUR_TAG#v}"
+            if [[ "$IS_PRERELEASE" == "false" ]]; then
+              echo "docker pull ${REGISTRY}/${IMAGE_NAME}:latest"
+            fi
+            echo '```'
+            echo ""
+            echo "## 📝 更新内容"
+            echo ""
+            [[ -n "$FEAT" ]]     && { echo "### ✨ 新功能";   echo ""; echo "$FEAT"     | fmt; echo ""; }
+            [[ -n "$FIX" ]]      && { echo "### 🐛 修复";     echo ""; echo "$FIX"      | fmt; echo ""; }
+            [[ -n "$PERF" ]]     && { echo "### ⚡ 性能";     echo ""; echo "$PERF"     | fmt; echo ""; }
+            [[ -n "$REFACTOR" ]] && { echo "### ♻️ 重构";     echo ""; echo "$REFACTOR" | fmt; echo ""; }
+            [[ -n "$OTHER" ]]    && { echo "### 🔧 其他";     echo ""; echo "$OTHER"    | fmt; echo ""; }
+            if [[ -n "$PREV_TAG" ]]; then
+              echo "**完整变更**: https://github.com/${IMAGE_NAME}/compare/${PREV_TAG}...${CUR_TAG}"
+            fi
+          } > release_notes.md
+
+          echo "===== 生成的更新日志 ====="
+          cat release_notes.md
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          CUR_TAG=${GITHUB_REF#refs/tags/}
+          PRERELEASE_FLAG=""
+          if [[ "${{ steps.changelog.outputs.is_prerelease }}" == "true" ]]; then
+            PRERELEASE_FLAG="--prerelease"
+          fi
+          gh release create "$CUR_TAG" \
+            --title "$CUR_TAG" \
+            --notes-file release_notes.md \
+            $PRERELEASE_FLAG
