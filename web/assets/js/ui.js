@@ -756,6 +756,22 @@
       }, 8000);
     },
 
+    // 比较两个版本号：返回 1 表示 a>b，-1 表示 a<b，0 表示相等。
+    // 仅比较数值主体（major.minor.patch），忽略 v 前缀和预发布后缀（如 -beta.4）。
+    // 这样 beta 用户(1.6.4-beta.4)与最新正式版(1.6.3)比较时按 1.6.4 vs 1.6.3 处理，
+    // 不会被提示"更新"到更旧的正式版。
+    compareVersion: function(a, b) {
+      const norm = v => String(v).replace(/^v/i, '').split('-')[0].split('.').map(n => parseInt(n, 10) || 0);
+      const pa = norm(a), pb = norm(b);
+      const len = Math.max(pa.length, pb.length);
+      for (let i = 0; i < len; i++) {
+        const x = pa[i] || 0, y = pb[i] || 0;
+        if (x > y) return 1;
+        if (x < y) return -1;
+      }
+      return 0;
+    },
+
     checkUpdate: async function(currentVersion) {
       const current = currentVersion.replace(/^>|<$/g, '').trim();
       if (!current || current === 'DEV') {
@@ -767,10 +783,12 @@
         const latest = data && data.latest_version;
         if (!latest) throw new Error('未获取到版本信息');
 
-        if (latest === current) {
-          App.ui.showToast('当前已是最新版本 ' + current, 'success');
-        } else {
+        // 只有最新正式版严格大于当前版本时才提示更新；
+        // 相等或当前更高(如预发布版领先正式版)都视为已是最新。
+        if (App.ui.compareVersion(latest, current) > 0) {
           App.ui.showUpdateToast(current, latest, data.release_url);
+        } else {
+          App.ui.showToast('当前已是最新版本 ' + current, 'success');
         }
       } catch (e) {
         App.ui.showToast('检查更新失败：' + e.message, 'error');
