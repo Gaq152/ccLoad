@@ -26,6 +26,7 @@ import (
 	"ccLoad/internal/validator"
 
 	"github.com/gin-gonic/gin"
+	"golang.org/x/sync/semaphore"
 )
 
 type Server struct {
@@ -65,6 +66,10 @@ type Server struct {
 	// 并发控制
 	concurrencySem chan struct{} // 信号量：限制最大并发请求数（防止goroutine爆炸）
 	maxConcurrency int           // 最大并发数（默认1000）
+
+	// 内存保护：限制所有并发请求体的内存总和，防止大请求叠加 OOM
+	memBudgetSem *semaphore.Weighted
+	maxBodyBytes int64 // 单请求体上限（字节）
 
 	// 后台服务
 	endpointTester   *EndpointTester       // 后台端点测速服务
@@ -184,6 +189,10 @@ func NewServer(store storage.Store) *Server {
 		concurrencySem: make(chan struct{}, maxConcurrency),
 		maxConcurrency: maxConcurrency,
 
+		// 内存保护：限制所有并发请求体的内存总和
+		memBudgetSem: semaphore.NewWeighted(getMaxBodyMemory()),
+		maxBodyBytes: getMaxBodyBytes(),
+
 		// 初始化优雅关闭机制
 		shutdownCh:   make(chan struct{}),
 		shutdownDone: make(chan struct{}),
@@ -197,6 +206,7 @@ func NewServer(store storage.Store) *Server {
 
 	// 初始化高性能缓存层（60秒TTL，避免数据库性能杀手查询）
 	s.channelCache = storage.NewChannelCache(store, 60*time.Second)
+	log.Printf("[CONFIG] 请求体上限: %dMB, 内存总预算: %dMB", s.maxBodyBytes/(1024*1024), getMaxBodyMemory()/(1024*1024))
 
 	// 初始化冷却管理器（统一管理渠道级和Key级冷却）
 	// 传入Server作为configGetter，利用缓存层查询渠道配置
@@ -441,6 +451,36 @@ func (s *Server) GetWriteTimeout() time.Duration {
 		return s.nonStreamTimeout
 	}
 	return minWriteTimeout
+}
+
+// getMaxBodyBytes 读取 CCLOAD_MAX_BODY_BYTES 环境变量，返回单请求体上限（字节）
+func getMaxBodyBytes() int64 {
+	if v := os.Getenv("CCLOAD_MAX_BODY_BYTES"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return int64(n)
+		}
+	}
+	return int64(config.DefaultMaxBodyBytes)
+}
+
+// getMaxBodyMemory 读取 CCLOAD_MAX_BODY_MEMORY 环境变量，返回并发请求体内存总预算（字节）
+func getMaxBodyMemory() int64 {
+	if v := os.Getenv("CCLOAD_MAX_BODY_MEMORY"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return int64(n)
+		}
+	}
+	return int64(config.DefaultMaxBodyMemory)
+}
+
+// acquireMemoryBudget 预扣内存配额。超预算时阻塞等待（带 context 超时）。
+func (s *Server) acquireMemoryBudget(ctx context.Context, size int64) error {
+	return s.memBudgetSem.Acquire(ctx, size)
+}
+
+// releaseMemoryBudget 释放内存配额。
+func (s *Server) releaseMemoryBudget(size int64) {
+	s.memBudgetSem.Release(size)
 }
 
 // SetupRoutes - 新的路由设置函数，适配Gin

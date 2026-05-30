@@ -11,7 +11,14 @@ const (
 	DefaultMaxKeyRetries = 3
 
 	// DefaultMaxBodyBytes 默认最大请求体字节数（用于代理入口的解析）
-	DefaultMaxBodyBytes = 2 * 1024 * 1024 // 2MB
+	// 图片 base64 编码后单张可达 20-30MB，多图/大附件更大，2MB 远远不够。
+	// 用户可通过 CCLOAD_MAX_BODY_BYTES 环境变量覆盖。
+	DefaultMaxBodyBytes = 50 * 1024 * 1024 // 50MB
+
+	// DefaultMaxBodyMemory 所有并发请求体的内存总预算（字节）
+	// 防止多个大请求同时读入内存导致 OOM。超预算时后续请求排队等待。
+	// 用户可通过 CCLOAD_MAX_BODY_MEMORY 环境变量覆盖。
+	DefaultMaxBodyMemory = 512 * 1024 * 1024 // 512MB
 )
 
 // HTTP客户端配置常量

@@ -9,6 +9,7 @@ require (
 	github.com/redis/go-redis/v9 v9.7.0
 	github.com/refraction-networking/utls v1.8.2
 	github.com/stretchr/testify v1.10.0
+	golang.org/x/sync v0.19.0
 	modernc.org/sqlite v1.38.2
 )
 

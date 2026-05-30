@@ -1,7 +1,6 @@
 package app
 
 import (
-	"ccLoad/internal/config"
 	"ccLoad/internal/model"
 	"ccLoad/internal/util"
 	"context"
@@ -9,8 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
-	"strconv"
 	"time"
 
 	"github.com/bytedance/sonic"
@@ -46,28 +43,55 @@ func (s *Server) acquireConcurrencySlot(c *gin.Context) (release func(), ok bool
 // 请求解析
 // ============================================================================
 
-// parseIncomingRequest 返回 (originalModel, body, isStreaming, error)
-func parseIncomingRequest(c *gin.Context) (string, []byte, bool, error) {
+// parseIncomingRequest 读取并解析请求体，返回 (originalModel, body, isStreaming, bodySize, error)。
+// bodySize 为实际读取的字节数，调用方需在请求结束时调用 s.releaseMemoryBudget(bodySize) 释放配额。
+// 小请求(< 1MB)免检内存配额，避免对正常请求增加开销。
+func (s *Server) parseIncomingRequest(c *gin.Context) (string, []byte, bool, int64, error) {
 	requestPath := c.Request.URL.Path
 	requestMethod := c.Request.Method
+	maxBody := s.maxBodyBytes
 
-	// 读取请求体（带上限，防止大包打爆内存）
-	// 默认 2MB，可通过 CCLOAD_MAX_BODY_BYTES 调整
-	maxBody := int64(config.DefaultMaxBodyBytes)
-	if v := os.Getenv("CCLOAD_MAX_BODY_BYTES"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n > 0 {
-			maxBody = int64(n)
-		}
+	// 预估请求体大小：有 Content-Length 用它，否则保守预扣上限
+	estimatedSize := maxBody
+	if cl := c.Request.ContentLength; cl > 0 && cl <= maxBody {
+		estimatedSize = cl
 	}
+
+	// 预扣内存配额，防止多个大请求叠加 OOM。
+	// 所有请求都参与（信号量 Acquire 是原子操作，开销可忽略）。
+	if err := s.acquireMemoryBudget(c.Request.Context(), estimatedSize); err != nil {
+		return "", nil, false, 0, fmt.Errorf("memory budget exhausted: %w", err)
+	}
+
 	limited := io.LimitReader(c.Request.Body, maxBody+1)
 	all, err := io.ReadAll(limited)
 	if err != nil {
-		return "", nil, false, fmt.Errorf("failed to read body: %w", err)
+		s.releaseMemoryBudget(estimatedSize)
+		return "", nil, false, 0, fmt.Errorf("failed to read body: %w", err)
 	}
 	_ = c.Request.Body.Close()
-	if int64(len(all)) > maxBody {
-		return "", nil, false, errBodyTooLarge
+
+	actualSize := int64(len(all))
+	if actualSize > maxBody {
+		s.releaseMemoryBudget(estimatedSize)
+		return "", nil, false, 0, errBodyTooLarge
 	}
+
+	// 按实际大小调整配额：多扣的退回，少扣的补扣
+	if actualSize < estimatedSize {
+		s.releaseMemoryBudget(estimatedSize - actualSize)
+	} else if actualSize > estimatedSize {
+		// Content-Length 造假：声明小但实际大，补扣差额。
+		// 此时 body 已在内存中，补扣失败则丢弃 body 返回错误。
+		diff := actualSize - estimatedSize
+		if err := s.acquireMemoryBudget(c.Request.Context(), diff); err != nil {
+			s.releaseMemoryBudget(estimatedSize)
+			return "", nil, false, 0, fmt.Errorf("memory budget exhausted: %w", err)
+		}
+	}
+
+	// 最终持有的配额 = actualSize
+	heldSize := actualSize
 
 	var reqModel struct {
 		Model string `json:"model"`
@@ -88,11 +112,12 @@ func parseIncomingRequest(c *gin.Context) (string, []byte, bool, error) {
 		if requestMethod == http.MethodGet {
 			originalModel = "*"
 		} else {
-			return "", nil, false, fmt.Errorf("invalid JSON or missing model")
+			s.releaseMemoryBudget(heldSize)
+			return "", nil, false, 0, fmt.Errorf("invalid JSON or missing model")
 		}
 	}
 
-	return originalModel, all, isStreaming, nil
+	return originalModel, all, isStreaming, heldSize, nil
 }
 
 // ============================================================================
@@ -161,7 +186,10 @@ func (s *Server) HandleProxyRequest(c *gin.Context) {
 	requestPath := c.Request.URL.Path
 	requestMethod := c.Request.Method
 
-	originalModel, all, isStreaming, err := parseIncomingRequest(c)
+	originalModel, all, isStreaming, bodyMemSize, err := s.parseIncomingRequest(c)
+	if bodyMemSize > 0 {
+		defer s.releaseMemoryBudget(bodyMemSize)
+	}
 	if err != nil {
 		if errors.Is(err, errBodyTooLarge) {
 			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": err.Error()})

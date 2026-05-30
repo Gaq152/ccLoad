@@ -26,6 +26,11 @@ services:
       #   error - 仅错误
       # 修改后需重启容器生效。
       - LOG_LEVEL=info
+      # 单请求体大小上限（字节，默认 50MB）。图片/大附件场景可调大。
+      # - CCLOAD_MAX_BODY_BYTES=104857600
+      # 所有并发请求体的内存总预算（字节，默认 512MB）。
+      # 防止多个大请求同时读入内存导致 OOM，超预算时后续请求排队等待。
+      # - CCLOAD_MAX_BODY_MEMORY=536870912
       # AnyRouter 反爬 Cookie 服务（可选，仅用量监控需要）
       # - ANYROUTER_COOKIE_SERVICE=https://your-cookie-service.deno.dev/
       # API访问令牌通过Web界面管理: http://localhost:8080/web/tokens.html

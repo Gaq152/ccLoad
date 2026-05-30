@@ -7,14 +7,23 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"golang.org/x/sync/semaphore"
 )
+
+// newTestServer 创建用于测试的最小 Server 实例
+func newTestServer() *Server {
+	return &Server{
+		concurrencySem: make(chan struct{}, 10),
+		maxConcurrency: 10,
+		memBudgetSem:   semaphore.NewWeighted(512 * 1024 * 1024),
+		maxBodyBytes:   50 * 1024 * 1024,
+	}
+}
 
 func TestHandleProxyRequest_UnknownPathReturns404(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	srv := &Server{
-		concurrencySem: make(chan struct{}, 1),
-	}
+	srv := newTestServer()
 
 	body := bytes.NewBufferString(`{"model":"gpt-4"}`)
 	req := httptest.NewRequest(http.MethodPost, "/v1/unknown", body)
@@ -98,7 +107,8 @@ func TestParseIncomingRequest_ValidJSON(t *testing.T) {
 			c, _ := gin.CreateTestContext(w)
 			c.Request = req
 
-			model, _, isStreaming, err := parseIncomingRequest(c)
+			srv := newTestServer()
+			model, _, isStreaming, _, err := srv.parseIncomingRequest(c)
 
 			if tt.expectError && err == nil {
 				t.Errorf("期望错误但未发生")
@@ -120,8 +130,15 @@ func TestParseIncomingRequest_ValidJSON(t *testing.T) {
 func TestParseIncomingRequest_BodyTooLarge(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	// 创建超大请求体（>2MB）
-	largeBody := make([]byte, 3*1024*1024) // 3MB
+	// 创建一个 maxBodyBytes=1MB 的 Server，然后发 2MB 请求体
+	srv := &Server{
+		concurrencySem: make(chan struct{}, 10),
+		maxConcurrency: 10,
+		memBudgetSem:   semaphore.NewWeighted(512 * 1024 * 1024),
+		maxBodyBytes:   1 * 1024 * 1024, // 1MB
+	}
+
+	largeBody := make([]byte, 2*1024*1024) // 2MB > 1MB 上限
 	for i := range largeBody {
 		largeBody[i] = 'a'
 	}
@@ -133,7 +150,7 @@ func TestParseIncomingRequest_BodyTooLarge(t *testing.T) {
 	c, _ := gin.CreateTestContext(w)
 	c.Request = req
 
-	_, _, _, err := parseIncomingRequest(c)
+	_, _, _, _, err := srv.parseIncomingRequest(c)
 
 	if err != errBodyTooLarge {
 		t.Errorf("期望errBodyTooLarge错误, 实际: %v", err)
