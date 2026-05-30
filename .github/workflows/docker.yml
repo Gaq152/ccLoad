@@ -54,11 +54,16 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          # 预发布版本（带 -beta/-rc/-debug 等后缀）：
+          #   - {{version}} 仍生成完整 tag（如 1.6.4-beta），可正常拉取调试
+          #   - {{major}}.{{minor}} 和 {{major}} 自动跳过（metadata-action 对预发布版本默认不生成）
+          #   - latest 不启用（见下方 enable 条件），不污染线上
+          # 正式版本（如 v1.6.4，不带后缀）：正常更新 latest 及 major.minor
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
-            type=raw,value=latest,enable=${{ github.event_name == 'push' && contains(github.ref, 'refs/tags/') }}
+            type=raw,value=latest,enable=${{ github.event_name == 'push' && contains(github.ref, 'refs/tags/') && !contains(github.ref, '-') }}
             type=raw,value=${{ github.event.inputs.tag }},enable=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag != '' }}
 
       - name: Build and push Docker image
