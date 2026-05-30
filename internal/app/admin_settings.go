@@ -196,6 +196,10 @@ func validateSettingValue(key, valueType, value string) error {
 			if intVal != LogRetentionDaysDisabled && (intVal < LogRetentionDaysMin || intVal > LogRetentionDaysMax) {
 				return fmt.Errorf("log_retention_days must be %d (永久) or %d-%d", LogRetentionDaysDisabled, LogRetentionDaysMin, LogRetentionDaysMax)
 			}
+		case "sse_keepalive_seconds":
+			if intVal < 0 || intVal > 100 {
+				return fmt.Errorf("sse_keepalive_seconds must be 0-100 (0=关闭)")
+			}
 		default:
 			if intVal < -1 {
 				return fmt.Errorf("value must be >= -1")
