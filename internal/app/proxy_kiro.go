@@ -39,6 +39,14 @@ func (s *Server) forwardKiroRequest(
 		return nil, 0, fmt.Errorf("kiro access token is empty")
 	}
 
+	// 流式请求：禁用 HTTP Server 的 WriteTimeout（默认 120s），避免长响应被服务器砍断。
+	// [FIX] 此前仅标准渠道(handleSuccessResponse)做了此处理，Kiro 流式路径遗漏，
+	// 导致 compact 等长响应在 120s 被截断、客户端降级为非流式后又被 CDN 524。
+	if reqCtx.isStreaming {
+		rc := http.NewResponseController(w)
+		_ = rc.SetWriteDeadline(time.Time{}) // 某些环境不支持，静默忽略
+	}
+
 	// 估算输入 token（使用原始 Anthropic 请求体）
 	// 注意：这是快速估算，用于监控统计，误差约 10-20%
 	estimatedInputTokens := estimateKiroInputTokens(reqCtx.body)
