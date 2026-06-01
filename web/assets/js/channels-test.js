@@ -64,7 +64,7 @@ function parseSSEResponse(responseBody) {
   return { thinking, reply };
 }
 
-// 更新流式开关状态（Codex 强制流式）
+// 更新流式开关状态（Codex 强制流式）+ 1M 上下文开关显隐（仅 Claude/anthropic 渠道）
 function updateStreamCheckbox() {
   const channelType = document.getElementById('testChannelType').value;
   const streamCheckbox = document.getElementById('testStreamEnabled');
@@ -77,6 +77,17 @@ function updateStreamCheckbox() {
   } else {
     streamCheckbox.disabled = false;
     streamHint.textContent = '默认开启流式测试';
+  }
+
+  // 1M 上下文开关仅对 Claude(anthropic) 渠道展示；切换到非 anthropic 时隐藏并复位
+  const context1mGroup = document.getElementById('context1mGroup');
+  if (context1mGroup) {
+    if (channelType === 'anthropic') {
+      context1mGroup.style.display = 'block';
+    } else {
+      context1mGroup.style.display = 'none';
+      document.getElementById('testContext1mEnabled').checked = false;
+    }
   }
 }
 
@@ -200,6 +211,8 @@ function resetTestModal() {
   // 重置流式开关为默认启用状态
   document.getElementById('testStreamEnabled').checked = true;
   document.getElementById('testStreamEnabled').disabled = false;
+  // 重置 1M 上下文开关为默认关闭
+  document.getElementById('testContext1mEnabled').checked = false;
 }
 
 async function runChannelTest() {
@@ -214,6 +227,8 @@ async function runChannelTest() {
   const testContent = contentInput.value.trim() || defaultTestContent;
   const channelType = channelTypeSelect.value;
   const streamEnabled = streamCheckbox.checked;
+  // 1M 上下文仅对 Claude(anthropic) 渠道生效
+  const context1mEnabled = channelType === 'anthropic' && document.getElementById('testContext1mEnabled').checked;
 
   if (!selectedModel) {
     if (window.showError) showError('请选择一个模型');
@@ -229,6 +244,7 @@ async function runChannelTest() {
       model: selectedModel,
       max_tokens: 512,
       stream: streamEnabled,
+      context_1m: context1mEnabled,
       content: testContent,
       channel_type: channelType
     };
@@ -290,6 +306,8 @@ async function runBatchTest() {
   const testContent = contentInput.value.trim() || defaultTestContent;
   const channelType = channelTypeSelect.value;
   const streamEnabled = streamCheckbox.checked;
+  // 1M 上下文仅对 Claude(anthropic) 渠道生效
+  const context1mEnabled = channelType === 'anthropic' && document.getElementById('testContext1mEnabled').checked;
   const concurrency = Math.max(1, Math.min(50, parseInt(concurrencyInput.value) || 10));
 
   if (!selectedModel) {
@@ -326,6 +344,7 @@ async function runBatchTest() {
         model: selectedModel,
         max_tokens: 512,
         stream: streamEnabled,
+        context_1m: context1mEnabled,
         content: testContent,
         channel_type: channelType,
         key_index: keyIndex

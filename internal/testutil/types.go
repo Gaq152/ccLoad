@@ -7,6 +7,7 @@ type TestChannelRequest struct {
 	Model       string            `json:"model" binding:"required"`
 	MaxTokens   int               `json:"max_tokens,omitempty"`   // 可选，默认512
 	Stream      bool              `json:"stream,omitempty"`       // 可选，流式响应
+	Context1M   bool              `json:"context_1m,omitempty"`   // 可选，仅 anthropic：启用 1M 上下文（追加 context-1m beta）
 	Content     string            `json:"content,omitempty"`      // 可选，测试内容，默认"test"
 	Headers     map[string]string `json:"headers,omitempty"`      // 可选，自定义请求头
 	ChannelType string            `json:"channel_type,omitempty"` // 可选，渠道类型：anthropic(默认)、codex、gemini

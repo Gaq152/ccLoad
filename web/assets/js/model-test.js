@@ -88,9 +88,24 @@ async function onChannelChange() {
   // 更新渠道类型
   const channelType = selectedChannel.channel_type || 'anthropic';
   await window.ChannelTypeManager.renderChannelTypeSelect('testChannelType', channelType);
+  updateModelTestContext1m();
 
   renderModelList();
 }
+
+// 1M 上下文开关仅对 Claude(anthropic) 渠道展示；切换到非 anthropic 时隐藏并复位
+function updateModelTestContext1m() {
+  const channelType = document.getElementById('testChannelType').value;
+  const label = document.getElementById('context1mLabel');
+  if (!label) return;
+  if (channelType === 'anthropic') {
+    label.style.display = 'flex';
+  } else {
+    label.style.display = 'none';
+    document.getElementById('context1mEnabled').checked = false;
+  }
+}
+window.updateModelTestContext1m = updateModelTestContext1m;
 
 function selectAllModels() {
   document.querySelectorAll('.model-checkbox').forEach(cb => cb.checked = true);
@@ -139,6 +154,8 @@ async function runModelTests() {
   const content = document.getElementById('modelTestContent').value.trim() || 'hi';
   const channelType = document.getElementById('testChannelType').value;
   const streamEnabled = document.getElementById('streamEnabled').checked;
+  // 1M 上下文仅对 Claude(anthropic) 渠道生效
+  const context1mEnabled = channelType === 'anthropic' && document.getElementById('context1mEnabled').checked;
   const progressEl = document.getElementById('testProgress');
   const runBtn = document.getElementById('runTestBtn');
 
@@ -166,7 +183,7 @@ async function runModelTests() {
       const resp = await fetchAPIWithAuth(`/admin/channels/${selectedChannel.id}/test`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model, max_tokens: 512, stream: streamEnabled, content, channel_type: channelType })
+        body: JSON.stringify({ model, max_tokens: 512, stream: streamEnabled, context_1m: context1mEnabled, content, channel_type: channelType })
       });
       const data = resp.data || {};
 

@@ -896,6 +896,14 @@ function(response) {
         <div id="streamHint" class="models-hint">默认开启流式测试</div>
       </div>
 
+      <div class="form-group" id="context1mGroup" style="display: none;">
+        <label class="form-label" style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+          <input type="checkbox" id="testContext1mEnabled" style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--primary-500);">
+          <span>启用 1M 上下文（Context 1M）</span>
+        </label>
+        <div class="models-hint">部分中转检测到账号已开通 1M 时会强制要求携带 context-1m beta，仅 Claude 渠道可用，默认关闭</div>
+      </div>
+
       <div class="form-group">
         <label class="form-label" for="testConcurrency">
           批量测试并发数

@@ -633,7 +633,13 @@ func (t *AnthropicTester) Build(cfg *model.Config, apiKey string, req *TestChann
 	h.Set("User-Agent", "claude-cli/2.0.73 (external, cli)")
 	h.Set("x-app", "cli")
 	h.Set("anthropic-version", "2023-06-01")
-	h.Set("anthropic-beta", "interleaved-thinking-2025-05-14,context-management-2025-06-27")
+	// 基础 beta 集合；启用 1M 上下文时追加 context-1m（部分中转检测到账号已开通 1M
+	// 时会强制要求请求携带此 beta，否则返回 400）
+	betaFeatures := "interleaved-thinking-2025-05-14,context-management-2025-06-27"
+	if req.Context1M {
+		betaFeatures += ",context-1m-2025-08-07"
+	}
+	h.Set("anthropic-beta", betaFeatures)
 	h.Set("anthropic-dangerous-direct-browser-access", "true")
 	// x-stainless-* headers
 	h.Set("x-stainless-arch", "x64")

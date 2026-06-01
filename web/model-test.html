@@ -62,7 +62,7 @@
             </label>
             <label style="display: flex; align-items: center; gap: 6px; font-size: 13px;">
               <span style="color: var(--color-text-secondary);">类型</span>
-              <select id="testChannelType" style="padding: 6px 8px; border: 1px solid var(--color-border); border-radius: 6px; background: var(--color-bg-secondary); color: var(--color-text); font-size: 13px;">
+              <select id="testChannelType" onchange="updateModelTestContext1m()" style="padding: 6px 8px; border: 1px solid var(--color-border); border-radius: 6px; background: var(--color-bg-secondary); color: var(--color-text); font-size: 13px;">
               </select>
             </label>
             <label style="display: flex; align-items: center; gap: 6px; font-size: 13px; flex: 1; min-width: 200px;">
@@ -81,6 +81,10 @@
             <label style="display: flex; align-items: center; gap: 4px; font-size: 13px; cursor: pointer;">
               <input type="checkbox" id="streamEnabled" style="width: 16px; height: 16px;">
               <span>流式</span>
+            </label>
+            <label id="context1mLabel" title="部分中转检测到账号已开通 1M 时会强制要求携带 context-1m beta，仅 Claude 渠道可用" style="display: none; align-items: center; gap: 4px; font-size: 13px; cursor: pointer;">
+              <input type="checkbox" id="context1mEnabled" style="width: 16px; height: 16px;">
+              <span>1M</span>
             </label>
             <label style="display: flex; align-items: center; gap: 4px; font-size: 13px;">
               <span>并发</span>
