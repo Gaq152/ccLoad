@@ -628,34 +628,35 @@ func (t *AnthropicTester) Build(cfg *model.Config, apiKey string, req *TestChann
 
 	h := make(http.Header)
 	h.Set("Content-Type", "application/json")
+	// 认证：同时设置 x-api-key 与 Authorization，对齐真实客户端经 ccLoad 转发后的形态
+	//（转发路径 injectAPIKeyHeaders 会注入这两个头；页面测试为直连上游，必须自己补 x-api-key）
+	h.Set("x-api-key", apiKey)
 	h.Set("Authorization", "Bearer "+apiKey)
-	// Claude Code CLI headers（模拟真实 CLI 请求）
-	h.Set("User-Agent", "claude-cli/2.0.73 (external, cli)")
+	// Claude Code CLI headers（对齐真实 claude-cli 2.1.x 抓包结果）
+	h.Set("User-Agent", "claude-cli/2.1.159 (external, cli)")
 	h.Set("x-app", "cli")
 	h.Set("anthropic-version", "2023-06-01")
-	// 基础 beta 集合；启用 1M 上下文时追加 context-1m（部分中转检测到账号已开通 1M
-	// 时会强制要求请求携带此 beta，否则返回 400）
-	betaFeatures := "interleaved-thinking-2025-05-14,context-management-2025-06-27"
+	h.Set("x-claude-code-session-id", generateUUID())
+	// beta 集合对齐真实客户端：claude-code-20250219 是 Claude Code 标识，中转据此鉴别合法 CLI 请求，
+	// 缺失会被判为非法请求返回 503。启用 1M 上下文时追加 context-1m（账号已开通 1M 时中转强制要求）。
+	betaFeatures := "claude-code-20250219,interleaved-thinking-2025-05-14,redact-thinking-2026-02-12,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,advanced-tool-use-2025-11-20,effort-2025-11-24,extended-cache-ttl-2025-04-11"
 	if req.Context1M {
 		betaFeatures += ",context-1m-2025-08-07"
 	}
 	h.Set("anthropic-beta", betaFeatures)
 	h.Set("anthropic-dangerous-direct-browser-access", "true")
-	// x-stainless-* headers
+	// x-stainless-* headers（对齐客户端版本）
 	h.Set("x-stainless-arch", "x64")
 	h.Set("x-stainless-lang", "js")
 	h.Set("x-stainless-os", "Windows")
-	h.Set("x-stainless-package-version", "0.70.0")
+	h.Set("x-stainless-package-version", "0.94.0")
 	h.Set("x-stainless-retry-count", "0")
 	h.Set("x-stainless-runtime", "node")
-	h.Set("x-stainless-runtime-version", "v22.21.0")
+	h.Set("x-stainless-runtime-version", "v24.3.0")
 	h.Set("x-stainless-timeout", "600")
-	h.Set("x-stainless-helper-method", "stream")
-	// 额外请求头
 	h.Set("Accept", "application/json")
-	h.Set("accept-language", "*")
-	h.Set("sec-fetch-mode", "cors")
-	h.Set("accept-encoding", "br, gzip, deflate")
+	// 不显式设置 Accept-Encoding：交给 Go Transport 自动协商 gzip 并透明解压，
+	// 避免拿到 br 压缩响应导致解析乱码（与转发路径 copyRequestHeaders 行为一致）
 
 	return fullURL, h, body, nil
 }
