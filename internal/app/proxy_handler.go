@@ -7,7 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/bytedance/sonic"
@@ -197,6 +200,32 @@ func (s *Server) HandleProxyRequest(c *gin.Context) {
 		}
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
+	}
+
+	// [临时调试-1M] dump 客户端完整请求头 + body，逐行对比"页面测试"与"客户端转发"差异（定位 1M/503）。定位后删除。
+	{
+		hdrKeys := make([]string, 0, len(c.Request.Header))
+		for k := range c.Request.Header {
+			hdrKeys = append(hdrKeys, k)
+		}
+		sort.Strings(hdrKeys)
+		var sb strings.Builder
+		fmt.Fprintf(&sb, "[DEBUG-1M] >>> %s %s?%s | model=%s\n", requestMethod, requestPath, c.Request.URL.RawQuery, originalModel)
+		for _, k := range hdrKeys {
+			val := strings.Join(c.Request.Header[k], ", ")
+			// 认证/敏感头脱敏：只看长度，不泄露值
+			switch strings.ToLower(k) {
+			case "authorization", "x-api-key", "cookie":
+				val = fmt.Sprintf("(len=%d, redacted)", len(val))
+			}
+			fmt.Fprintf(&sb, "[DEBUG-1M]     %s: %s\n", k, val)
+		}
+		bodyPreview := string(all)
+		if len(bodyPreview) > 4096 {
+			bodyPreview = bodyPreview[:4096] + fmt.Sprintf("...(truncated, total=%d bytes)", len(all))
+		}
+		fmt.Fprintf(&sb, "[DEBUG-1M]     body=%s", bodyPreview)
+		log.Print(sb.String())
 	}
 
 	timeout := parseTimeout(c.Request.URL.Query(), c.Request.Header)
