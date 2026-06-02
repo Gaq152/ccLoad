@@ -652,15 +652,13 @@ func (t *AnthropicTester) Build(cfg *model.Config, apiKey string, req *TestChann
 
 	h := make(http.Header)
 	h.Set("Content-Type", "application/json")
-	// 认证：默认同时设 x-api-key 与 Authorization（兼容用 x-api-key 认证的渠道）。
-	// 但真实 Claude Code 只发 Authorization Bearer、从不发 x-api-key；1M 渠道(卖 CC 额度的
-	// 中转)会据此识破——发了 x-api-key 还带 CC 特征字段 = 非真实客户端 → 503。故 1M 时只发 Authorization。
-	if !req.Context1M {
-		h.Set("x-api-key", apiKey)
-	}
+	// 认证：与转发路径 injectAPIKeyHeaders() 保持一致，始终同时设 x-api-key 与 Authorization。
+	// 转发路径对 Anthropic 渠道总是注入两个头（即使真实客户端不发 x-api-key），且能正常通过
+	// anyrouter 等中转的检测。测试页必须与转发路径行为对齐，否则可能因缺 x-api-key 被拒。
+	h.Set("x-api-key", apiKey)
 	h.Set("Authorization", "Bearer "+apiKey)
 	// Claude Code CLI headers（对齐真实 claude-cli 2.1.x 抓包结果）
-	h.Set("User-Agent", "claude-cli/2.1.159 (external, cli)")
+	h.Set("User-Agent", "claude-cli/2.1.160 (external, cli)")
 	h.Set("x-app", "cli")
 	h.Set("anthropic-version", "2023-06-01")
 	h.Set("x-claude-code-session-id", generateUUID())
