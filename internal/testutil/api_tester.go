@@ -655,6 +655,17 @@ func (t *AnthropicTester) Build(cfg *model.Config, apiKey string, req *TestChann
 	h.Set("x-stainless-runtime-version", "v24.3.0")
 	h.Set("x-stainless-timeout", "600")
 	h.Set("Accept", "application/json")
+	// [临时调试-1M] 模拟客户端经 Cloudflare 到达 ccLoad 后被透传给上游的 9 个转发头
+	//（转发与测试页的唯一请求头差异就是这些，补上验证是否为 503 根因）。定位后删除。
+	h.Set("Cdn-Loop", "cloudflare; loops=1")
+	h.Set("Cf-Connecting-Ip", "64.204.21.10")
+	h.Set("Cf-Ipcountry", "US")
+	h.Set("Cf-Ray", "a055120579166d41-LAX")
+	h.Set("Cf-Visitor", `{"scheme":"https"}`)
+	h.Set("X-Forwarded-For", "64.204.21.10, 104.23.251.126")
+	h.Set("X-Forwarded-Proto", "https")
+	h.Set("X-Forwarded-Scheme", "https")
+	h.Set("X-Real-Ip", "104.23.251.126")
 	// 不显式设置 Accept-Encoding：交给 Go Transport 自动协商 gzip 并透明解压，
 	// 避免拿到 br 压缩响应导致解析乱码（与转发路径 copyRequestHeaders 行为一致）
 
