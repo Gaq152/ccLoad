@@ -227,6 +227,20 @@ func (s *Server) HandleProxyRequest(c *gin.Context) {
 		fmt.Fprintf(&sb, "[DEBUG-1M]     body=%s", bodyPreview)
 		log.Print(sb.String())
 	}
+	// [临时调试-1M] 解析 body 关键字段，便于对比测试页与客户端的 body 差异。定位后删除。
+	{
+		var bm struct {
+			Model     string         `json:"model"`
+			MaxTokens int            `json:"max_tokens"`
+			Thinking  map[string]any `json:"thinking"`
+			Tools     []any          `json:"tools"`
+			System    any            `json:"system"`
+			Stream    bool           `json:"stream"`
+		}
+		_ = sonic.Unmarshal(all, &bm)
+		log.Printf("[DEBUG-1M-BODY] model=%s max_tokens=%d has_thinking=%t tools=%d has_system=%t stream=%t total_bytes=%d",
+			bm.Model, bm.MaxTokens, bm.Thinking != nil, len(bm.Tools), bm.System != nil, bm.Stream, len(all))
+	}
 
 	timeout := parseTimeout(c.Request.URL.Query(), c.Request.Header)
 	ctx := c.Request.Context()

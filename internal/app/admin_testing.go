@@ -412,6 +412,21 @@ func (s *Server) testChannelAPI(cfg *model.Config, apiKey string, testReq *testu
 		req.Header.Set(key, value)
 	}
 
+	// [临时调试-1M] dump 测试页实际发往上游的完整请求，与客户端转发对比 body 差异。定位后删除。
+	{
+		var sb strings.Builder
+		fmt.Fprintf(&sb, "[DEBUG-1M-TEST] >>> %s %s\n", req.Method, req.URL.String())
+		for k, vs := range req.Header {
+			val := strings.Join(vs, ", ")
+			if k == "Authorization" || k == "X-Api-Key" {
+				val = fmt.Sprintf("(len=%d, redacted)", len(val))
+			}
+			fmt.Fprintf(&sb, "[DEBUG-1M-TEST]   %s: %s\n", k, val)
+		}
+		fmt.Fprintf(&sb, "[DEBUG-1M-TEST]   body=%s", string(body))
+		log.Print(sb.String())
+	}
+
 	// 发送请求
 	start := time.Now()
 	resp, err := s.client.Do(req)
