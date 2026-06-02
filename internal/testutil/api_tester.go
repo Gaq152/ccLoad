@@ -589,6 +589,17 @@ func generateAnthropicUserID() string {
 	return fmt.Sprintf("user_%s_account__session_%s", hash, sessionID)
 }
 
+// generateClaudeCodeUserID 生成 Claude Code 2.1 的 metadata.user_id（JSON 字符串格式）
+// 格式: {"device_id":"<64位hex>","account_uuid":"","session_id":"<uuid>"}
+// 1M 渠道测试需要此格式：卖 Claude Code 额度的中转靠请求体特征反查真实客户端，
+// 旧的 user_xxx 下划线格式会被判为非真实客户端。
+func generateClaudeCodeUserID() string {
+	deviceBytes := make([]byte, 32)
+	rand.Read(deviceBytes)
+	deviceID := fmt.Sprintf("%x", deviceBytes)
+	return fmt.Sprintf(`{"device_id":"%s","account_uuid":"","session_id":"%s"}`, deviceID, generateUUID())
+}
+
 func (t *AnthropicTester) Build(cfg *model.Config, apiKey string, req *TestChannelRequest) (string, http.Header, []byte, error) {
 	testContent := req.Content
 
@@ -616,6 +627,19 @@ func (t *AnthropicTester) Build(cfg *model.Config, apiKey string, req *TestChann
 		"max_tokens": 32000,
 		"tools":      anthropicMinimalTools,
 		"metadata":   map[string]any{"user_id": generateAnthropicUserID()},
+	}
+
+	// [1M] 开启 1M 上下文时补全 Claude Code 2.1 特征字段：卖 Claude Code 额度的中转
+	//（如 anyrouter）靠请求体这些字段反查是否真实 CLI 客户端，缺失会被判为伪造请求返回 503，
+	// 且须与上面声明的 context-management / effort / thinking 等 beta 自洽。
+	if req.Context1M {
+		msg["max_tokens"] = 64000
+		msg["thinking"] = map[string]any{"type": "adaptive"}
+		msg["context_management"] = map[string]any{
+			"edits": []map[string]any{{"type": "clear_thinking_20251015", "keep": "all"}},
+		}
+		msg["output_config"] = map[string]any{"effort": "high"}
+		msg["metadata"] = map[string]any{"user_id": generateClaudeCodeUserID()}
 	}
 
 	body, err := sonic.Marshal(msg)
@@ -655,17 +679,6 @@ func (t *AnthropicTester) Build(cfg *model.Config, apiKey string, req *TestChann
 	h.Set("x-stainless-runtime-version", "v24.3.0")
 	h.Set("x-stainless-timeout", "600")
 	h.Set("Accept", "application/json")
-	// [临时调试-1M] 模拟客户端经 Cloudflare 到达 ccLoad 后被透传给上游的 9 个转发头
-	//（转发与测试页的唯一请求头差异就是这些，补上验证是否为 503 根因）。定位后删除。
-	h.Set("Cdn-Loop", "cloudflare; loops=1")
-	h.Set("Cf-Connecting-Ip", "64.204.21.10")
-	h.Set("Cf-Ipcountry", "US")
-	h.Set("Cf-Ray", "a055120579166d41-LAX")
-	h.Set("Cf-Visitor", `{"scheme":"https"}`)
-	h.Set("X-Forwarded-For", "64.204.21.10, 104.23.251.126")
-	h.Set("X-Forwarded-Proto", "https")
-	h.Set("X-Forwarded-Scheme", "https")
-	h.Set("X-Real-Ip", "104.23.251.126")
 	// 不显式设置 Accept-Encoding：交给 Go Transport 自动协商 gzip 并透明解压，
 	// 避免拿到 br 压缩响应导致解析乱码（与转发路径 copyRequestHeaders 行为一致）
 

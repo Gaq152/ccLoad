@@ -683,6 +683,10 @@ func (s *Server) htmlAccessGuard() gin.HandlerFunc {
 
 		// 静态资源（JS/CSS/图片/字体等）不做鉴权
 		if !isHTMLRequest(reqPath) {
+			// 禁止 CDN/浏览器长期缓存：版本号写在 ui.js 里，发版后若被 Cloudflare 边缘
+			// 缓存会一直显示旧版本号。配合框架自带的 ETag，no-cache 让每次回源校验
+			//（内容未变返回 304，开销极小），既不被长缓存、又不浪费带宽。
+			c.Header("Cache-Control", "no-cache")
 			c.Next()
 			return
 		}

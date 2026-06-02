@@ -556,25 +556,6 @@ func (s *Server) forwardOnceAsync(ctx context.Context, cfg *model.Config, apiKey
 		return nil, 0, err
 	}
 
-	// [临时调试-1M] dump 转发实际发给上游的完整请求，与测试页 [DEBUG-1M-TEST] 逐行对比。定位后删除。
-	if strings.Contains(requestPath, "messages") {
-		var sb strings.Builder
-		fmt.Fprintf(&sb, "[DEBUG-1M-FWD] >>> %s %s\n", req.Method, req.URL.String())
-		for k, vs := range req.Header {
-			val := strings.Join(vs, ", ")
-			if k == "Authorization" || k == "X-Api-Key" {
-				val = fmt.Sprintf("(len=%d, redacted)", len(val))
-			}
-			fmt.Fprintf(&sb, "[DEBUG-1M-FWD]   %s: %s\n", k, val)
-		}
-		bp := string(body)
-		if len(bp) > 1500 {
-			bp = bp[:1500] + "...(truncated)"
-		}
-		fmt.Fprintf(&sb, "[DEBUG-1M-FWD]   body=%s", bp)
-		log.Print(sb.String())
-	}
-
 	// 3. 发送请求
 	// [INFO] SSE 心跳保活：流式请求若上游 N 秒内未返回首字节，提前发 SSE 头并启动心跳，
 	// 防止 Cloudflare 等 CDN 因长时间无数据而切断连接（504 origin timeout）。
