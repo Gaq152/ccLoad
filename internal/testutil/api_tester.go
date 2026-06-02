@@ -640,6 +640,17 @@ func (t *AnthropicTester) Build(cfg *model.Config, apiKey string, req *TestChann
 		}
 		msg["output_config"] = map[string]any{"effort": "high"}
 		msg["metadata"] = map[string]any{"user_id": generateClaudeCodeUserID()}
+		// system[0].text 必须精确等于 "You are Claude Code, Anthropic's official CLI for Claude."
+		// （真实客户端首段就是这一句、单独成段）。anyrouter 等中转据此精确鉴别真实 CLI 客户端，
+		// 默认文案多拼了 "You are an interactive CLI tool..." 半句会导致不匹配 → 503。
+		// 已验证成功的 curl 样本（V7）正是用这条精确单句。
+		msg["system"] = []map[string]any{
+			{
+				"type":          "text",
+				"text":          "You are Claude Code, Anthropic's official CLI for Claude.",
+				"cache_control": map[string]any{"type": "ephemeral"},
+			},
+		}
 	}
 
 	body, err := sonic.Marshal(msg)
