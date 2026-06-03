@@ -12,6 +12,7 @@ type TestChannelRequest struct {
 	Headers     map[string]string `json:"headers,omitempty"`      // 可选，自定义请求头
 	ChannelType string            `json:"channel_type,omitempty"` // 可选，渠道类型：anthropic(默认)、codex、gemini
 	KeyIndex    int               `json:"key_index,omitempty"`    // 可选，指定测试的Key索引，默认0（第一个）
+	Retries     int               `json:"retries,omitempty"`      // 可选，遇 429 限流时自动重试的总尝试次数，默认1（不重试）
 }
 
 // Validate 实现RequestValidator接口

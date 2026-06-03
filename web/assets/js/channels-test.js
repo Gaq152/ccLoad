@@ -229,6 +229,9 @@ async function runChannelTest() {
   const streamEnabled = streamCheckbox.checked;
   // 1M 上下文仅对 Claude(anthropic) 渠道生效
   const context1mEnabled = channelType === 'anthropic' && document.getElementById('testContext1mEnabled').checked;
+  // 测试次数：遇 429 限流自动重试（撞限流间隙），默认 1
+  const retryEl = document.getElementById('testRetryCount');
+  const retries = Math.max(1, parseInt(retryEl && retryEl.value) || 3);
 
   if (!selectedModel) {
     if (window.showError) showError('请选择一个模型');
@@ -246,7 +249,8 @@ async function runChannelTest() {
       stream: streamEnabled,
       context_1m: context1mEnabled,
       content: testContent,
-      channel_type: channelType
+      channel_type: channelType,
+      retries: retries
     };
 
     if (keySelect && keySelect.parentElement.style.display !== 'none') {
