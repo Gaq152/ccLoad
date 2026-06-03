@@ -756,20 +756,35 @@
       }, 8000);
     },
 
-    // 比较两个版本号：返回 1 表示 a>b，-1 表示 a<b，0 表示相等。
-    // 仅比较数值主体（major.minor.patch），忽略 v 前缀和预发布后缀（如 -beta.4）。
-    // 这样 beta 用户(1.6.4-beta.4)与最新正式版(1.6.3)比较时按 1.6.4 vs 1.6.3 处理，
-    // 不会被提示"更新"到更旧的正式版。
+    // 比较两个版本号：返回 1 表示 a>b，-1 表示 a<b，0 表示相等（完整 semver，含预发布）。
+    // 规则：先比 major.minor.patch；主体相同时，正式版(无后缀) > 预发布版(有 -beta 等后缀)，
+    // 两个预发布按后缀里的数字比较(beta.4 < beta.10 < beta.12)。
+    // 例：1.6.5 > 1.6.5-beta.12 > 1.6.5-beta.4 > 1.6.4。
+    // 这样既保证 beta 用户(1.6.5-beta.x)不会被提示降级到旧正式版(1.6.4)，
+    // 又能在同号正式版(1.6.5)发布后正确提示 beta 用户更新。
     compareVersion: function(a, b) {
-      const norm = v => String(v).replace(/^v/i, '').split('-')[0].split('.').map(n => parseInt(n, 10) || 0);
-      const pa = norm(a), pb = norm(b);
-      const len = Math.max(pa.length, pb.length);
+      const parse = v => {
+        const s = String(v).replace(/^v/i, '');
+        const dash = s.indexOf('-');
+        const main = dash >= 0 ? s.slice(0, dash) : s;
+        const pre = dash >= 0 ? s.slice(dash + 1) : '';
+        return { nums: main.split('.').map(n => parseInt(n, 10) || 0), pre };
+      };
+      const pa = parse(a), pb = parse(b);
+      const len = Math.max(pa.nums.length, pb.nums.length);
       for (let i = 0; i < len; i++) {
-        const x = pa[i] || 0, y = pb[i] || 0;
+        const x = pa.nums[i] || 0, y = pb.nums[i] || 0;
         if (x > y) return 1;
         if (x < y) return -1;
       }
-      return 0;
+      // 主体相同：正式版(无预发布后缀) > 预发布版
+      if (pa.pre === pb.pre) return 0;
+      if (!pa.pre) return 1;
+      if (!pb.pre) return -1;
+      // 都是预发布：按后缀里的数字比较(beta.4 vs beta.10)
+      const preNum = p => { const m = p.match(/\d+/); return m ? parseInt(m[0], 10) : 0; };
+      const na = preNum(pa.pre), nb = preNum(pb.pre);
+      return na > nb ? 1 : (na < nb ? -1 : 0);
     },
 
     checkUpdate: async function(currentVersion) {
