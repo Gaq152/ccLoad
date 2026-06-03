@@ -17,6 +17,20 @@ import (
 //go:embed codex_instructions.txt
 var codexDefaultInstructions string
 
+//go:embed claude_code_tools.json
+var claudeCodeToolsJSON []byte
+
+// claudeCodeFullTools 真实 Claude Code 客户端的完整工具集(11个，从抓包提取，schema 原样保真)。
+// 1M 渠道测试用它撑起 body 丰满度：经抓包对比验证(V7 小body=429 vs V8/V9 完整body=200)——
+// anyrouter 这类中转对单薄 body(少量工具)限流(429)，对完整真实 body 放行(200)，丰满度是 1M 测试成败的根因。
+var claudeCodeFullTools []map[string]any
+
+func init() {
+	if err := sonic.Unmarshal(claudeCodeToolsJSON, &claudeCodeFullTools); err != nil {
+		panic("parse claude_code_tools.json: " + err.Error())
+	}
+}
+
 // ChannelTester 定义不同渠道类型的测试协议（OCP：新增类型无需修改调用方）
 type ChannelTester interface {
 	// Build 构造完整请求：URL、基础请求头、请求体
@@ -594,11 +608,11 @@ func generateAnthropicUserID() string {
 // 格式: {"device_id":"<64位hex>","account_uuid":"","session_id":"<uuid>"}
 // 1M 渠道测试需要此格式：卖 Claude Code 额度的中转靠请求体特征反查真实客户端，
 // 旧的 user_xxx 下划线格式会被判为非真实客户端。
-func generateClaudeCodeUserID() string {
+func buildClaudeCodeUserID(sessionID string) string {
 	deviceBytes := make([]byte, 32)
 	rand.Read(deviceBytes)
 	deviceID := fmt.Sprintf("%x", deviceBytes)
-	return fmt.Sprintf(`{"device_id":"%s","account_uuid":"","session_id":"%s"}`, deviceID, generateUUID())
+	return fmt.Sprintf(`{"device_id":"%s","account_uuid":"","session_id":"%s"}`, deviceID, sessionID)
 }
 
 // buildClaudeCodeSystemReminder 构造真实 Claude Code 客户端注入的 <system-reminder> 上下文前缀。
@@ -611,6 +625,9 @@ func buildClaudeCodeSystemReminder() string {
 
 func (t *AnthropicTester) Build(cfg *model.Config, apiKey string, req *TestChannelRequest) (string, http.Header, []byte, error) {
 	testContent := req.Content
+	// 统一 session id：header 的 x-claude-code-session-id 必须与 body metadata.session_id 一致
+	//（真实客户端两者相同；1M 场景据此对齐，消除头体不一致这一差异）
+	sessionID := generateUUID()
 
 	msg := map[string]any{
 		"system": []map[string]any{
@@ -648,7 +665,9 @@ func (t *AnthropicTester) Build(cfg *model.Config, apiKey string, req *TestChann
 			"edits": []map[string]any{{"type": "clear_thinking_20251015", "keep": "all"}},
 		}
 		msg["output_config"] = map[string]any{"effort": "high"}
-		msg["metadata"] = map[string]any{"user_id": generateClaudeCodeUserID()}
+		msg["metadata"] = map[string]any{"user_id": buildClaudeCodeUserID(sessionID)}
+		// 完整工具集撑起 body 丰满度——这是 1M 测试 429→200 的根因（小 body 被限流，完整 body 放行）
+		msg["tools"] = claudeCodeFullTools
 		// system[0].text 必须精确等于 "You are Claude Code, Anthropic's official CLI for Claude."
 		// （真实客户端首段就是这一句、单独成段），带 cache_control 缓存标记。
 		// ttl 由客户端 ENABLE_PROMPT_CACHING_1H 环境变量控制、非必须，故只用默认 ephemeral 不带 ttl。
@@ -698,15 +717,16 @@ func (t *AnthropicTester) Build(cfg *model.Config, apiKey string, req *TestChann
 	h.Set("x-api-key", apiKey)
 	h.Set("Authorization", "Bearer "+apiKey)
 	// Claude Code CLI headers（对齐真实 claude-cli 2.1.x 抓包结果）
-	h.Set("User-Agent", "claude-cli/2.1.160 (external, cli)")
+	h.Set("User-Agent", "claude-cli/2.1.161 (external, cli)")
 	h.Set("x-app", "cli")
 	h.Set("anthropic-version", "2023-06-01")
-	h.Set("x-claude-code-session-id", generateUUID())
+	h.Set("x-claude-code-session-id", sessionID)
 	// beta 集合对齐真实客户端：claude-code-20250219 是 Claude Code 标识，中转据此鉴别合法 CLI 请求，
 	// 缺失会被判为非法请求返回 503。启用 1M 上下文时追加 context-1m（账号已开通 1M 时中转强制要求）。
 	betaFeatures := "claude-code-20250219,interleaved-thinking-2025-05-14,redact-thinking-2026-02-12,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,advanced-tool-use-2025-11-20,effort-2025-11-24,extended-cache-ttl-2025-04-11"
 	if req.Context1M {
-		betaFeatures += ",context-1m-2025-08-07"
+		// context-1m 紧跟 claude-code 放第2位，对齐真实 2.1.161 开 1M 抓包的 beta 顺序
+		betaFeatures = "claude-code-20250219,context-1m-2025-08-07,interleaved-thinking-2025-05-14,redact-thinking-2026-02-12,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,advanced-tool-use-2025-11-20,effort-2025-11-24,extended-cache-ttl-2025-04-11"
 	}
 	h.Set("anthropic-beta", betaFeatures)
 	h.Set("anthropic-dangerous-direct-browser-access", "true")
