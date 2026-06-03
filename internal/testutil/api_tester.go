@@ -553,57 +553,6 @@ func extractOpenAIResponseText(apiResp map[string]any) (string, bool) {
 // AnthropicTester 实现 Anthropic 测试协议
 type AnthropicTester struct{}
 
-// anthropicMinimalTools Claude Code 测试用的精简工具列表
-var anthropicMinimalTools = []map[string]any{
-	{
-		"name":        "Bash",
-		"description": "Executes a bash command",
-		"input_schema": map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"command": map[string]any{"type": "string", "description": "The command to execute"},
-			},
-			"required": []string{"command"},
-		},
-	},
-	{
-		"name":        "Read",
-		"description": "Reads a file from the filesystem",
-		"input_schema": map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"file_path": map[string]any{"type": "string", "description": "The absolute path to the file"},
-			},
-			"required": []string{"file_path"},
-		},
-	},
-	{
-		"name":        "Edit",
-		"description": "Performs string replacements in files",
-		"input_schema": map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"file_path":  map[string]any{"type": "string", "description": "The absolute path to the file"},
-				"old_string": map[string]any{"type": "string", "description": "The text to replace"},
-				"new_string": map[string]any{"type": "string", "description": "The replacement text"},
-			},
-			"required": []string{"file_path", "old_string", "new_string"},
-		},
-	},
-}
-
-// generateAnthropicUserID 生成符合 Claude Code 格式的 user_id
-// 格式: user_{hash}_account__session_{uuid}
-func generateAnthropicUserID() string {
-	// 生成 64 字符的 hash（模拟 SHA256）
-	hashBytes := make([]byte, 32)
-	rand.Read(hashBytes)
-	hash := fmt.Sprintf("%x", hashBytes)
-	// 生成 session UUID
-	sessionID := generateUUID()
-	return fmt.Sprintf("user_%s_account__session_%s", hash, sessionID)
-}
-
 // generateClaudeCodeUserID 生成 Claude Code 2.1 的 metadata.user_id（JSON 字符串格式）
 // 格式: {"device_id":"<64位hex>","account_uuid":"","session_id":"<uuid>"}
 // 1M 渠道测试需要此格式：卖 Claude Code 额度的中转靠请求体特征反查真实客户端，
@@ -629,76 +578,37 @@ func (t *AnthropicTester) Build(cfg *model.Config, apiKey string, req *TestChann
 	//（真实客户端两者相同；1M 场景据此对齐，消除头体不一致这一差异）
 	sessionID := generateUUID()
 
+	// Anthropic 测试统一用真实 Claude Code 客户端的完整 body（经抓包验证：1M 与非 1M 的 body 结构
+	// 完全相同，唯一区别是 anthropic-beta 是否带 context-1m）。完整 body = 完整工具列表 +
+	// <system-reminder> 前缀 + thinking/context_management/output_config 特征字段 + metadata JSON 格式 +
+	// cache_control。中转(anyrouter 等)靠这些反查真实客户端，简陋 body 会被限流(429)/拒绝(503)。
+	// 注：真实客户端的 system 第二段、官方 OAuth 专属头(billing/oauth beta/account_uuid)含环境/账户信息，
+	// 不好伪装也无需伪装(那是"官方 vs 中转"的区别，非"1M vs 非1M")，这里只保留可通用的精确首句。
 	msg := map[string]any{
-		"system": []map[string]any{
-			{
-				"type":          "text",
-				"text":          "You are Claude Code, Anthropic's official CLI for Claude. You are an interactive CLI tool that helps users with software engineering tasks.",
-				"cache_control": map[string]any{"type": "ephemeral"},
-			},
-		},
-		"stream": true,
-		"messages": []map[string]any{
-			{
-				"role": "user",
-				"content": []map[string]any{
-					{
-						"type": "text",
-						"text": testContent,
-					},
-				},
-			},
-		},
 		"model":      req.Model,
-		"max_tokens": 32000,
-		"tools":      anthropicMinimalTools,
-		"metadata":   map[string]any{"user_id": generateAnthropicUserID()},
-	}
-
-	// [1M] 开启 1M 上下文时补全 Claude Code 2.1 特征字段：卖 Claude Code 额度的中转
-	//（如 anyrouter）靠请求体这些字段反查是否真实 CLI 客户端，缺失会被判为伪造请求返回 503，
-	// 且须与上面声明的 context-management / effort / thinking 等 beta 自洽。
-	if req.Context1M {
-		msg["max_tokens"] = 64000
-		msg["thinking"] = map[string]any{"type": "adaptive"}
-		msg["context_management"] = map[string]any{
-			"edits": []map[string]any{{"type": "clear_thinking_20251015", "keep": "all"}},
-		}
-		msg["output_config"] = map[string]any{"effort": "high"}
-		msg["metadata"] = map[string]any{"user_id": buildClaudeCodeUserID(sessionID)}
-		// 完整工具集撑起 body 丰满度——这是 1M 测试 429→200 的根因（小 body 被限流，完整 body 放行）
-		msg["tools"] = claudeCodeFullTools
-		// system[0].text 必须精确等于 "You are Claude Code, Anthropic's official CLI for Claude."
-		// （真实客户端首段就是这一句、单独成段），带 cache_control 缓存标记。
-		// ttl 由客户端 ENABLE_PROMPT_CACHING_1H 环境变量控制、非必须，故只用默认 ephemeral 不带 ttl。
-		// 真实客户端的 system 第二段含本地目录等信息，不好伪装也无需伪装，这里只保留首句。
-		msg["system"] = []map[string]any{
+		"max_tokens": 64000,
+		"stream":     true,
+		"system": []map[string]any{
 			{
 				"type":          "text",
 				"text":          "You are Claude Code, Anthropic's official CLI for Claude.",
 				"cache_control": map[string]any{"type": "ephemeral"},
 			},
-		}
-		// messages 对齐真实客户端的两个关键特征（之前缺失，导致测试被持续判为非真实客户端）：
-		//   ① 首条 user 必带 <system-reminder> 上下文前缀（真实 CLI 每次都注入，套壳程序通常没有）
-		//   ② 实际内容 text block 带 cache_control（真实 CLI 用 prompt caching，缓存标记是显著特征）
-		// anyrouter 这类卖 Claude Code 额度的中转据此识别真实客户端，缺失则拒绝。
-		msg["messages"] = []map[string]any{
+		},
+		"messages": []map[string]any{
 			{
 				"role": "user",
 				"content": []map[string]any{
-					{
-						"type": "text",
-						"text": buildClaudeCodeSystemReminder(),
-					},
-					{
-						"type":          "text",
-						"text":          testContent,
-						"cache_control": map[string]any{"type": "ephemeral"},
-					},
+					{"type": "text", "text": buildClaudeCodeSystemReminder()},
+					{"type": "text", "text": testContent, "cache_control": map[string]any{"type": "ephemeral"}},
 				},
 			},
-		}
+		},
+		"tools":              claudeCodeFullTools,
+		"metadata":           map[string]any{"user_id": buildClaudeCodeUserID(sessionID)},
+		"thinking":           map[string]any{"type": "adaptive"},
+		"context_management": map[string]any{"edits": []map[string]any{{"type": "clear_thinking_20251015", "keep": "all"}}},
+		"output_config":      map[string]any{"effort": "high"},
 	}
 
 	body, err := sonic.Marshal(msg)
