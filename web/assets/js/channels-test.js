@@ -456,14 +456,7 @@ function displayTestResult(result) {
   testResultDiv.classList.remove('success', 'error');
   testResultDiv.classList.add('show');
 
-  // 使用模板渲染头部
-  const renderHeader = (icon, message) => {
-    const header = TemplateEngine.render('tpl-test-result-header', { icon, message });
-    contentDiv.innerHTML = '';
-    if (header) contentDiv.appendChild(header);
-  };
-
-  // 渲染响应区块
+  // 渲染响应区块（折叠/展开）
   const renderResponseSection = (title, content, display = 'none', hasToggle = true) => {
     const contentId = `response-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const toggleBtn = hasToggle ? `<button class="toggle-btn" onclick="toggleResponse('${contentId}')">显示/隐藏</button>` : '';
@@ -477,66 +470,85 @@ function displayTestResult(result) {
     return section ? section.outerHTML : '';
   };
 
-  if (result.success) {
-    testResultDiv.classList.add('success');
-    renderHeader('✅', result.message || 'API测试成功');
+  // 渲染单次结果：头部渲染到 headerHost，详情渲染到 detailsDiv，整体成功/失败配色随当前结果
+  const renderOne = (res, headerHost) => {
+    testResultDiv.classList.remove('success', 'error');
+    const header = TemplateEngine.render('tpl-test-result-header', {
+      icon: res.success ? '✅' : '❌',
+      message: res.success ? (res.message || 'API测试成功') : '测试失败'
+    });
+    headerHost.innerHTML = '';
+    if (header) headerHost.appendChild(header);
 
-    let details = `响应时间: ${result.duration_ms}ms`;
-    if (result.status_code) {
-      details += ` | 状态码: ${result.status_code}`;
-    }
-
-    if (result.response_text) {
-      // 尝试解析 SSE 格式，提取实际文本内容
-      const parsed = parseSSEResponse(result.response_text);
-      const displayText = parsed.reply || parsed.thinking || result.response_text;
-
-      // 如果解析出了内容，显示解析后的文本；否则显示原始响应
-      if (parsed.reply || parsed.thinking) {
-        let parsedContent = '';
-        if (parsed.thinking) {
-          parsedContent += `[思考过程]\n${parsed.thinking}\n\n`;
+    let details;
+    if (res.success) {
+      testResultDiv.classList.add('success');
+      details = `响应时间: ${res.duration_ms}ms`;
+      if (res.status_code) details += ` | 状态码: ${res.status_code}`;
+      if (res.response_text) {
+        const parsed = parseSSEResponse(res.response_text);
+        if (parsed.reply || parsed.thinking) {
+          let parsedContent = '';
+          if (parsed.thinking) parsedContent += `[思考过程]\n${parsed.thinking}\n\n`;
+          if (parsed.reply) parsedContent += parsed.reply;
+          details += renderResponseSection('模型响应', parsedContent.trim(), 'block', false);
+          details += renderResponseSection('原始 SSE 响应', res.response_text, 'none', true);
+        } else {
+          details += renderResponseSection('API 响应内容', res.response_text, 'block', false);
         }
-        if (parsed.reply) {
-          parsedContent += parsed.reply;
-        }
-        details += renderResponseSection('模型响应', parsedContent.trim(), 'block', false);
-        details += renderResponseSection('原始 SSE 响应', result.response_text, 'none', true);
-      } else {
-        details += renderResponseSection('API 响应内容', result.response_text, 'block', false);
       }
+      if (res.api_response) {
+        details += renderResponseSection('完整 API 响应', JSON.stringify(res.api_response, null, 2));
+      } else if (res.raw_response) {
+        details += renderResponseSection('原始响应', res.raw_response);
+      }
+    } else {
+      testResultDiv.classList.add('error');
+      details = escapeHtml(res.error || '未知错误'); // 转义防 XSS
+      if (res.duration_ms) details += `<br>响应时间: ${res.duration_ms}ms`;
+      if (res.status_code) details += ` | 状态码: ${res.status_code}`;
+      if (res.api_error) details += renderResponseSection('完整错误响应', JSON.stringify(res.api_error, null, 2), 'block');
+      if (typeof res.raw_response !== 'undefined') details += renderResponseSection('原始错误响应', res.raw_response || '(无响应体)', 'block');
+      if (res.response_headers) details += renderResponseSection('响应头', JSON.stringify(res.response_headers, null, 2), 'block');
     }
-
-    if (result.api_response) {
-      details += renderResponseSection('完整 API 响应', JSON.stringify(result.api_response, null, 2));
-    } else if (result.raw_response) {
-      details += renderResponseSection('原始响应', result.raw_response);
-    }
-
     detailsDiv.innerHTML = details;
-  } else {
-    testResultDiv.classList.add('error');
-    renderHeader('❌', '测试失败');
+  };
 
-    // [FIX] 转义 result.error 防止 XSS
-    let details = escapeHtml(result.error || '未知错误');
-    if (result.duration_ms) {
-      details += `<br>响应时间: ${result.duration_ms}ms`;
-    }
-    if (result.status_code) {
-      details += ` | 状态码: ${result.status_code}`;
-    }
+  // 仅当实际尝试 ≥2 次时才显示 tab 切换条
+  const attempts = (Array.isArray(result.attempts) && result.attempts.length > 1) ? result.attempts : null;
 
-    if (result.api_error) {
-      details += renderResponseSection('完整错误响应', JSON.stringify(result.api_error, null, 2), 'block');
-    }
-    if (typeof result.raw_response !== 'undefined') {
-      details += renderResponseSection('原始错误响应', result.raw_response || '(无响应体)', 'block');
-    }
-    if (result.response_headers) {
-      details += renderResponseSection('响应头', JSON.stringify(result.response_headers, null, 2), 'block');
-    }
-
-    detailsDiv.innerHTML = details;
+  if (!attempts) {
+    contentDiv.innerHTML = '';
+    renderOne(result, contentDiv);
+    return;
   }
+
+  // 多次重试：tab 条(序号+✓/✗，绿=成功/红=失败) + 内容区，默认选第一次
+  contentDiv.innerHTML = '';
+  const tabBar = document.createElement('div');
+  tabBar.className = 'test-attempt-tabs';
+  // 鼠标悬停 tab 行时，垂直滚轮转为横向翻页
+  tabBar.addEventListener('wheel', (e) => {
+    if (e.deltaY !== 0) { e.preventDefault(); tabBar.scrollLeft += e.deltaY; }
+  }, { passive: false });
+
+  const headerHost = document.createElement('div');
+
+  const selectTab = (idx) => {
+    Array.from(tabBar.children).forEach((t, i) => t.classList.toggle('active', i === idx));
+    renderOne(attempts[idx], headerHost);
+  };
+
+  attempts.forEach((att, i) => {
+    const tab = document.createElement('button');
+    tab.type = 'button';
+    tab.className = 'attempt-tab ' + (att.success ? 'ok' : 'fail');
+    tab.textContent = `${i + 1} ${att.success ? '✓' : '✗'}`;
+    tab.onclick = () => selectTab(i);
+    tabBar.appendChild(tab);
+  });
+
+  contentDiv.appendChild(tabBar);
+  contentDiv.appendChild(headerHost);
+  selectTab(0); // 默认选中第一次
 }

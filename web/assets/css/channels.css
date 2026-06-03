@@ -1643,6 +1643,51 @@ html.dark .col-checkbox:hover {
   color: var(--neutral-400);
 }
 
+/* ===== 测试重试结果 tab 切换条（遇 429 自动重试时，每次尝试一个 tab） ===== */
+.test-attempt-tabs {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 2px 2px 8px;
+  margin-bottom: 10px;
+  white-space: nowrap;
+  scrollbar-width: thin;
+}
+
+.test-attempt-tabs .attempt-tab {
+  flex: 0 0 auto;
+  min-width: 42px;
+  padding: 4px 12px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  background: var(--neutral-100);
+  color: var(--neutral-600);
+  transition: all 0.15s ease;
+}
+
+/* 成功(200)=绿 / 失败(429等)=红 */
+.test-attempt-tabs .attempt-tab.ok {
+  color: var(--success-600);
+  border-color: var(--success-600);
+  background: color-mix(in srgb, var(--success-600) 12%, transparent);
+}
+
+.test-attempt-tabs .attempt-tab.fail {
+  color: var(--error-600);
+  border-color: var(--error-600);
+  background: color-mix(in srgb, var(--error-600) 12%, transparent);
+}
+
+/* 当前选中的 tab：主色描边高亮 */
+.test-attempt-tabs .attempt-tab.active {
+  outline: 2px solid var(--primary-600);
+  outline-offset: 1px;
+}
+
 /* 筛选信息显示 */
 .filter-info {
   display: flex;

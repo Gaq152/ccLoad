@@ -641,11 +641,13 @@ func (s *Server) testChannelAPI(cfg *model.Config, apiKey string, testReq *testu
 	if maxAttempts < 1 {
 		maxAttempts = 1
 	}
+	attempts := make([]map[string]any, 0, maxAttempts)
 	var finalResult map[string]any
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		finalResult = once()
 		finalResult["attempt"] = attempt
 		finalResult["max_attempts"] = maxAttempts
+		attempts = append(attempts, finalResult)
 		if ok, _ := finalResult["success"].(bool); ok {
 			break
 		}
@@ -656,6 +658,17 @@ func (s *Server) testChannelAPI(cfg *model.Config, apiKey string, testReq *testu
 			log.Printf("[INFO] [测试-重试] 渠道ID=%d 第 %d/%d 次遇 429 限流，2s 后重试", cfg.ID, attempt, maxAttempts)
 			time.Sleep(2 * time.Second)
 		}
+	}
+	// 多次尝试时，挂载每次的完整结果数组供前端 tab 展示。
+	// 注意：finalResult 是 attempts 的最后一个元素，直接给它加 attempts 字段会造成 JSON 自引用，
+	// 故浅拷贝一份新 map 作为顶层返回（顶层仍含最终一次的全部字段，兼容旧逻辑）。
+	if len(attempts) > 1 {
+		out := make(map[string]any, len(finalResult)+1)
+		for k, v := range finalResult {
+			out[k] = v
+		}
+		out["attempts"] = attempts
+		return out
 	}
 	return finalResult
 }
