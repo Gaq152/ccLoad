@@ -395,6 +395,16 @@ func (s *Server) testChannelAPI(cfg *model.Config, apiKey string, testReq *testu
 			return map[string]any{"success": false, "error": "构造测试请求失败: " + err.Error()}
 		}
 
+		// Antigravity 预设：与转发路径(proxy_forward.go)一致，过滤 Gemini 后端不支持的 JSON Schema 字段。
+		// 测试 body 现在带完整工具集(复杂 schema)，不过滤会被 Google 后端以 400 拒绝。
+		if cfg.Preset == "antigravity" {
+			if filtered, ferr := FilterAntigravityRequestBody(body); ferr == nil {
+				body = filtered
+			} else {
+				log.Printf("[WARN] [测试-Antigravity] 请求体 schema 过滤失败，使用原始请求: %v", ferr)
+			}
+		}
+
 		// 创建HTTP请求
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
