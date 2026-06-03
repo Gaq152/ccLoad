@@ -174,3 +174,21 @@ jobs:
             --title "$CUR_TAG" \
             --notes-file release_notes.md \
             $PRERELEASE_FLAG
+
+      # 正式版发布后，清理所有旧的预发布版本（Release + 对应 git tag），保持版本列表干净。
+      # 仅在正式版(tag 不含 "-")时触发；预发布版发布不会清理。正式版本身 isPrerelease=false，不会被删。
+      - name: Cleanup old prereleases on stable release
+        if: startsWith(github.ref, 'refs/tags/v') && steps.changelog.outputs.is_prerelease == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          CUR_TAG=${GITHUB_REF#refs/tags/}
+          echo "正式版 $CUR_TAG 已发布，清理旧的预发布版本..."
+          gh release list --limit 100 --json tagName,isPrerelease \
+            | jq -r '.[] | select(.isPrerelease==true) | .tagName' \
+            | while read -r tag; do
+                [ -z "$tag" ] && continue
+                echo "  删除预发布: $tag (release + tag)"
+                gh release delete "$tag" --yes --cleanup-tag || echo "  删除 $tag 失败，跳过"
+              done
+          echo "清理完成"
