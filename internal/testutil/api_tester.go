@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"ccLoad/internal/model"
 
@@ -600,6 +601,14 @@ func generateClaudeCodeUserID() string {
 	return fmt.Sprintf(`{"device_id":"%s","account_uuid":"","session_id":"%s"}`, deviceID, generateUUID())
 }
 
+// buildClaudeCodeSystemReminder 构造真实 Claude Code 客户端注入的 <system-reminder> 上下文前缀。
+// 真实 CLI 每条首消息都会带这段（claudeMd/环境/日期等），套壳程序通常不带——anyrouter 这类中转
+// 据此识别真实客户端。不含本地目录等敏感信息（那部分不好伪装也无需伪装），保留结构特征即可。
+func buildClaudeCodeSystemReminder() string {
+	date := time.Now().Format("2006-01-02")
+	return fmt.Sprintf("<system-reminder>\nAs you answer the user's questions, you can use the following context:\n# currentDate\nToday's date is %s.\n\n      IMPORTANT: this context may or may not be relevant to your tasks. You should not respond to this context unless it is highly relevant to your task.\n</system-reminder>\n\n", date)
+}
+
 func (t *AnthropicTester) Build(cfg *model.Config, apiKey string, req *TestChannelRequest) (string, http.Header, []byte, error) {
 	testContent := req.Content
 
@@ -641,14 +650,34 @@ func (t *AnthropicTester) Build(cfg *model.Config, apiKey string, req *TestChann
 		msg["output_config"] = map[string]any{"effort": "high"}
 		msg["metadata"] = map[string]any{"user_id": generateClaudeCodeUserID()}
 		// system[0].text 必须精确等于 "You are Claude Code, Anthropic's official CLI for Claude."
-		// （真实客户端首段就是这一句、单独成段）。anyrouter 等中转据此精确鉴别真实 CLI 客户端，
-		// 默认文案多拼了 "You are an interactive CLI tool..." 半句会导致不匹配 → 503。
-		// 已验证成功的 curl 样本（V7）正是用这条精确单句。
+		// （真实客户端首段就是这一句、单独成段），带 cache_control 缓存标记。
+		// ttl 由客户端 ENABLE_PROMPT_CACHING_1H 环境变量控制、非必须，故只用默认 ephemeral 不带 ttl。
+		// 真实客户端的 system 第二段含本地目录等信息，不好伪装也无需伪装，这里只保留首句。
 		msg["system"] = []map[string]any{
 			{
 				"type":          "text",
 				"text":          "You are Claude Code, Anthropic's official CLI for Claude.",
 				"cache_control": map[string]any{"type": "ephemeral"},
+			},
+		}
+		// messages 对齐真实客户端的两个关键特征（之前缺失，导致测试被持续判为非真实客户端）：
+		//   ① 首条 user 必带 <system-reminder> 上下文前缀（真实 CLI 每次都注入，套壳程序通常没有）
+		//   ② 实际内容 text block 带 cache_control（真实 CLI 用 prompt caching，缓存标记是显著特征）
+		// anyrouter 这类卖 Claude Code 额度的中转据此识别真实客户端，缺失则拒绝。
+		msg["messages"] = []map[string]any{
+			{
+				"role": "user",
+				"content": []map[string]any{
+					{
+						"type": "text",
+						"text": buildClaudeCodeSystemReminder(),
+					},
+					{
+						"type":          "text",
+						"text":          testContent,
+						"cache_control": map[string]any{"type": "ephemeral"},
+					},
+				},
 			},
 		}
 	}
