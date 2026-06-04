@@ -635,8 +635,8 @@ func (s *Server) testChannelAPI(cfg *model.Config, apiKey string, testReq *testu
 		return result
 	} // end once
 
-	// 重试循环：遇 429(限流)自动重试以撞过限流间隙；成功或非 429 错误即停。
-	// 仅对 429 重试——其它错误(401/403/超时等)重试无意义。
+	// 重试循环：任意失败(429限流/5xx/超时/网络错误等)都自动重试以撞过临时故障，成功即停。
+	// 不再仅限 429——实测各类渠道(codex/gemini/anthropic)失败成因多样，统一"失败就重试"语义更直观。
 	maxAttempts := testReq.Retries
 	if maxAttempts < 1 {
 		maxAttempts = 1
@@ -651,11 +651,9 @@ func (s *Server) testChannelAPI(cfg *model.Config, apiKey string, testReq *testu
 		if ok, _ := finalResult["success"].(bool); ok {
 			break
 		}
-		if sc, _ := finalResult["status_code"].(int); sc != 429 {
-			break
-		}
 		if attempt < maxAttempts {
-			log.Printf("[INFO] [测试-重试] 渠道ID=%d 第 %d/%d 次遇 429 限流，2s 后重试", cfg.ID, attempt, maxAttempts)
+			sc, _ := finalResult["status_code"].(int)
+			log.Printf("[INFO] [测试-重试] 渠道ID=%d 第 %d/%d 次失败(status=%d)，2s 后重试", cfg.ID, attempt, maxAttempts, sc)
 			time.Sleep(2 * time.Second)
 		}
 	}
