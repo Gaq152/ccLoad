@@ -68,7 +68,7 @@
                 管理密码
               </label>
               <div class="input-container">
-                <input type="password" id="password" name="password" class="form-input" required autofocus placeholder="请输入管理密码" />
+                <input type="password" id="password" name="password" class="form-input" required autofocus placeholder="请输入管理密码" autocomplete="current-password" />
                 <div class="input-decoration"></div>
               </div>
             </div>
@@ -165,7 +165,8 @@
   </div>
 
 
-  <script src="/web/assets/js/login.js"></script>
+  <!-- ui.js 必须先于 login.js 加载：login.js 初始化时立即调用 fetchAPI（拉取Turnstile配置） -->
   <script src="/web/assets/js/ui.js"></script>
+  <script src="/web/assets/js/login.js"></script>
 </body>
 </html>
