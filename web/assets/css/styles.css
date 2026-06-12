@@ -978,7 +978,7 @@
   backdrop-filter: blur(10px);
   border: 1px solid var(--glass-border);
   border-radius: 12px;
-  padding: var(--space-4);
+  padding: 28px;
   width: 70%;
   max-width: none;
   max-height: 90vh;
@@ -986,11 +986,27 @@
   box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
 }
 
+/* 弹窗入场动画：轻微缩放+上移淡入 */
+@keyframes modalContentIn {
+  from { opacity: 0; transform: scale(0.96) translateY(8px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.modal.show .modal-content {
+  animation: modalContentIn 0.2s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modal.show .modal-content { animation: none; }
+}
+
 .modal-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 10px;
+  margin-bottom: 20px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--theme-border, var(--neutral-200));
 }
 
 .modal-title {
@@ -1114,21 +1130,22 @@
 }
 
 .confirm-modal {
-  text-align: center;
+  text-align: left;
   width: auto !important;
-  max-width: 460px !important;
-  min-width: 300px;
+  max-width: 400px !important;
+  min-width: 320px;
 }
 
 .confirm-modal p {
   margin: 20px 0;
   color: var(--neutral-600);
+  line-height: 1.6;
 }
 
 .confirm-actions {
   display: flex;
   gap: var(--space-3);
-  justify-content: center;
+  justify-content: flex-end;
   margin-top: var(--space-6);
 }
 
@@ -2548,7 +2565,7 @@
 
   .modal-content {
     width: 100%;
-    padding: var(--space-2);
+    padding: 20px;
   }
 }
 
@@ -2572,7 +2589,7 @@
 
   .modal-content {
     width: 90%;
-    padding: var(--space-3);
+    padding: 22px;
   }
 }
 
