@@ -59,6 +59,9 @@ type AuthService struct {
 	// 数据库依赖（用于热更新令牌）
 	store storage.Store
 
+	// 系统配置（用于读取 Turnstile 人机验证配置，可为 nil＝禁用）
+	configService *ConfigService
+
 	// 速率限制（防暴力破解）
 	loginRateLimiter *util.LoginRateLimiter
 
@@ -74,6 +77,7 @@ func NewAuthService(
 	password string,
 	loginRateLimiter *util.LoginRateLimiter,
 	store storage.Store,
+	configService *ConfigService,
 ) *AuthService {
 	// 密码bcrypt哈希（安全存储）
 	passwordHash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
@@ -90,6 +94,7 @@ func NewAuthService(
 		authTokenChannels: make(map[int64]*TokenChannelConfig),
 		loginRateLimiter:  loginRateLimiter,
 		store:             store,
+		configService:     configService,
 		lastUsedCh:        make(chan string, 256), // 带缓冲，避免阻塞请求
 		done:              make(chan struct{}),
 	}
@@ -406,12 +411,26 @@ func (s *AuthService) HandleLogin(c *gin.Context) {
 	}
 
 	var req struct {
-		Password string `json:"password" binding:"required"`
+		Password       string `json:"password" binding:"required"`
+		TurnstileToken string `json:"turnstile_token"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
 		RespondErrorMsg(c, http.StatusBadRequest, "Invalid request format")
 		return
+	}
+
+	// Turnstile 人机验证（先于密码校验，机器人请求不消耗 bcrypt 计算）
+	if enabled, _, secretKey := s.turnstileConfig(); enabled {
+		if req.TurnstileToken == "" {
+			RespondErrorMsg(c, http.StatusBadRequest, "请完成人机验证")
+			return
+		}
+		if err := verifyTurnstileToken(c.Request.Context(), secretKey, req.TurnstileToken, clientIP); err != nil {
+			log.Printf("[WARN]  人机验证失败: IP=%s, err=%v", clientIP, err)
+			RespondErrorMsg(c, http.StatusForbidden, "人机验证失败，请刷新页面重试")
+			return
+		}
 	}
 
 	// 验证密码（bcrypt安全比较）

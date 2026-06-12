@@ -56,14 +56,43 @@ function renderSettings(settings) {
 
   settings.forEach(s => {
     originalSettings[s.key] = s.value;
+    let inputHtml = renderInput(s);
+    // 部分配置项附加外部获取入口（如 Turnstile Key 跳转 Cloudflare 控制台）
+    const helpLink = settingHelpLinks[s.key];
+    if (helpLink) {
+      inputHtml = `<div style="display: inline-flex; align-items: center; gap: 8px;">${inputHtml}
+        <a href="${helpLink.url}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(helpLink.title)}"
+           style="display: inline-flex; align-items: center; gap: 4px; padding: 6px 10px; border: 1px solid var(--neutral-300); border-radius: 6px; font-size: 12px; color: var(--primary-600, #2563eb); text-decoration: none; white-space: nowrap;">
+          ${escapeHtml(helpLink.label)}
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+            <path d="M15 3h6v6"/><path d="M10 14L21 3"/>
+          </svg>
+        </a>
+      </div>`;
+    }
     const row = TemplateEngine.render('tpl-setting-row', {
       key: s.key,
       description: s.description,
-      inputHtml: renderInput(s)
+      inputHtml
     });
     if (row) tbody.appendChild(row);
   });
 }
+
+// 配置项外部链接（渲染为输入框旁的跳转按钮）
+const settingHelpLinks = {
+  'turnstile_site_key': {
+    url: 'https://dash.cloudflare.com/?to=/:account/turnstile',
+    label: '获取 Key',
+    title: '前往 Cloudflare 控制台 Turnstile 页面：添加 Widget（填写本站域名）后即可获得 Site Key 和 Secret Key'
+  },
+  'turnstile_secret_key': {
+    url: 'https://dash.cloudflare.com/?to=/:account/turnstile',
+    label: '获取 Key',
+    title: '前往 Cloudflare 控制台 Turnstile 页面：添加 Widget（填写本站域名）后即可获得 Site Key 和 Secret Key'
+  }
+};
 
 // 初始化事件委托（替代 inline onclick）
 function initSettingsEventDelegation() {

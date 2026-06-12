@@ -262,7 +262,8 @@ func NewServer(store storage.Store) *Server {
 	s.authService = NewAuthService(
 		password,
 		s.loginRateLimiter,
-		store, // 传入store用于热更新令牌
+		store,         // 传入store用于热更新令牌
+		configService, // 传入configService用于读取Turnstile配置
 	)
 
 	// 启动Token统计Worker（有界队列：性能可控，Shutdown可等待）
@@ -508,7 +509,8 @@ func (s *Server) SetupRoutes(r *gin.Engine) {
 	{
 		public.GET("/summary", s.HandlePublicSummary)
 		public.GET("/channel-types", s.HandleGetChannelTypes)
-		public.GET("/models", s.HandlePublicModels) // 获取所有渠道支持的模型列表
+		public.GET("/models", s.HandlePublicModels)      // 获取所有渠道支持的模型列表
+		public.GET("/login-config", s.HandleLoginConfig) // 登录页配置（Turnstile开关+Site Key，不含敏感信息）
 	}
 
 	// 登录相关（公开访问）

@@ -928,6 +928,9 @@ func initDefaultSettings(ctx context.Context, db *sql.DB, dialect Dialect) error
 		{"monitor_enabled", "false", "bool", "请求监控开关(重启后保持状态)", "false"},
 		{"sse_keepalive_seconds", "0", "int", "SSE心跳保活间隔(秒,0=关闭,1-100)。优化Cloudflare免费CDN约100秒长连接超时:上游响应慢时提前发送SSE心跳防止连接被切断,建议60", "0"},
 		{"non_stream_timeout_seconds", "300", "int", "非流式请求整体超时(秒,30-3600,修改后重启生效)。大请求(如压缩上下文)耗时较长时调大,HTTP传输层WriteTimeout会据此自动放宽", "300"},
+		{"turnstile_enabled", "false", "bool", "登录页 Cloudflare Turnstile 人机验证(防脚本爆破密码,公网部署建议开启;需同时配置 Site Key 和 Secret Key 才生效)", "false"},
+		{"turnstile_site_key", "", "string", "Turnstile Site Key(公开密钥,用于登录页渲染验证组件,在 Cloudflare 控制台获取)", ""},
+		{"turnstile_secret_key", "", "string", "Turnstile Secret Key(私密密钥,用于服务端校验验证结果,切勿泄露)", ""},
 	}
 
 	var query string
