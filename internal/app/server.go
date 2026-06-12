@@ -96,14 +96,9 @@ func NewServer(store storage.Store) *Server {
 	}
 	log.Print("[INFO] ConfigService已加载系统配置（支持Web界面管理）")
 
-	// 管理员密码：仅从环境变量读取（安全考虑：密码不应存储在数据库中）
-	password := os.Getenv("CCLOAD_PASS")
-	if password == "" {
-		log.Print("❌ 未设置 CCLOAD_PASS，出于安全原因程序将退出。请设置强管理员密码后重试。")
-		os.Exit(1)
-	}
-
-	log.Printf("[INFO] 管理员密码已从环境变量加载（长度: %d 字符）", len(password))
+	// 管理员密码：数据库优先（bcrypt哈希落库），CCLOAD_PASS 仅用于首次播种
+	// 都没有时进入 Setup 模式（引导页凭日志中的初始化令牌设置密码）
+	passwordHash, setupToken := resolveAdminPassword(store)
 	log.Print("[INFO] API访问令牌将从数据库动态加载（支持Web界面管理）")
 
 	// Token 加密密钥：用于加密存储令牌明文（支持再次查看）
@@ -260,7 +255,8 @@ func NewServer(store storage.Store) *Server {
 	// 2. AuthService（负责认证授权）
 	// 初始化时自动从数据库加载API访问令牌
 	s.authService = NewAuthService(
-		password,
+		passwordHash,       // bcrypt哈希（nil=Setup模式）
+		setupToken,         // 初始化令牌（仅Setup模式非空）
 		s.loginRateLimiter,
 		store,              // 传入store用于热更新令牌
 		configService,      // 传入configService用于读取Turnstile配置
@@ -518,6 +514,7 @@ func (s *Server) SetupRoutes(r *gin.Engine) {
 	r.POST("/login", s.authService.HandleLogin)
 	r.POST("/login/2fa", s.authService.HandleLogin2FA) // 两步验证（登录第二阶段）
 	r.POST("/logout", s.authService.HandleLogout)
+	r.POST("/setup", s.authService.HandleSetup) // 首访初始化（仅Setup模式有效）
 
 	// 需要身份验证的admin APIs（使用Token认证）
 	admin := r.Group("/admin")
@@ -601,6 +598,9 @@ func (s *Server) SetupRoutes(r *gin.Engine) {
 		admin.POST("/2fa/activate", s.HandleActivate2FA)
 		admin.POST("/2fa/disable", s.HandleDisable2FA)
 
+		// 修改管理密码（已绑定2FA时强制验证动态码）
+		admin.POST("/password/change", s.authService.HandleChangePassword)
+
 		// 系统配置管理
 		admin.GET("/settings", s.AdminListSettings)
 		admin.GET("/settings/:key", s.AdminGetSetting)
@@ -642,6 +642,10 @@ func (s *Server) SetupRoutes(r *gin.Engine) {
 
 	// 默认首页：直接根据登录状态决定跳转目标，避免登录前先暴露 /web/index.html 再二次跳转
 	r.GET("/", func(c *gin.Context) {
+		if !s.authService.HasPassword() {
+			c.Redirect(http.StatusFound, "/web/setup.html")
+			return
+		}
 		if s.isAdminLoggedInByCookie(c) {
 			c.Redirect(http.StatusFound, "/web/index.html")
 			return
@@ -684,6 +688,25 @@ func isHTMLRequest(reqPath string) bool {
 func (s *Server) htmlAccessGuard() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		reqPath := c.Request.URL.Path
+
+		// Setup 模式分流：未初始化时所有 HTML 一律去引导页；
+		// 已初始化后引导页不再暴露（防止误导和探测）
+		setupMode := !s.authService.HasPassword()
+		if reqPath == "/web/setup.html" {
+			if setupMode {
+				c.Header("Cache-Control", "no-store")
+				c.Next()
+				return
+			}
+			c.Redirect(http.StatusFound, "/web/login.html")
+			c.Abort()
+			return
+		}
+		if setupMode && isHTMLRequest(reqPath) {
+			c.Redirect(http.StatusFound, "/web/setup.html")
+			c.Abort()
+			return
+		}
 
 		// 公开 HTML（登录页、OAuth 回调页）直接放行
 		if _, ok := publicWebPaths[reqPath]; ok {

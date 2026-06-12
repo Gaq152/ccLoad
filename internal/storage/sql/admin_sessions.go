@@ -46,6 +46,12 @@ func (s *SQLStore) DeleteAdminSession(ctx context.Context, token string) error {
 	return err
 }
 
+// DeleteAllAdminSessions 删除全部管理员会话（改密码后吊销所有登录态）
+func (s *SQLStore) DeleteAllAdminSessions(ctx context.Context) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM admin_sessions`)
+	return err
+}
+
 // CleanExpiredSessions 清理过期的会话
 func (s *SQLStore) CleanExpiredSessions(ctx context.Context) error {
 	now := timeToUnix(time.Now())

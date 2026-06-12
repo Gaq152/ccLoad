@@ -109,6 +109,14 @@ func DefineAdminSessionsTable() *TableBuilder {
 		Index("idx_admin_sessions_expires", "expires_at")
 }
 
+// DefineAdminCredentialsTable 定义admin_credentials表结构（管理员密码，单行表 id 恒为 1）
+func DefineAdminCredentialsTable() *TableBuilder {
+	return NewTable("admin_credentials").
+		Column("id BIGINT PRIMARY KEY").          // 恒为1（单管理员）
+		Column("password_hash TEXT NOT NULL").    // bcrypt哈希（不可逆，永不存明文）
+		Column("updated_at BIGINT NOT NULL")
+}
+
 // DefineAdmin2FATable 定义admin_2fa表结构（管理员两步验证，单行表 id 恒为 1）
 func DefineAdmin2FATable() *TableBuilder {
 	return NewTable("admin_2fa").

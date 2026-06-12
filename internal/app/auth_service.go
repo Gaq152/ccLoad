@@ -44,7 +44,10 @@ type TokenChannelConfig struct {
 type AuthService struct {
 	// Token 认证（管理界面使用的动态 Token）
 	// [INFO] 安全修复：存储SHA256哈希而非明文(2025-12)
-	passwordHash []byte               // 管理员密码bcrypt哈希
+	// [INFO] 2026-06：密码哈希落库，支持热更新（Web改密码/初始化向导），passwordMux 保护
+	passwordHash []byte               // 管理员密码bcrypt哈希（nil = Setup模式，等待初始化）
+	setupToken   string               // 初始化令牌（仅Setup模式非空，完成后清空）
+	passwordMux  sync.RWMutex         // passwordHash/setupToken 并发保护
 	validTokens  map[string]time.Time // TokenHash → 过期时间
 	tokensMux    sync.RWMutex         // 并发保护
 
@@ -81,21 +84,18 @@ type AuthService struct {
 
 // NewAuthService 创建认证服务实例
 // 初始化时自动从数据库加载API访问令牌和管理员会话
+// passwordHash 为 nil 时进入 Setup 模式（等待引导页凭 setupToken 设置密码）
 func NewAuthService(
-	password string,
+	passwordHash []byte,
+	setupToken string,
 	loginRateLimiter *util.LoginRateLimiter,
 	store storage.Store,
 	configService *ConfigService,
 	tokenEncryptionKey []byte,
 ) *AuthService {
-	// 密码bcrypt哈希（安全存储）
-	passwordHash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	if err != nil {
-		log.Fatalf("FATAL: failed to hash password: %v", err)
-	}
-
 	s := &AuthService{
 		passwordHash:      passwordHash,
+		setupToken:        setupToken,
 		validTokens:       make(map[string]time.Time),
 		authTokens:        make(map[string]*TokenInfo),
 		authTokenIDs:      make(map[string]int64),
@@ -192,6 +192,13 @@ func (s *AuthService) generateToken() (string, error) {
 // 与内部 isValidToken 行为一致，作为公开 API 暴露
 func (s *AuthService) IsValidAdminToken(token string) bool {
 	return s.isValidToken(token)
+}
+
+// HasPassword 是否已设置管理密码（false = Setup模式，需要初始化引导）
+func (s *AuthService) HasPassword() bool {
+	s.passwordMux.RLock()
+	defer s.passwordMux.RUnlock()
+	return len(s.passwordHash) > 0
 }
 
 // isValidToken 验证Token有效性（检查过期时间）
@@ -421,6 +428,14 @@ func (s *AuthService) HandleLogin(c *gin.Context) {
 		return
 	}
 
+	// Setup 模式下不接受登录（须先完成初始化）
+	if !s.HasPassword() {
+		RespondErrorWithData(c, http.StatusServiceUnavailable, "系统尚未初始化，请先完成初始化设置", gin.H{
+			"setup_required": true,
+		})
+		return
+	}
+
 	var req struct {
 		Password       string `json:"password" binding:"required"`
 		TurnstileToken string `json:"turnstile_token"`
@@ -444,8 +459,11 @@ func (s *AuthService) HandleLogin(c *gin.Context) {
 		}
 	}
 
-	// 验证密码（bcrypt安全比较）
-	if err := bcrypt.CompareHashAndPassword(s.passwordHash, []byte(req.Password)); err != nil {
+	// 验证密码（bcrypt安全比较，读锁取哈希支持热更新）
+	s.passwordMux.RLock()
+	currentHash := s.passwordHash
+	s.passwordMux.RUnlock()
+	if err := bcrypt.CompareHashAndPassword(currentHash, []byte(req.Password)); err != nil {
 		// 记录失败尝试（速率限制器已在AllowAttempt中增加计数）
 		attemptCount := s.loginRateLimiter.GetAttemptCount(clientIP)
 		log.Printf("[WARN]  登录失败: IP=%s, 尝试次数=%d/5", clientIP, attemptCount)

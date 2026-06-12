@@ -14,10 +14,16 @@ services:
       - PORT=8080
       - SQLITE_PATH=/app/data/ccload.db
       - GIN_MODE=release
-      # 必填：未设置将无法启动
-      - CCLOAD_PASS=your_admin_password
+      # 可选：管理密码（bcrypt 哈希存储于数据库，不再依赖此明文配置）
+      #   首次启动且数据库无密码时：设置了此变量则自动迁移入库（之后可删除本行）；
+      #   未设置则进入初始化引导页，凭启动日志中的 Setup Token 在 Web 上设置密码。
+      # - CCLOAD_PASS=your_admin_password
+      # 忘记密码逃生通道：临时设置后重启即强制重置密码并吊销全部会话，用完立即删除本行！
+      # - CCLOAD_PASS_RESET=your_new_password
+      # 两步验证逃生通道：手机和恢复码全部丢失时，临时设为 1 重启即删除 2FA 绑定，用完立即删除本行！
+      # - CCLOAD_2FA_RESET=1
       # 可选：令牌加密密钥，启用后可在管理界面再次查看令牌明文
-      # - CCLOAD_TOKEN_KEY=your_random_encryption_key_here
+      - CCLOAD_TOKEN_KEY=your_random_encryption_key_here
       - TZ=Asia/Shanghai
       # 日志级别（可选）：debug / info / warn / error，大小写不敏感，默认 info。
       #   debug - 输出全部日志，含转发耗时、token 降级等调试细节，排查问题时用

@@ -528,6 +528,7 @@ async function importDefaultPricing() {
 // 安全 Tab：两步验证(TOTP) + Turnstile 人机验证
 // ============================================================================
 let tfaRecoveryCodes = []; // 激活后返回的恢复码明文（仅本次会话展示用）
+let tfaEnabled = false;    // 当前2FA状态（改密码弹窗据此显示验证码输入框）
 
 async function loadSecurityTab() {
   loadTfaStatus();
@@ -542,6 +543,7 @@ async function loadTfaStatus() {
   const unbindBtn = document.getElementById('tfa-unbind-btn');
   try {
     const data = await fetchDataWithAuth('/admin/2fa/status');
+    tfaEnabled = !!data.enabled;
     if (data.enabled) {
       badge.textContent = '已开启';
       badge.style.background = 'var(--success-100, #dcfce7)';
@@ -678,6 +680,70 @@ async function confirmUnbindTfa() {
     console.error('解绑2FA异常:', err);
     showError(err.message || '验证码错误');
     document.getElementById('tfa-unbind-code').value = '';
+  }
+}
+
+// ---- 修改管理密码 ----
+
+function openChangePasswordModal() {
+  document.getElementById('cp-old-password').value = '';
+  document.getElementById('cp-new-password').value = '';
+  document.getElementById('cp-confirm-password').value = '';
+  document.getElementById('cp-totp-code').value = '';
+  // 已绑定2FA时强制验证动态码
+  document.getElementById('cp-totp-group').style.display = tfaEnabled ? 'block' : 'none';
+  document.getElementById('changePasswordModal').classList.add('show');
+  setTimeout(() => document.getElementById('cp-old-password').focus(), 200);
+}
+
+function closeChangePasswordModal() {
+  document.getElementById('changePasswordModal').classList.remove('show');
+}
+
+async function confirmChangePassword() {
+  const oldPassword = document.getElementById('cp-old-password').value;
+  const newPassword = document.getElementById('cp-new-password').value;
+  const confirmPassword = document.getElementById('cp-confirm-password').value;
+  const totpCode = document.getElementById('cp-totp-code').value.trim();
+
+  if (!oldPassword || !newPassword) {
+    showError('请填写当前密码和新密码');
+    return;
+  }
+  if (newPassword.length < 8) {
+    showError('新密码长度至少 8 位');
+    return;
+  }
+  if (newPassword !== confirmPassword) {
+    showError('两次输入的新密码不一致');
+    return;
+  }
+  if (tfaEnabled && !totpCode) {
+    showError('已开启两步验证，请输入动态验证码');
+    return;
+  }
+
+  try {
+    await fetchDataWithAuth('/admin/password/change', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        old_password: oldPassword,
+        new_password: newPassword,
+        totp_code: totpCode
+      })
+    });
+    closeChangePasswordModal();
+    showSuccess('密码已修改，所有会话已失效，即将跳转登录页...');
+    // 所有会话已被吊销，清理本地凭证并跳转登录
+    setTimeout(() => {
+      localStorage.removeItem('ccload_token');
+      localStorage.removeItem('ccload_token_expiry');
+      window.location.href = '/web/login.html';
+    }, 1500);
+  } catch (err) {
+    console.error('修改密码异常:', err);
+    showError(err.message || '修改失败');
   }
 }
 

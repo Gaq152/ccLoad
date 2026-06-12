@@ -169,6 +169,26 @@
 
         <!-- Tab: 安全 -->
         <section class="tab-content" id="tab-security" style="display: none;">
+          <!-- 管理密码卡片 -->
+          <div class="glass-card mb-6 animate-slide-up">
+            <div style="display: flex; align-items: flex-start; gap: 16px; flex-wrap: wrap;">
+              <div style="flex: 1; min-width: 260px;">
+                <h3 style="margin: 0 0 4px; font-size: 16px; display: flex; align-items: center; gap: 8px;">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                  </svg>
+                  管理密码
+                </h3>
+                <p style="margin: 0; font-size: 13px; color: var(--neutral-500);">
+                  密码以 bcrypt 哈希存储于数据库，任何地方不保存明文。修改后所有登录会话将失效，需要重新登录。忘记密码时可用环境变量 CCLOAD_PASS_RESET 重置（详见日志提示）。
+                </p>
+              </div>
+              <div style="display: flex; align-items: center;">
+                <button class="btn btn-primary" onclick="openChangePasswordModal()">修改密码</button>
+              </div>
+            </div>
+          </div>
+
           <!-- 两步验证卡片 -->
           <div class="glass-card mb-6 animate-slide-up">
             <div style="display: flex; align-items: flex-start; gap: 16px; flex-wrap: wrap;">
@@ -229,6 +249,39 @@
 
       </div>
     </main>
+  </div>
+
+  <!-- 修改密码弹窗 -->
+  <div id="changePasswordModal" class="modal" role="dialog" aria-modal="true">
+    <div class="modal-content" style="max-width: 400px;">
+      <div class="modal-header">
+        <h2 class="modal-title">修改管理密码</h2>
+        <button class="close-btn" onclick="closeChangePasswordModal()" aria-label="关闭对话框">&times;</button>
+      </div>
+      <div class="form-group">
+        <label class="form-label">当前密码</label>
+        <input type="password" id="cp-old-password" class="form-input" autocomplete="current-password">
+      </div>
+      <div class="form-group">
+        <label class="form-label">新密码（至少 8 位）</label>
+        <input type="password" id="cp-new-password" class="form-input" autocomplete="new-password">
+      </div>
+      <div class="form-group">
+        <label class="form-label">确认新密码</label>
+        <input type="password" id="cp-confirm-password" class="form-input" autocomplete="new-password">
+      </div>
+      <div class="form-group" id="cp-totp-group" style="display: none;">
+        <label class="form-label">两步验证码</label>
+        <input type="text" id="cp-totp-code" class="form-input" inputmode="numeric" maxlength="11" placeholder="6 位验证码或恢复码" autocomplete="off">
+      </div>
+      <p style="font-size: 12px; color: var(--warning-600, #d97706); margin: 0 0 12px;">
+        修改成功后所有会话将失效（包括本机），需要用新密码重新登录。
+      </p>
+      <div style="display: flex; justify-content: flex-end; gap: 8px;">
+        <button class="btn btn-secondary" onclick="closeChangePasswordModal()">取消</button>
+        <button class="btn btn-primary" id="cp-confirm-btn" onclick="confirmChangePassword()">确认修改</button>
+      </div>
+    </div>
   </div>
 
   <!-- 2FA 绑定弹窗 -->

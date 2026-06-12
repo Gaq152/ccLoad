@@ -79,5 +79,6 @@ func (s *Server) HandleLoginConfig(c *gin.Context) {
 	RespondJSON(c, http.StatusOK, gin.H{
 		"turnstile_enabled":  enabled,
 		"turnstile_site_key": siteKey,
+		"setup_required":     !s.authService.HasPassword(), // 未初始化时前端跳转引导页（服务端302的兜底）
 	})
 }

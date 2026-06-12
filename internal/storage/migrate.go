@@ -42,7 +42,8 @@ func migrate(ctx context.Context, db *sql.DB, dialect Dialect) error {
 		schema.DefineTokenChannelsTable, // 令牌-渠道关联表（依赖 auth_tokens 和 channels）
 		schema.DefineSystemSettingsTable,
 		schema.DefineAdminSessionsTable,
-		schema.DefineAdmin2FATable, // 管理员两步验证(TOTP)表（2026-06新增）
+		schema.DefineAdmin2FATable,         // 管理员两步验证(TOTP)表（2026-06新增）
+		schema.DefineAdminCredentialsTable, // 管理员密码表（2026-06新增，密码哈希落库替代环境变量）
 		schema.DefineLogsTable,
 		schema.DefineDailyStatsTable,   // 每日统计聚合表（2025-12新增）
 		schema.DefineModelPricingTable, // 模型定价管理表（2026-03新增）

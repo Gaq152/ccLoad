@@ -582,7 +582,8 @@ func setupTestServer(t *testing.T) (*Server, func()) {
 
 	// [INFO] 初始化 AuthService（Token管理需要）
 	server.authService = NewAuthService(
-		"test-password",
+		HashAdminPassword("test-password"),
+		"", // setupToken（空=非Setup模式）
 		nil, // loginRateLimiter
 		store,
 		nil, // configService（nil=禁用Turnstile）

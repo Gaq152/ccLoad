@@ -127,6 +127,13 @@ type Store interface {
 	DeleteAdmin2FA(ctx context.Context) error
 
 	// ============================================================================
+	// 管理员密码（bcrypt哈希落库）
+	// ============================================================================
+	GetAdminPasswordHash(ctx context.Context) (string, error) // 无记录返回 ""
+	SaveAdminPasswordHash(ctx context.Context, hash string) error
+	DeleteAllAdminSessions(ctx context.Context) error // 改密码后吊销全部会话
+
+	// ============================================================================
 	// 渠道端点管理（多URL支持）
 	// ============================================================================
 	ListEndpoints(ctx context.Context, channelID int64) ([]model.ChannelEndpoint, error)

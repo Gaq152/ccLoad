@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" type="image/x-icon" href="/web/favicon.ico">
+  <link rel="apple-touch-icon" href="/web/apple-touch-icon.png">
+  <link rel="manifest" href="/web/manifest.json">
+  <meta name="theme-color" content="#3b82f6">
+  <title>初始化设置 - AI Proxy</title>
+  <link rel="stylesheet" href="/web/assets/css/theme.css">
+  <link rel="stylesheet" href="/web/assets/css/styles.css">
+  <script src="/web/assets/js/theme.js"></script>
+  <link href="/web/assets/css/inter.css" rel="stylesheet">
+</head>
+<body class="dashboard-theme">
+  <!-- 主题切换按钮 -->
+  <button class="theme-toggle" id="theme-toggle-btn" onclick="ThemeManager.toggle(event)" title="切换主题" style="position: fixed; top: 20px; right: 20px; z-index: 100;"></button>
+
+  <!-- 动画背景 -->
+  <div class="login-background">
+    <div class="floating-shapes">
+      <div class="shape shape-1"></div>
+      <div class="shape shape-2"></div>
+      <div class="shape shape-3"></div>
+      <div class="shape shape-4"></div>
+      <div class="shape shape-5"></div>
+    </div>
+  </div>
+
+  <div class="login-page">
+    <div class="login-container animate-slide-up">
+      <!-- Logo和品牌 -->
+      <div class="login-brand">
+        <div class="brand-logo">
+          <img class="logo-icon animate-float" src="/web/favicon.svg" alt="Logo">
+        </div>
+        <h1 class="brand-title">AI Proxy</h1>
+        <p class="brand-subtitle">智能API代理管理系统</p>
+      </div>
+
+      <!-- 初始化表单 -->
+      <div class="login-form-container">
+        <div class="login-header">
+          <h2>初始化设置</h2>
+          <p>首次使用，请设置管理密码</p>
+        </div>
+
+        <div id="error-message" class="error-notification" style="display: none;">
+          <svg class="error-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.864-.833-2.634 0L4.18 16.5c-.77.833.192 2.5 1.732 2.5z"/>
+          </svg>
+          <span id="error-text"></span>
+        </div>
+
+        <form id="setup-form" class="login-form">
+          <div class="form-group">
+            <label for="setup-token" class="form-label">
+              <svg class="label-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/>
+              </svg>
+              初始化令牌
+            </label>
+            <div class="input-container">
+              <input type="text" id="setup-token" class="form-input" required autofocus placeholder="XXXX-XXXX-XXXX" autocomplete="off" style="font-family: monospace; letter-spacing: 1px;" />
+              <div class="input-decoration"></div>
+            </div>
+            <p style="margin: 8px 0 0; font-size: 12px; color: var(--neutral-500);">
+              在容器启动日志中查看：<code style="background: var(--neutral-100); padding: 1px 6px; border-radius: 4px;">docker logs &lt;容器名&gt;</code>，找到 Setup Token 一行
+            </p>
+          </div>
+
+          <div class="form-group">
+            <label for="setup-password" class="form-label">
+              <svg class="label-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+              </svg>
+              管理密码
+            </label>
+            <div class="input-container">
+              <input type="password" id="setup-password" class="form-input" required placeholder="至少 8 位，建议混合大小写、数字和符号" autocomplete="new-password" />
+              <div class="input-decoration"></div>
+            </div>
+            <p id="password-strength" style="margin: 8px 0 0; font-size: 12px; color: var(--neutral-500);"></p>
+          </div>
+
+          <div class="form-group">
+            <label for="setup-password-confirm" class="form-label">
+              <svg class="label-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+              确认密码
+            </label>
+            <div class="input-container">
+              <input type="password" id="setup-password-confirm" class="form-input" required placeholder="再次输入密码" autocomplete="new-password" />
+              <div class="input-decoration"></div>
+            </div>
+          </div>
+
+          <button type="submit" class="login-button" id="setup-button">
+            <span class="button-content">
+              <svg class="button-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+              </svg>
+              <span class="button-text">完成初始化</span>
+            </span>
+            <div class="button-loader">
+              <div class="spinner"></div>
+            </div>
+          </button>
+        </form>
+
+        <!-- 安全提示 -->
+        <div class="security-notice">
+          <svg class="notice-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.031 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+          </svg>
+          <div class="notice-text">
+            <div class="notice-title">安全保护</div>
+            <div class="notice-desc">密码以 bcrypt 哈希存储于数据库，任何地方都不保存明文。设置完成后建议在「设置 → 安全」中绑定两步验证。</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/web/assets/js/setup.js"></script>
+  <script src="/web/assets/js/ui.js"></script>
+</body>
+</html>

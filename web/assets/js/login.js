@@ -15,6 +15,11 @@
       try {
         const resp = await fetchAPI('/public/login-config');
         const cfg = (resp && resp.data) || {};
+        // 系统未初始化 → 跳转引导页（服务端302的前端兜底）
+        if (cfg.setup_required) {
+          window.location.replace('/web/setup.html');
+          return;
+        }
         if (!cfg.turnstile_enabled || !cfg.turnstile_site_key) return;
 
         turnstileEnabled = true;
