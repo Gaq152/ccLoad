@@ -8,6 +8,9 @@
   <link rel="manifest" href="/web/manifest.json">
   <meta name="theme-color" content="#3b82f6">
   <title>登录 - AI Proxy</title>
+  <!-- 预热 Turnstile 挑战域连接（DNS+TCP+TLS），开启人机验证时可显著缩短组件加载时间 -->
+  <link rel="preconnect" href="https://challenges.cloudflare.com" crossorigin>
+  <link rel="dns-prefetch" href="https://challenges.cloudflare.com">
   <link rel="stylesheet" href="/web/assets/css/theme.css">
   <link rel="stylesheet" href="/web/assets/css/styles.css">
   <script src="/web/assets/js/theme.js"></script>
@@ -58,6 +61,8 @@
         </div>
 
         <form id="login-form" class="login-form">
+          <!-- 隐藏用户名字段：满足无障碍规范，并让密码管理器正确识别保存条目（单管理员固定为 admin） -->
+          <input type="text" name="username" value="admin" autocomplete="username" readonly style="display: none;" aria-hidden="true">
           <!-- 第一步：密码 -->
           <div id="step-password">
             <div class="form-group">
