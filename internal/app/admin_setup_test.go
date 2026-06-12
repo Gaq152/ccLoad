@@ -275,6 +275,39 @@ func TestHandleChangePassword(t *testing.T) {
 		}
 	})
 
+	t.Run("twofa_login_required关闭时登录直接发会话", func(t *testing.T) {
+		store := newSetupTestStore(t)
+		ctx := context.Background()
+		_ = store.SaveAdminPasswordHash(ctx, string(HashAdminPassword("old-password-123")))
+		_ = store.SaveAdmin2FA(ctx, &model.Admin2FA{
+			Secret: genTestSecret(t), Status: model.Admin2FAStatusActive, CreatedAt: time.Now().Unix(),
+		})
+		cs := NewConfigService(store)
+		if err := cs.LoadDefaults(ctx); err != nil {
+			t.Fatalf("加载配置失败: %v", err)
+		}
+
+		limiter := util.NewLoginRateLimiter()
+		svc := NewAuthService(HashAdminPassword("old-password-123"), "", limiter, store, cs, nil)
+		t.Cleanup(func() { svc.Close(); limiter.Stop() })
+
+		// 默认开启 → 登录走两步
+		w, resp := postJSON(t, svc.HandleLogin, "/login", gin.H{"password": "old-password-123"})
+		if w.Code != 200 || resp["data"].(map[string]any)["requires_2fa"] != true {
+			t.Fatalf("默认应要求2FA: code=%d resp=%v", w.Code, resp)
+		}
+
+		// 关闭开关 → 登录直接发会话
+		if err := cs.UpdateSetting(ctx, "twofa_login_required", "false"); err != nil {
+			t.Fatalf("更新配置失败: %v", err)
+		}
+		w, resp = postJSON(t, svc.HandleLogin, "/login", gin.H{"password": "old-password-123"})
+		data := resp["data"].(map[string]any)
+		if w.Code != 200 || data["token"] == nil || data["token"] == "" {
+			t.Fatalf("开关关闭后应直接签发会话: code=%d resp=%v", w.Code, resp)
+		}
+	})
+
 	t.Run("已绑定2FA时正确验证码通过", func(t *testing.T) {
 		svc, store := newSvc(t)
 		secret := genTestSecret(t)

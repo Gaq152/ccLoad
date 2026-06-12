@@ -59,8 +59,8 @@ function renderSettings(settings) {
   initSettingsEventDelegation();
 
   settings.forEach(s => {
-    // Turnstile 配置项由安全 Tab 的专属卡片管理，不在通用表格渲染
-    if (s.key.startsWith('turnstile_')) return;
+    // 安全相关配置项由安全 Tab 的专属卡片管理，不在通用表格渲染
+    if (s.key.startsWith('turnstile_') || s.key === 'twofa_login_required') return;
 
     originalSettings[s.key] = s.value;
     const row = TemplateEngine.render('tpl-setting-row', {
@@ -544,6 +544,8 @@ async function loadTfaStatus() {
   try {
     const data = await fetchDataWithAuth('/admin/2fa/status');
     tfaEnabled = !!data.enabled;
+    // 登录验证开关仅绑定后显示
+    document.getElementById('tfa-login-toggle-row').style.display = tfaEnabled ? 'inline-flex' : 'none';
     if (data.enabled) {
       badge.textContent = '已开启';
       badge.style.background = 'var(--success-100, #dcfce7)';
@@ -683,6 +685,22 @@ async function confirmUnbindTfa() {
   }
 }
 
+// 切换「登录是否需要两步验证码」（即时保存，热生效）
+async function saveTfaLoginRequired(checkbox) {
+  try {
+    await fetchDataWithAuth('/admin/settings/batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ twofa_login_required: checkbox.checked ? 'true' : 'false' })
+    });
+    showSuccess(checkbox.checked ? '已开启：登录需要两步验证码' : '已关闭：登录仅需密码（修改密码仍需验证码）');
+  } catch (err) {
+    console.error('保存2FA登录开关异常:', err);
+    checkbox.checked = !checkbox.checked; // 保存失败回滚UI状态
+    showError('保存失败: ' + err.message);
+  }
+}
+
 // ---- 修改管理密码 ----
 
 function openChangePasswordModal() {
@@ -758,6 +776,9 @@ async function loadTurnstileSettings() {
     document.getElementById('ts-enabled').checked = map['turnstile_enabled'] === 'true' || map['turnstile_enabled'] === '1';
     document.getElementById('ts-site-key').value = map['turnstile_site_key'] || '';
     document.getElementById('ts-secret-key').value = map['turnstile_secret_key'] || '';
+    // 2FA 登录验证开关（缺省视为开启，与后端默认一致）
+    const loginReq = map['twofa_login_required'];
+    document.getElementById('tfa-login-required').checked = loginReq === undefined || loginReq === 'true' || loginReq === '1';
   } catch (err) {
     console.error('加载Turnstile配置异常:', err);
     showError('加载 Turnstile 配置失败: ' + err.message);

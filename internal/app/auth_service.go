@@ -476,13 +476,18 @@ func (s *AuthService) HandleLogin(c *gin.Context) {
 	// 密码正确，重置速率限制
 	s.loginRateLimiter.RecordSuccess(clientIP)
 
-	// 两步验证检查：已激活时不直接发会话，返回待验证令牌让前端进入第二步
+	// 两步验证检查：已激活且开启「登录需要验证码」时不直接发会话，返回待验证令牌让前端进入第二步
+	// twofa_login_required 关闭时登录仅需密码（修改密码仍强制验证码，见 HandleChangePassword）
 	rec, err := s.load2FA()
 	if err != nil {
 		log.Printf("[WARN]  加载2FA配置失败: %v", err)
 		// 查询失败按未开启处理（fail-open）：2FA是增强防线，不应让数据库故障锁死登录
 	}
-	if rec.IsActive() {
+	login2FARequired := true
+	if s.configService != nil {
+		login2FARequired = s.configService.GetBool("twofa_login_required", true)
+	}
+	if rec.IsActive() && login2FARequired {
 		pendingToken, err := s.createPending2FAToken()
 		if err != nil {
 			log.Printf("ERROR: pending token generation failed: %v", err)

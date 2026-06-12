@@ -203,6 +203,12 @@
                 <p style="margin: 0; font-size: 13px; color: var(--neutral-500);">
                   使用 Google Authenticator 等验证器 App 扫码绑定后，登录除密码外还需输入动态验证码。即使密码泄露，攻击者也无法登录。
                 </p>
+                <!-- 登录是否需要验证码开关（仅绑定后显示；修改密码始终需要验证码） -->
+                <label id="tfa-login-toggle-row" style="display: none; align-items: center; gap: 8px; margin-top: 12px; cursor: pointer; font-size: 13px;">
+                  <input type="checkbox" id="tfa-login-required" style="width: 16px; height: 16px; cursor: pointer;" onchange="saveTfaLoginRequired(this)">
+                  登录时需要两步验证码
+                  <span style="font-size: 12px; color: var(--neutral-400);">（关闭后登录仅需密码，修改密码仍需验证码）</span>
+                </label>
               </div>
               <div style="display: flex; gap: 8px; align-items: center;">
                 <button id="tfa-bind-btn" class="btn btn-primary" style="display: none;" onclick="openTfaBindModal()">绑定两步验证</button>

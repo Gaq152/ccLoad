@@ -933,6 +933,7 @@ func initDefaultSettings(ctx context.Context, db *sql.DB, dialect Dialect) error
 		{"turnstile_enabled", "false", "bool", "登录页 Cloudflare Turnstile 人机验证(防脚本爆破密码,公网部署建议开启;需同时配置 Site Key 和 Secret Key 才生效)", "false"},
 		{"turnstile_site_key", "", "string", "Turnstile Site Key(公开密钥,用于登录页渲染验证组件,在 Cloudflare 控制台获取)", ""},
 		{"turnstile_secret_key", "", "string", "Turnstile Secret Key(私密密钥,用于服务端校验验证结果,切勿泄露)", ""},
+		{"twofa_login_required", "true", "bool", "绑定两步验证后登录是否需要验证码(关闭后登录仅需密码;修改密码始终需要验证码)", "true"},
 	}
 
 	var query string
