@@ -62,6 +62,14 @@ type AuthService struct {
 	// 系统配置（用于读取 Turnstile 人机验证配置，可为 nil＝禁用）
 	configService *ConfigService
 
+	// Token 加密密钥（用于解密 2FA TOTP secret，与 CCLOAD_TOKEN_KEY 一致，可为空＝明文存储）
+	tokenEncryptionKey []byte
+
+	// 2FA 待验证登录令牌（密码已通过、等待验证码的中间态，5分钟过期）
+	// TokenHash → 过期时间；内存存储即可，重启丢失只需重新输一次密码
+	pending2FA    map[string]time.Time
+	pending2FAMux sync.Mutex
+
 	// 速率限制（防暴力破解）
 	loginRateLimiter *util.LoginRateLimiter
 
@@ -78,6 +86,7 @@ func NewAuthService(
 	loginRateLimiter *util.LoginRateLimiter,
 	store storage.Store,
 	configService *ConfigService,
+	tokenEncryptionKey []byte,
 ) *AuthService {
 	// 密码bcrypt哈希（安全存储）
 	passwordHash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
@@ -92,9 +101,11 @@ func NewAuthService(
 		authTokenIDs:      make(map[string]int64),
 		authTokenNames:    make(map[string]string),
 		authTokenChannels: make(map[int64]*TokenChannelConfig),
-		loginRateLimiter:  loginRateLimiter,
-		store:             store,
-		configService:     configService,
+		loginRateLimiter:   loginRateLimiter,
+		store:              store,
+		configService:      configService,
+		tokenEncryptionKey: tokenEncryptionKey,
+		pending2FA:         make(map[string]time.Time),
 		lastUsedCh:        make(chan string, 256), // 带缓冲，避免阻塞请求
 		done:              make(chan struct{}),
 	}
@@ -447,7 +458,32 @@ func (s *AuthService) HandleLogin(c *gin.Context) {
 	// 密码正确，重置速率限制
 	s.loginRateLimiter.RecordSuccess(clientIP)
 
-	// 生成Token
+	// 两步验证检查：已激活时不直接发会话，返回待验证令牌让前端进入第二步
+	rec, err := s.load2FA()
+	if err != nil {
+		log.Printf("[WARN]  加载2FA配置失败: %v", err)
+		// 查询失败按未开启处理（fail-open）：2FA是增强防线，不应让数据库故障锁死登录
+	}
+	if rec.IsActive() {
+		pendingToken, err := s.createPending2FAToken()
+		if err != nil {
+			log.Printf("ERROR: pending token generation failed: %v", err)
+			RespondErrorMsg(c, http.StatusInternalServerError, "internal error")
+			return
+		}
+		RespondJSON(c, http.StatusOK, gin.H{
+			"requires_2fa":  true,
+			"pending_token": pendingToken,
+		})
+		return
+	}
+
+	s.issueSession(c, clientIP)
+}
+
+// issueSession 签发管理员会话（密码及2FA均通过后调用）
+// 生成Token → 内存+数据库存储哈希 → 写HttpOnly Cookie → 返回明文Token
+func (s *AuthService) issueSession(c *gin.Context, clientIP string) {
 	token, err := s.generateToken()
 	if err != nil {
 		log.Printf("ERROR: token generation failed: %v", err)
@@ -486,6 +522,129 @@ func (s *AuthService) HandleLogin(c *gin.Context) {
 		"token":     token,                             // 明文token返回给客户端
 		"expiresIn": int(config.TokenExpiry.Seconds()), // 秒数
 	})
+}
+
+// ============================================================================
+// 两步验证（2FA）登录第二阶段
+// ============================================================================
+
+// pending2FAExpiry 待验证登录令牌有效期（密码通过到输完验证码的时间窗口）
+const pending2FAExpiry = 5 * time.Minute
+
+// load2FA 加载2FA配置（独立超时，不依赖请求context）
+func (s *AuthService) load2FA() (*model.Admin2FA, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	return s.store.GetAdmin2FA(ctx)
+}
+
+// createPending2FAToken 生成待验证登录令牌（存哈希，5分钟过期）
+func (s *AuthService) createPending2FAToken() (string, error) {
+	token, err := s.generateToken()
+	if err != nil {
+		return "", err
+	}
+
+	now := time.Now()
+	s.pending2FAMux.Lock()
+	// 顺手清理过期条目（单管理员场景map极小，遍历无成本）
+	for hash, expiry := range s.pending2FA {
+		if now.After(expiry) {
+			delete(s.pending2FA, hash)
+		}
+	}
+	s.pending2FA[model.HashToken(token)] = now.Add(pending2FAExpiry)
+	s.pending2FAMux.Unlock()
+
+	return token, nil
+}
+
+// validPending2FAToken 检查待验证令牌是否有效（不删除：验证码输错时无需重新输密码）
+func (s *AuthService) validPending2FAToken(token string) bool {
+	hash := model.HashToken(token)
+	s.pending2FAMux.Lock()
+	defer s.pending2FAMux.Unlock()
+
+	expiry, exists := s.pending2FA[hash]
+	if !exists {
+		return false
+	}
+	if time.Now().After(expiry) {
+		delete(s.pending2FA, hash)
+		return false
+	}
+	return true
+}
+
+// consumePending2FAToken 删除待验证令牌（验证码通过后调用）
+func (s *AuthService) consumePending2FAToken(token string) {
+	s.pending2FAMux.Lock()
+	delete(s.pending2FA, model.HashToken(token))
+	s.pending2FAMux.Unlock()
+}
+
+// HandleLogin2FA 处理两步验证（登录第二阶段）
+// POST /login/2fa  {pending_token, code}
+// code 为 6 位 TOTP 验证码或恢复码；同样受登录速率限制保护（防6位码爆破）
+func (s *AuthService) HandleLogin2FA(c *gin.Context) {
+	clientIP := c.ClientIP()
+
+	if !s.loginRateLimiter.AllowAttempt(clientIP) {
+		lockoutTime := s.loginRateLimiter.GetLockoutTime(clientIP)
+		RespondErrorWithData(c, http.StatusTooManyRequests, "Too many failed login attempts", gin.H{
+			"message":         fmt.Sprintf("Account locked for %d seconds. Please try again later.", lockoutTime),
+			"lockout_seconds": lockoutTime,
+		})
+		return
+	}
+
+	var req struct {
+		PendingToken string `json:"pending_token" binding:"required"`
+		Code         string `json:"code" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		RespondErrorMsg(c, http.StatusBadRequest, "Invalid request format")
+		return
+	}
+
+	// 待验证令牌过期/无效 → 前端应返回第一步重新输密码
+	if !s.validPending2FAToken(req.PendingToken) {
+		RespondErrorWithData(c, http.StatusUnauthorized, "登录已过期，请重新输入密码", gin.H{
+			"pending_expired": true,
+		})
+		return
+	}
+
+	rec, err := s.load2FA()
+	if err != nil {
+		log.Printf("[ERROR] 加载2FA配置失败: %v", err)
+		RespondErrorMsg(c, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if !rec.IsActive() {
+		// 极端情况：第二步进行中被解绑 → 让用户重新走第一步（无2FA直接登录）
+		RespondErrorWithData(c, http.StatusUnauthorized, "两步验证状态已变更，请重新登录", gin.H{
+			"pending_expired": true,
+		})
+		return
+	}
+
+	if !check2FACode(rec, req.Code, s.tokenEncryptionKey) {
+		log.Printf("[WARN]  两步验证失败: IP=%s", clientIP)
+		RespondErrorMsg(c, http.StatusUnauthorized, "验证码错误")
+		return
+	}
+
+	// 落库：持久化防重放时间片 / 已消费的恢复码
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if err := s.store.SaveAdmin2FA(ctx, rec); err != nil {
+		log.Printf("[WARN]  保存2FA状态失败: %v", err)
+	}
+
+	s.consumePending2FAToken(req.PendingToken)
+	s.loginRateLimiter.RecordSuccess(clientIP)
+	s.issueSession(c, clientIP)
 }
 
 // setAdminSessionCookie 写入管理员会话 Cookie

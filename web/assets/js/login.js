@@ -69,19 +69,85 @@
         loginButton.classList.add('loading');
         loginButton.disabled = true;
         passwordInput.disabled = true;
+        totpInput.disabled = true;
       } else {
         loginButton.classList.remove('loading');
         loginButton.disabled = false;
         passwordInput.disabled = false;
+        totpInput.disabled = false;
       }
     }
 
-    // 表单提交处理
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      hideError();
-      setLoading(true);
+    // ========================================================================
+    // 两步验证（2FA）状态机：password（第一步）→ totp（第二步）
+    // ========================================================================
+    const stepPassword = document.getElementById('step-password');
+    const stepTotp = document.getElementById('step-totp');
+    const headerPassword = document.getElementById('login-header-password');
+    const headerTotp = document.getElementById('login-header-totp');
+    const totpInput = document.getElementById('totp-code');
+    const totpBack = document.getElementById('totp-back');
+    const buttonText = loginButton.querySelector('.button-text');
 
+    let currentStep = 'password';
+    let pendingToken = null; // /login 返回的待验证令牌（5分钟有效）
+
+    function switchToTotpStep(token) {
+      currentStep = 'totp';
+      pendingToken = token;
+      stepPassword.style.display = 'none';
+      headerPassword.style.display = 'none';
+      stepTotp.style.display = 'block';
+      headerTotp.style.display = 'block';
+      buttonText.textContent = '验 证';
+      totpInput.value = '';
+      hideError();
+      setTimeout(() => totpInput.focus(), 100);
+    }
+
+    function switchToPasswordStep() {
+      currentStep = 'password';
+      pendingToken = null;
+      stepTotp.style.display = 'none';
+      headerTotp.style.display = 'none';
+      stepPassword.style.display = 'block';
+      headerPassword.style.display = 'block';
+      buttonText.textContent = '登录系统';
+      totpInput.value = '';
+      hideError();
+      resetTurnstile(); // 回到第一步需重新过人机验证（令牌已消耗）
+      setTimeout(() => passwordInput.focus(), 100);
+    }
+
+    totpBack.addEventListener('click', (e) => {
+      e.preventDefault();
+      switchToPasswordStep();
+    });
+
+    // 登录成功的统一收尾：存储Token → 跳转
+    function onLoginSuccess(data) {
+      localStorage.setItem('ccload_token', data.token);
+      localStorage.setItem('ccload_token_expiry', Date.now() + data.expiresIn * 1000);
+
+      loginButton.style.background = 'linear-gradient(135deg, var(--success-500), var(--success-600))';
+
+      setTimeout(() => {
+        // 优先回到登录前的 returnUrl（来自 HTML 鉴权中间件或 ui.js），兼容旧 redirect 参数
+        const urlParams = new URLSearchParams(window.location.search);
+        const redirect = urlParams.get('returnUrl') || urlParams.get('redirect') || '/web/index.html';
+        window.location.href = redirect;
+      }, 500);
+    }
+
+    function shakeInput(input) {
+      input.style.animation = 'none';
+      input.offsetHeight;
+      input.style.animation = 'shake 0.5s ease-in-out';
+      setTimeout(() => { input.style.animation = ''; }, 500);
+    }
+
+    // 第一步：密码登录
+    async function submitPassword() {
       const password = passwordInput.value;
 
       // 开启人机验证时必须先完成验证
@@ -92,54 +158,75 @@
           : '';
         if (!token) {
           showError('请先完成人机验证');
-          setLoading(false);
           return;
         }
         body.turnstile_token = token;
       }
 
+      const resp = await fetchAPI('/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      if (resp.success) {
+        const data = resp.data || {};
+        if (data.requires_2fa) {
+          // 密码正确但开启了两步验证 → 切到验证码步骤
+          switchToTotpStep(data.pending_token);
+          return;
+        }
+        onLoginSuccess(data);
+      } else {
+        showError(resp.error || '密码错误，请重试');
+        resetTurnstile(); // 验证令牌一次性，失败后需重新验证
+        shakeInput(passwordInput);
+      }
+    }
+
+    // 第二步：两步验证码（TOTP 或恢复码）
+    async function submitTotpCode() {
+      const code = totpInput.value.trim();
+      if (!code) {
+        showError('请输入验证码');
+        return;
+      }
+
+      const resp = await fetchAPI('/login/2fa', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pending_token: pendingToken, code }),
+      });
+
+      if (resp.success) {
+        onLoginSuccess(resp.data || {});
+      } else if (resp.data && resp.data.pending_expired) {
+        // 待验证令牌过期（超过5分钟）→ 回到第一步重新输密码
+        switchToPasswordStep();
+        showError(resp.error || '登录已过期，请重新输入密码');
+      } else {
+        showError(resp.error || '验证码错误');
+        totpInput.value = '';
+        shakeInput(totpInput);
+      }
+    }
+
+    // 表单提交处理（按当前步骤分发）
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      hideError();
+      setLoading(true);
+
       try {
-        const resp = await fetchAPI('/login', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(body),
-        });
-
-        if (resp.success) {
-          const data = resp.data || {};
-
-          // 存储Token到localStorage
-          localStorage.setItem('ccload_token', data.token);
-          localStorage.setItem('ccload_token_expiry', Date.now() + data.expiresIn * 1000);
-
-          // 登录成功，添加成功动画
-          loginButton.style.background = 'linear-gradient(135deg, var(--success-500), var(--success-600))';
-
-          setTimeout(() => {
-            // 优先回到登录前的 returnUrl（来自 HTML 鉴权中间件或 ui.js），兼容旧 redirect 参数
-            const urlParams = new URLSearchParams(window.location.search);
-            const redirect = urlParams.get('returnUrl') || urlParams.get('redirect') || '/web/index.html';
-            window.location.href = redirect;
-          }, 500);
+        if (currentStep === 'totp') {
+          await submitTotpCode();
         } else {
-          showError(resp.error || '密码错误，请重试');
-          resetTurnstile(); // 验证令牌一次性，失败后需重新验证
-
-          // 添加输入框摇晃动画
-          passwordInput.style.animation = 'none';
-          passwordInput.offsetHeight;
-          passwordInput.style.animation = 'shake 0.5s ease-in-out';
-
-          setTimeout(() => {
-            passwordInput.style.animation = '';
-          }, 500);
+          await submitPassword();
         }
       } catch (error) {
         console.error('Login error:', error);
         showError('网络连接错误，请检查网络后重试');
-        resetTurnstile();
+        if (currentStep === 'password') resetTurnstile();
       } finally {
         setLoading(false);
       }
@@ -147,6 +234,7 @@
 
     // 输入框焦点处理
     passwordInput.addEventListener('focus', hideError);
+    totpInput.addEventListener('focus', hideError);
 
     // 键盘快捷键
     document.addEventListener('keydown', (e) => {

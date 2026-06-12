@@ -586,6 +586,7 @@ func setupTestServer(t *testing.T) (*Server, func()) {
 		nil, // loginRateLimiter
 		store,
 		nil, // configService（nil=禁用Turnstile）
+		nil, // tokenEncryptionKey（nil=2FA secret明文存储）
 	)
 
 	server.channelCache = storage.NewChannelCache(store, time.Minute)

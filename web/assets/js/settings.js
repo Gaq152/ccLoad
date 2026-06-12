@@ -25,6 +25,10 @@ initTopbar('settings');
       if (btn.dataset.tab === 'pricing' && !pricingLoaded) {
         loadPricing();
       }
+      // 切换到安全 Tab 时刷新 2FA 状态和 Turnstile 配置
+      if (btn.dataset.tab === 'security') {
+        loadSecurityTab();
+      }
     });
   });
 })();
@@ -55,44 +59,18 @@ function renderSettings(settings) {
   initSettingsEventDelegation();
 
   settings.forEach(s => {
+    // Turnstile 配置项由安全 Tab 的专属卡片管理，不在通用表格渲染
+    if (s.key.startsWith('turnstile_')) return;
+
     originalSettings[s.key] = s.value;
-    let inputHtml = renderInput(s);
-    // 部分配置项附加外部获取入口（如 Turnstile Key 跳转 Cloudflare 控制台）
-    const helpLink = settingHelpLinks[s.key];
-    if (helpLink) {
-      inputHtml = `<div style="display: inline-flex; align-items: center; gap: 8px;">${inputHtml}
-        <a href="${helpLink.url}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(helpLink.title)}"
-           style="display: inline-flex; align-items: center; gap: 4px; padding: 6px 10px; border: 1px solid var(--neutral-300); border-radius: 6px; font-size: 12px; color: var(--primary-600, #2563eb); text-decoration: none; white-space: nowrap;">
-          ${escapeHtml(helpLink.label)}
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
-            <path d="M15 3h6v6"/><path d="M10 14L21 3"/>
-          </svg>
-        </a>
-      </div>`;
-    }
     const row = TemplateEngine.render('tpl-setting-row', {
       key: s.key,
       description: s.description,
-      inputHtml
+      inputHtml: renderInput(s)
     });
     if (row) tbody.appendChild(row);
   });
 }
-
-// 配置项外部链接（渲染为输入框旁的跳转按钮）
-const settingHelpLinks = {
-  'turnstile_site_key': {
-    url: 'https://dash.cloudflare.com/?to=/:account/turnstile',
-    label: '获取 Key',
-    title: '前往 Cloudflare 控制台 Turnstile 页面：添加 Widget（填写本站域名）后即可获得 Site Key 和 Secret Key'
-  },
-  'turnstile_secret_key': {
-    url: 'https://dash.cloudflare.com/?to=/:account/turnstile',
-    label: '获取 Key',
-    title: '前往 Cloudflare 控制台 Turnstile 页面：添加 Widget（填写本站域名）后即可获得 Site Key 和 Secret Key'
-  }
-};
 
 // 初始化事件委托（替代 inline onclick）
 function initSettingsEventDelegation() {
@@ -543,6 +521,207 @@ async function importDefaultPricing() {
   } catch (err) {
     console.error('导入默认定价异常:', err);
     showError('导入失败: ' + err.message);
+  }
+}
+
+// ============================================================================
+// 安全 Tab：两步验证(TOTP) + Turnstile 人机验证
+// ============================================================================
+let tfaRecoveryCodes = []; // 激活后返回的恢复码明文（仅本次会话展示用）
+
+async function loadSecurityTab() {
+  loadTfaStatus();
+  loadTurnstileSettings();
+}
+
+// ---- 两步验证 ----
+
+async function loadTfaStatus() {
+  const badge = document.getElementById('tfa-status-badge');
+  const bindBtn = document.getElementById('tfa-bind-btn');
+  const unbindBtn = document.getElementById('tfa-unbind-btn');
+  try {
+    const data = await fetchDataWithAuth('/admin/2fa/status');
+    if (data.enabled) {
+      badge.textContent = '已开启';
+      badge.style.background = 'var(--success-100, #dcfce7)';
+      badge.style.color = 'var(--success-700, #15803d)';
+      bindBtn.style.display = 'none';
+      unbindBtn.style.display = 'inline-flex';
+    } else {
+      badge.textContent = '未开启';
+      badge.style.background = 'var(--neutral-100)';
+      badge.style.color = 'var(--neutral-500)';
+      bindBtn.style.display = 'inline-flex';
+      unbindBtn.style.display = 'none';
+    }
+  } catch (err) {
+    console.error('加载2FA状态异常:', err);
+    badge.textContent = '加载失败';
+  }
+}
+
+async function openTfaBindModal() {
+  try {
+    // 生成待激活 secret + 二维码（回填验证码确认前不生效）
+    const data = await fetchDataWithAuth('/admin/2fa/setup', { method: 'POST' });
+    document.getElementById('tfa-qr-img').src = data.qr_image;
+    document.getElementById('tfa-secret-text').textContent = data.secret;
+    document.getElementById('tfa-activate-code').value = '';
+    document.getElementById('tfa-bind-step-scan').style.display = 'block';
+    document.getElementById('tfa-bind-step-recovery').style.display = 'none';
+    document.getElementById('tfaBindModal').classList.add('show');
+    setTimeout(() => document.getElementById('tfa-activate-code').focus(), 200);
+  } catch (err) {
+    console.error('生成绑定二维码异常:', err);
+    showError('生成二维码失败: ' + err.message);
+  }
+}
+
+function closeTfaBindModal(refresh) {
+  document.getElementById('tfaBindModal').classList.remove('show');
+  tfaRecoveryCodes = [];
+  if (refresh) loadTfaStatus();
+}
+
+async function activateTfa() {
+  const code = document.getElementById('tfa-activate-code').value.trim();
+  if (!code) {
+    showError('请输入验证器 App 中的 6 位验证码');
+    return;
+  }
+  try {
+    const data = await fetchDataWithAuth('/admin/2fa/activate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code })
+    });
+    // 绑定成功 → 同一弹窗切换为恢复码展示（明文仅此一次）
+    tfaRecoveryCodes = data.recovery_codes || [];
+    const container = document.getElementById('tfa-recovery-codes');
+    container.innerHTML = '';
+    tfaRecoveryCodes.forEach(c => {
+      const div = document.createElement('div');
+      div.textContent = c;
+      container.appendChild(div);
+    });
+    document.getElementById('tfa-bind-step-scan').style.display = 'none';
+    document.getElementById('tfa-bind-step-recovery').style.display = 'block';
+    loadTfaStatus();
+    showSuccess('两步验证绑定成功');
+  } catch (err) {
+    console.error('激活2FA异常:', err);
+    showError(err.message || '验证码错误，请确认手机时间准确');
+    document.getElementById('tfa-activate-code').value = '';
+  }
+}
+
+async function copyRecoveryCodes() {
+  try {
+    await navigator.clipboard.writeText(tfaRecoveryCodes.join('\n'));
+    showSuccess('恢复码已复制到剪贴板');
+  } catch (_) {
+    showError('复制失败，请手动抄录');
+  }
+}
+
+// 下载恢复码为本地 .txt 文件（纯前端 Blob 生成，不经过服务器）
+function downloadRecoveryCodes() {
+  const content = [
+    'ccLoad 两步验证恢复码',
+    '生成时间: ' + new Date().toLocaleString(),
+    '',
+    '每个恢复码只能使用一次。手机验证器不可用时，登录第二步输入恢复码即可。',
+    '请妥善保管，不要与他人共享。',
+    '',
+    ...tfaRecoveryCodes
+  ].join('\n');
+
+  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'ccload-recovery-codes.txt';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showSuccess('恢复码文件已下载');
+}
+
+function openTfaUnbindModal() {
+  document.getElementById('tfa-unbind-code').value = '';
+  document.getElementById('tfaUnbindModal').classList.add('show');
+  setTimeout(() => document.getElementById('tfa-unbind-code').focus(), 200);
+}
+
+function closeTfaUnbindModal() {
+  document.getElementById('tfaUnbindModal').classList.remove('show');
+}
+
+async function confirmUnbindTfa() {
+  const code = document.getElementById('tfa-unbind-code').value.trim();
+  if (!code) {
+    showError('请输入验证码或恢复码');
+    return;
+  }
+  try {
+    await fetchDataWithAuth('/admin/2fa/disable', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code })
+    });
+    closeTfaUnbindModal();
+    loadTfaStatus();
+    showSuccess('两步验证已解绑');
+  } catch (err) {
+    console.error('解绑2FA异常:', err);
+    showError(err.message || '验证码错误');
+    document.getElementById('tfa-unbind-code').value = '';
+  }
+}
+
+// ---- Turnstile 配置（独立卡片，不走通用设置表格） ----
+
+async function loadTurnstileSettings() {
+  try {
+    const resp = await fetchDataWithAuth('/admin/settings');
+    const settings = resp.settings || resp;
+    const map = {};
+    settings.forEach(s => { map[s.key] = s.value; });
+    document.getElementById('ts-enabled').checked = map['turnstile_enabled'] === 'true' || map['turnstile_enabled'] === '1';
+    document.getElementById('ts-site-key').value = map['turnstile_site_key'] || '';
+    document.getElementById('ts-secret-key').value = map['turnstile_secret_key'] || '';
+  } catch (err) {
+    console.error('加载Turnstile配置异常:', err);
+    showError('加载 Turnstile 配置失败: ' + err.message);
+  }
+}
+
+async function saveTurnstileSettings() {
+  const enabled = document.getElementById('ts-enabled').checked;
+  const siteKey = document.getElementById('ts-site-key').value.trim();
+  const secretKey = document.getElementById('ts-secret-key').value.trim();
+
+  if (enabled && (!siteKey || !secretKey)) {
+    showError('开启 Turnstile 需要同时填写 Site Key 和 Secret Key');
+    return;
+  }
+
+  try {
+    await fetchDataWithAuth('/admin/settings/batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        turnstile_enabled: enabled ? 'true' : 'false',
+        turnstile_site_key: siteKey,
+        turnstile_secret_key: secretKey
+      })
+    });
+    showSuccess('Turnstile 配置已保存，立即生效');
+  } catch (err) {
+    console.error('保存Turnstile配置异常:', err);
+    showError('保存失败: ' + err.message);
   }
 }
 

@@ -120,6 +120,13 @@ type Store interface {
 	LoadAllSessions(ctx context.Context) (map[string]time.Time, error)
 
 	// ============================================================================
+	// 管理员两步验证(TOTP)
+	// ============================================================================
+	GetAdmin2FA(ctx context.Context) (*model.Admin2FA, error) // 无记录返回 (nil, nil)
+	SaveAdmin2FA(ctx context.Context, rec *model.Admin2FA) error
+	DeleteAdmin2FA(ctx context.Context) error
+
+	// ============================================================================
 	// 渠道端点管理（多URL支持）
 	// ============================================================================
 	ListEndpoints(ctx context.Context, channelID int64) ([]model.ChannelEndpoint, error)

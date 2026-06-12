@@ -262,8 +262,9 @@ func NewServer(store storage.Store) *Server {
 	s.authService = NewAuthService(
 		password,
 		s.loginRateLimiter,
-		store,         // 传入store用于热更新令牌
-		configService, // 传入configService用于读取Turnstile配置
+		store,              // 传入store用于热更新令牌
+		configService,      // 传入configService用于读取Turnstile配置
+		tokenEncryptionKey, // 传入加密密钥用于解密2FA TOTP secret
 	)
 
 	// 启动Token统计Worker（有界队列：性能可控，Shutdown可等待）
@@ -515,6 +516,7 @@ func (s *Server) SetupRoutes(r *gin.Engine) {
 
 	// 登录相关（公开访问）
 	r.POST("/login", s.authService.HandleLogin)
+	r.POST("/login/2fa", s.authService.HandleLogin2FA) // 两步验证（登录第二阶段）
 	r.POST("/logout", s.authService.HandleLogout)
 
 	// 需要身份验证的admin APIs（使用Token认证）
@@ -592,6 +594,12 @@ func (s *Server) SetupRoutes(r *gin.Engine) {
 		admin.PUT("/pricing/:id", s.HandleUpdateModelPricing)
 		admin.DELETE("/pricing/:id", s.HandleDeleteModelPricing)
 		admin.POST("/pricing/defaults", s.HandleImportDefaultPricing)
+
+		// 两步验证(TOTP)管理
+		admin.GET("/2fa/status", s.HandleGet2FAStatus)
+		admin.POST("/2fa/setup", s.HandleSetup2FA)
+		admin.POST("/2fa/activate", s.HandleActivate2FA)
+		admin.POST("/2fa/disable", s.HandleDisable2FA)
 
 		// 系统配置管理
 		admin.GET("/settings", s.AdminListSettings)

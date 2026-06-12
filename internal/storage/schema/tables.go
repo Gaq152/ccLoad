@@ -109,6 +109,19 @@ func DefineAdminSessionsTable() *TableBuilder {
 		Index("idx_admin_sessions_expires", "expires_at")
 }
 
+// DefineAdmin2FATable 定义admin_2fa表结构（管理员两步验证，单行表 id 恒为 1）
+func DefineAdmin2FATable() *TableBuilder {
+	return NewTable("admin_2fa").
+		Column("id BIGINT PRIMARY KEY").                       // 恒为1（单管理员）
+		Column("secret TEXT NOT NULL").                        // TOTP secret(base32)，可能为AES加密后的base64
+		Column("secret_encrypted TINYINT NOT NULL DEFAULT 0"). // secret是否加密存储
+		Column("status TINYINT NOT NULL DEFAULT 0").           // 0=待激活 1=已激活
+		Column("recovery_codes TEXT").                         // 恢复码SHA256哈希JSON数组(用掉即移除)
+		Column("last_used_step BIGINT NOT NULL DEFAULT 0").    // 最近成功验证的时间片(防重放)
+		Column("created_at BIGINT NOT NULL").
+		Column("activated_at BIGINT NOT NULL DEFAULT 0")
+}
+
 // DefineChannelEndpointsTable 定义channel_endpoints表结构（多端点管理）
 func DefineChannelEndpointsTable() *TableBuilder {
 	return NewTable("channel_endpoints").
