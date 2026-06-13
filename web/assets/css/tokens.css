@@ -153,7 +153,9 @@
       background-color: rgba(0,0,0,0.5);
       animation: fadeIn 0.2s;
     }
-    .modal-content {
+    /* 三段式弹窗（头/体/脚各自带内边距）：仅限 .modal-structured，
+       禁止覆盖全局 .modal-content —— 此前未加命名空间导致 settings 页弹窗 padding 被清零 */
+    .modal-content.modal-structured {
       background-color: var(--card-bg);
       margin: 5% auto;
       padding: 0;
@@ -162,17 +164,18 @@
       box-shadow: 0 10px 40px rgba(0,0,0,0.2);
       animation: slideUp 0.3s;
     }
-    .modal-header {
+    .modal-structured .modal-header {
       padding: 20px 24px;
+      margin-bottom: 0; /* 抵消全局 .modal-header 的下边距（间距由 .modal-body 的 padding 提供） */
       border-bottom: 1px solid var(--neutral-200);
       display: flex;
       justify-content: space-between;
       align-items: center;
     }
-    .modal-body {
+    .modal-structured .modal-body {
       padding: 24px;
     }
-    .modal-footer {
+    .modal-structured .modal-footer {
       padding: 16px 24px;
       border-top: 1px solid var(--neutral-200);
       display: flex;

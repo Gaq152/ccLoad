@@ -228,7 +228,7 @@
             <p style="margin: 0 0 16px; font-size: 13px; color: var(--neutral-500);">
               开启后登录页嵌入 Turnstile 验证组件，拦截机器人脚本爆破密码。公网部署建议开启；需同时配置 Site Key 和 Secret Key 才生效。
             </p>
-            <div style="display: flex; flex-direction: column; gap: 12px; max-width: 560px;">
+            <form style="display: flex; flex-direction: column; gap: 12px; max-width: 560px;" autocomplete="off" onsubmit="event.preventDefault(); saveTurnstileSettings();">
               <label style="display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px;">
                 <input type="checkbox" id="ts-enabled" style="width: 16px; height: 16px; cursor: pointer;">
                 启用 Turnstile 人机验证
@@ -245,11 +245,11 @@
                   </svg>
                 </a>
               </div>
-              <input type="password" id="ts-secret-key" class="form-input" placeholder="Secret Key（私密密钥，服务端校验用）" style="font-family: monospace; font-size: 12px;" autocomplete="new-password">
+              <input type="password" id="ts-secret-key" class="form-input" placeholder="Secret Key（私密密钥，服务端校验用）" style="font-family: monospace; font-size: 12px;" autocomplete="off">
               <div>
-                <button class="btn btn-primary" onclick="saveTurnstileSettings()" style="min-width: 120px;">保存</button>
+                <button type="submit" class="btn btn-primary" style="min-width: 120px;">保存</button>
               </div>
-            </div>
+            </form>
           </div>
         </section>
 
@@ -264,29 +264,33 @@
         <h2 class="modal-title">修改管理密码</h2>
         <button class="close-btn" onclick="closeChangePasswordModal()" aria-label="关闭对话框">&times;</button>
       </div>
-      <div class="form-group">
-        <label class="form-label">当前密码</label>
-        <input type="password" id="cp-old-password" class="form-input" autocomplete="current-password">
-      </div>
-      <div class="form-group">
-        <label class="form-label">新密码（至少 8 位）</label>
-        <input type="password" id="cp-new-password" class="form-input" autocomplete="new-password">
-      </div>
-      <div class="form-group">
-        <label class="form-label">确认新密码</label>
-        <input type="password" id="cp-confirm-password" class="form-input" autocomplete="new-password">
-      </div>
-      <div class="form-group" id="cp-totp-group" style="display: none;">
-        <label class="form-label">两步验证码</label>
-        <input type="text" id="cp-totp-code" class="form-input" inputmode="numeric" maxlength="11" placeholder="6 位验证码或恢复码" autocomplete="off">
-      </div>
-      <p style="font-size: 12px; color: var(--warning-600, #d97706); margin: 0 0 12px;">
-        修改成功后所有会话将失效（包括本机），需要用新密码重新登录。
-      </p>
-      <div style="display: flex; justify-content: flex-end; gap: 8px;">
-        <button class="btn btn-secondary" onclick="closeChangePasswordModal()">取消</button>
-        <button class="btn btn-primary" id="cp-confirm-btn" onclick="confirmChangePassword()">确认修改</button>
-      </div>
+      <form onsubmit="event.preventDefault(); confirmChangePassword();">
+        <!-- 隐藏用户名字段：满足无障碍规范，并让密码管理器正确配对保存（单管理员固定为 admin） -->
+        <input type="text" name="username" value="admin" autocomplete="username" readonly style="display: none;" aria-hidden="true">
+        <div class="form-group">
+          <label class="form-label">当前密码</label>
+          <input type="password" id="cp-old-password" class="form-input" autocomplete="current-password">
+        </div>
+        <div class="form-group">
+          <label class="form-label">新密码（至少 8 位）</label>
+          <input type="password" id="cp-new-password" class="form-input" autocomplete="new-password">
+        </div>
+        <div class="form-group">
+          <label class="form-label">确认新密码</label>
+          <input type="password" id="cp-confirm-password" class="form-input" autocomplete="new-password">
+        </div>
+        <div class="form-group" id="cp-totp-group" style="display: none;">
+          <label class="form-label">两步验证码</label>
+          <input type="text" id="cp-totp-code" class="form-input" inputmode="numeric" maxlength="11" placeholder="6 位验证码或恢复码" autocomplete="off">
+        </div>
+        <p style="font-size: 12px; color: var(--warning-600, #d97706); margin: 0 0 12px;">
+          修改成功后所有会话将失效（包括本机），需要用新密码重新登录。
+        </p>
+        <div style="display: flex; justify-content: flex-end; gap: 8px;">
+          <button type="button" class="btn btn-secondary" onclick="closeChangePasswordModal()">取消</button>
+          <button type="submit" class="btn btn-primary" id="cp-confirm-btn">确认修改</button>
+        </div>
+      </form>
     </div>
   </div>
 
