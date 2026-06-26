@@ -431,6 +431,26 @@ func (s *SQLStore) ImportChannelBatch(ctx context.Context, channels []*model.Cha
 				}
 			}
 
+			// 为新建渠道落库端点（数据库为端点的唯一数据源）。
+			// 更新场景不触碰端点，保留用户已有的端点配置。
+			if !isUpdate && config.URL != "" {
+				// 主端点（激活）
+				if _, err := tx.ExecContext(ctx,
+					`INSERT INTO channel_endpoints (channel_id, url, is_active, sort_order, created_at) VALUES (?, ?, 1, 0, ?)`,
+					channelID, config.URL, nowUnix); err != nil {
+					return fmt.Errorf("insert primary endpoint for channel %s: %w", config.Name, err)
+				}
+				// Kiro 预设额外落库备用端点（codewhisperer 旧域名，非激活）
+				const kiroBackupURL = "https://codewhisperer.us-east-1.amazonaws.com"
+				if config.Preset == "kiro" && config.URL != kiroBackupURL {
+					if _, err := tx.ExecContext(ctx,
+						`INSERT INTO channel_endpoints (channel_id, url, is_active, sort_order, created_at) VALUES (?, ?, 0, 1, ?)`,
+						channelID, kiroBackupURL, nowUnix); err != nil {
+						return fmt.Errorf("insert kiro backup endpoint for channel %s: %w", config.Name, err)
+					}
+				}
+			}
+
 			// 同步模型索引到 channel_models 表
 			var modelInsertSQL string
 			if s.IsSQLite() {

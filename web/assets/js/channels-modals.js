@@ -282,7 +282,7 @@ async function editChannel(id) {
     }
 
     // 应用渠道类型切换（会显示预设选项并应用当前预设）
-    handleChannelTypeChange(channelType);
+    handleChannelTypeChange(channelType, true);
 
     // 设置 OpenAI 兼容模式开关状态（仅 Gemini 自定义预设）
     const openaiCompatCheckbox = document.getElementById('openaiCompatCheckbox');
@@ -347,7 +347,7 @@ async function editChannel(id) {
       presetRadio.checked = true;
     }
 
-    handleChannelTypeChange(channelType);
+    handleChannelTypeChange(channelType, true);
 
     // 设置 OpenAI 兼容模式开关状态
     const openaiCompatCheckbox = document.getElementById('openaiCompatCheckbox');
@@ -406,7 +406,7 @@ async function editChannel(id) {
     updateGeminiTokenUI(null);
   } else {
     // 其他非 OAuth 渠道
-    handleChannelTypeChange(channelType);
+    handleChannelTypeChange(channelType, true);
     updateCodexTokenUI(null);
     updateGeminiTokenUI(null);
   }
@@ -870,7 +870,7 @@ async function copyChannel(id, name) {
       }
     }
 
-    handleChannelTypeChange(channelType);
+    handleChannelTypeChange(channelType, true);
 
     // 设置 OpenAI 兼容模式开关（Anthropic / Gemini自定义 / Codex自定义）
     const openaiCompatCheckbox = document.getElementById('openaiCompatCheckbox');
@@ -2194,7 +2194,7 @@ function getOfficialPresetLabel(type) {
  * 处理渠道类型切换
  * 控制预设选项、标准 Key 表格和 OAuth 区块的显示
  */
-function handleChannelTypeChange(type) {
+function handleChannelTypeChange(type, preserveEndpoints = false) {
   const standardKeyContainer = document.getElementById('standardKeyContainer');
   const codexOAuthSection = document.getElementById('codexOAuthSection');
   const codexAuthSwitch = document.getElementById('codexAuthSwitch');
@@ -2239,11 +2239,11 @@ function handleChannelTypeChange(type) {
     const customRadio = document.querySelector('input[name="channelPreset"][value="custom"]');
     if (customRadio) {
       customRadio.checked = true;
-      handlePresetChange('custom');
+      handlePresetChange('custom', preserveEndpoints);
     }
   } else {
     // 重新应用当前预设逻辑
-    handlePresetChange(currentPreset);
+    handlePresetChange(currentPreset, preserveEndpoints);
   }
 }
 
@@ -2279,7 +2279,7 @@ function isOfficialUrl(url, type) {
  * antigravity: Anthropic 专用，用户自填 URL，显示 API Key（请求体过滤 Gemini 不支持的字段）
  * kiro: Anthropic 专用，使用 AWS CodeWhisperer API，显示 Kiro Token 配置
  */
-function handlePresetChange(preset) {
+function handlePresetChange(preset, preserveEndpoints = false) {
   const isOfficial = preset === 'official';
   const isAntigravity = preset === 'antigravity';
   const isKiro = preset === 'kiro';
@@ -2309,8 +2309,10 @@ function handlePresetChange(preset) {
 
   // Kiro 预设：显示 Kiro Token 配置区块
   if (isKiro) {
-    // Kiro 使用固定的 AWS CodeWhisperer 端点（不需要用户填写）
-    if (typeof setInlineEndpoints === 'function') {
+    // Kiro 使用固定的 AWS CodeWhisperer 端点。
+    // 数据源以数据库为准：编辑/复制时（preserveEndpoints）不覆盖已从服务器加载的端点，
+    // 仅在新建或手动切换预设时填充默认端点（保存时会落库）。
+    if (!preserveEndpoints && typeof setInlineEndpoints === 'function') {
       setInlineEndpoints(['https://q.us-east-1.amazonaws.com', 'https://codewhisperer.us-east-1.amazonaws.com']);
     }
 
@@ -2328,9 +2330,9 @@ function handlePresetChange(preset) {
   if (kiroOAuthSection) kiroOAuthSection.style.display = 'none';
 
   if (isOfficial) {
-    // 官方预设：自动填写官方 URL
+    // 官方预设：自动填写官方 URL（编辑/复制时以数据库端点为准，不覆盖）
     const officialUrl = getOfficialUrl(channelType);
-    if (officialUrl && typeof setInlineEndpoints === 'function') {
+    if (!preserveEndpoints && officialUrl && typeof setInlineEndpoints === 'function') {
       setInlineEndpoints([officialUrl]);
     }
 
@@ -2362,9 +2364,9 @@ function handlePresetChange(preset) {
     }
   } else {
     // 自定义预设：
-    // 1. 清空 URL 让用户自填（如果当前是官方 URL）
+    // 1. 清空 URL 让用户自填（如果当前是官方 URL）。编辑/复制时以数据库端点为准，不清空。
     const endpoints = typeof getInlineEndpoints === 'function' ? getInlineEndpoints() : [];
-    if (endpoints.length > 0 && endpoints[0] && isOfficialUrl(endpoints[0], channelType)) {
+    if (!preserveEndpoints && endpoints.length > 0 && endpoints[0] && isOfficialUrl(endpoints[0], channelType)) {
       if (typeof setInlineEndpoints === 'function') {
         setInlineEndpoints(['']);
       }

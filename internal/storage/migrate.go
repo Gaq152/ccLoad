@@ -235,6 +235,11 @@ func migrate(ctx context.Context, db *sql.DB, dialect Dialect) error {
 		return fmt.Errorf("ensure active endpoints: %w", err)
 	}
 
+	// 迁移：为 Kiro 预设渠道补齐缺失的备用端点（2026-06修复）
+	if err := migrateKiroBackupEndpoints(ctx, db, dialect); err != nil {
+		return fmt.Errorf("migrate kiro backup endpoints: %w", err)
+	}
+
 	// 迁移：升级 Codex 官方预设渠道的 extractor 脚本和模型列表（2026-02新增）
 	if err := migrateCodexPresetData(ctx, db, dialect); err != nil {
 		return fmt.Errorf("migrate codex preset data: %w", err)
@@ -360,6 +365,77 @@ func dedupeChannelEndpoints(ctx context.Context, db *sql.DB) error {
 		}
 	}
 	log.Printf("[迁移] 清理了 %d 个重复端点", len(toDelete))
+	return nil
+}
+
+// migrateKiroBackupEndpoints 为 Kiro 预设渠道补齐缺失的备用端点（2026-06修复）
+// Kiro 固定使用两个端点：q.us-east-1（主，generateAssistantResponse）+
+// codewhisperer.us-east-1（备用，旧域名）。历史上备用端点只由前端硬编码展示、未必落库，
+// 叠加旧 SyncActiveEndpointURL 改写 URL 的 bug 导致备用端点丢失。
+// 此处确保每个 Kiro 渠道在库中都有备用端点，使数据库成为端点的唯一数据源。
+// 前置：本函数在 ensureActiveEndpoints 之后调用，此时每个 Kiro 渠道已有主端点。
+func migrateKiroBackupEndpoints(ctx context.Context, db *sql.DB, dialect Dialect) error {
+	const backupURL = "https://codewhisperer.us-east-1.amazonaws.com"
+
+	// 找出 preset='kiro' 且缺少备用端点的渠道
+	rows, err := db.QueryContext(ctx, `
+		SELECT c.id
+		FROM channels c
+		WHERE c.preset = 'kiro'
+		  AND NOT EXISTS (
+		    SELECT 1 FROM channel_endpoints e
+		    WHERE e.channel_id = c.id AND e.url = ?
+		  )
+	`, backupURL)
+	if err != nil {
+		return fmt.Errorf("query kiro channels missing backup endpoint: %w", err)
+	}
+	defer rows.Close()
+
+	var channelIDs []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return fmt.Errorf("scan channel id: %w", err)
+		}
+		channelIDs = append(channelIDs, id)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate kiro channels: %w", err)
+	}
+	if len(channelIDs) == 0 {
+		return nil
+	}
+
+	// 备用端点为非激活，追加到端点列表末尾（sort_order = 当前最大值 + 1）
+	var insertSQL string
+	if dialect == DialectMySQL {
+		insertSQL = `
+			INSERT INTO channel_endpoints (channel_id, url, is_active, sort_order, created_at)
+			VALUES (?, ?, 0, ?, UNIX_TIMESTAMP())`
+	} else {
+		insertSQL = `
+			INSERT INTO channel_endpoints (channel_id, url, is_active, sort_order, created_at)
+			VALUES (?, ?, 0, ?, unixepoch())`
+	}
+
+	for _, id := range channelIDs {
+		var maxSort sql.NullInt64
+		if err := db.QueryRowContext(ctx,
+			"SELECT MAX(sort_order) FROM channel_endpoints WHERE channel_id = ?", id,
+		).Scan(&maxSort); err != nil {
+			return fmt.Errorf("query max sort_order for channel %d: %w", id, err)
+		}
+		nextSort := 0
+		if maxSort.Valid {
+			nextSort = int(maxSort.Int64) + 1
+		}
+		if _, err := db.ExecContext(ctx, insertSQL, id, backupURL, nextSort); err != nil {
+			return fmt.Errorf("insert backup endpoint for channel %d: %w", id, err)
+		}
+	}
+
+	log.Printf("[迁移] 为 %d 个 Kiro 渠道补齐备用端点", len(channelIDs))
 	return nil
 }
 
