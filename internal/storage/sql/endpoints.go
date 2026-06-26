@@ -99,6 +99,26 @@ func (s *SQLStore) SaveEndpoints(ctx context.Context, channelID int64, endpoints
 		return err
 	}
 
+	// 去重：同一渠道下 URL 完全相同的端点只保留一个（优先保留激活项），
+	// 避免端点管理弹窗出现两个相同端点。channel_endpoints 表无 (channel_id,url) 唯一约束，
+	// 此处在写入前做最后一道防线。
+	if len(endpoints) > 0 {
+		seen := make(map[string]int, len(endpoints))
+		deduped := make([]model.ChannelEndpoint, 0, len(endpoints))
+		for _, ep := range endpoints {
+			if idx, ok := seen[ep.URL]; ok {
+				// 已存在同 URL 端点：若新项是激活态，则继承激活标记
+				if ep.IsActive {
+					deduped[idx].IsActive = true
+				}
+				continue
+			}
+			seen[ep.URL] = len(deduped)
+			deduped = append(deduped, ep)
+		}
+		endpoints = deduped
+	}
+
 	// 插入新端点
 	if len(endpoints) > 0 {
 		// 确保至少有一个端点是激活的（如果没有激活的，默认第一个）
@@ -283,38 +303,22 @@ func (s *SQLStore) SelectFastestEndpoint(ctx context.Context, channelID int64) e
 }
 
 // SyncActiveEndpointURL 同步更新 active endpoint 的 URL（当 channels.url 变更时调用）
-// 如果没有端点，则创建一个新的端点
+// 关键不变量：同一渠道下不允许出现两个 URL 完全相同的端点。
+//   - newURL 已存在于某端点：仅切换激活端点到该端点，绝不改写其他端点的 URL（否则产生重复行）
+//   - newURL 不存在：把当前激活端点的 URL 改为 newURL
+//   - 没有任何端点：创建一个新的激活端点
 func (s *SQLStore) SyncActiveEndpointURL(ctx context.Context, channelID int64, newURL string) error {
 	if newURL == "" {
 		return nil
 	}
 
-	// 获取当前 active endpoint
-	activeEp, err := s.GetActiveEndpoint(ctx, channelID)
-	if err != nil {
-		return err
-	}
-
-	if activeEp != nil {
-		// 存在 active endpoint，更新其 URL
-		if activeEp.URL != newURL {
-			_, err = s.db.ExecContext(ctx,
-				"UPDATE channel_endpoints SET url = ? WHERE id = ?",
-				newURL, activeEp.ID,
-			)
-			return err
-		}
-		return nil
-	}
-
-	// 没有端点，检查是否有任何端点
 	endpoints, err := s.ListEndpoints(ctx, channelID)
 	if err != nil {
 		return err
 	}
 
+	// 没有任何端点，创建一个新的激活端点
 	if len(endpoints) == 0 {
-		// 没有任何端点，创建一个新的
 		now := time.Now().Unix()
 		_, err = s.db.ExecContext(ctx, `
 			INSERT INTO channel_endpoints (channel_id, url, is_active, sort_order, created_at)
@@ -323,7 +327,47 @@ func (s *SQLStore) SyncActiveEndpointURL(ctx context.Context, channelID int64, n
 		return err
 	}
 
-	// 有端点但没有 active，更新第一个为 active 并更新其 URL
+	// 查找匹配 newURL 的端点与当前激活端点
+	var matched, activeEp *model.ChannelEndpoint
+	for i := range endpoints {
+		ep := &endpoints[i]
+		if matched == nil && ep.URL == newURL {
+			matched = ep
+		}
+		if activeEp == nil && ep.IsActive {
+			activeEp = ep
+		}
+	}
+
+	// 情况1：newURL 已存在 —— 仅切换激活端点到匹配端点，不改写任何 URL（避免重复）
+	if matched != nil {
+		if matched.IsActive {
+			return nil // 已是激活端点，无需任何操作
+		}
+		tx, err := s.db.BeginTx(ctx, nil)
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
+		if _, err = tx.ExecContext(ctx,
+			"UPDATE channel_endpoints SET is_active = 0 WHERE channel_id = ?", channelID); err != nil {
+			return err
+		}
+		if _, err = tx.ExecContext(ctx,
+			"UPDATE channel_endpoints SET is_active = 1 WHERE id = ?", matched.ID); err != nil {
+			return err
+		}
+		return tx.Commit()
+	}
+
+	// 情况2：newURL 不存在 —— 把激活端点的 URL 改为 newURL
+	if activeEp != nil {
+		_, err = s.db.ExecContext(ctx,
+			"UPDATE channel_endpoints SET url = ? WHERE id = ?", newURL, activeEp.ID)
+		return err
+	}
+
+	// 有端点但无激活端点：把第一个设为激活并更新其 URL
 	firstEp := endpoints[0]
 	_, err = s.db.ExecContext(ctx, `
 		UPDATE channel_endpoints SET url = ?, is_active = 1 WHERE id = ?

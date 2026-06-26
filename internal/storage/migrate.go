@@ -225,6 +225,11 @@ func migrate(ctx context.Context, db *sql.DB, dialect Dialect) error {
 		return fmt.Errorf("migrate channel endpoints: %w", err)
 	}
 
+	// 迁移：清理同一渠道下 URL 完全相同的重复端点（2026-06修复）
+	if err := dedupeChannelEndpoints(ctx, db); err != nil {
+		return fmt.Errorf("dedupe channel endpoints: %w", err)
+	}
+
 	// 迁移：确保所有多端点渠道至少有一个激活端点（2025-12新增）
 	if err := ensureActiveEndpoints(ctx, db); err != nil {
 		return fmt.Errorf("ensure active endpoints: %w", err)
@@ -303,6 +308,58 @@ func migrateChannelEndpoints(ctx context.Context, db *sql.DB, dialect Dialect) e
 		}
 	}
 
+	return nil
+}
+
+// dedupeChannelEndpoints 清理同一渠道下 URL 完全相同的重复端点（2026-06修复）
+// 历史上 SyncActiveEndpointURL 可能把激活端点的 URL 改写成与同渠道另一端点相同，
+// 由于 channel_endpoints 表无 (channel_id,url) 唯一约束而产生重复行，
+// 表现为端点管理弹窗出现两个相同端点。
+// 每个 (channel_id, url) 仅保留一行（优先保留激活项，其次 sort_order/id 最小者）。
+func dedupeChannelEndpoints(ctx context.Context, db *sql.DB) error {
+	rows, err := db.QueryContext(ctx, `
+		SELECT id, channel_id, url
+		FROM channel_endpoints
+		ORDER BY channel_id, url, is_active DESC, sort_order ASC, id ASC
+	`)
+	if err != nil {
+		return fmt.Errorf("query endpoints for dedupe: %w", err)
+	}
+	defer rows.Close()
+
+	type key struct {
+		channelID int64
+		url       string
+	}
+	seen := make(map[key]struct{})
+	var toDelete []int64
+	for rows.Next() {
+		var id, channelID int64
+		var url string
+		if err := rows.Scan(&id, &channelID, &url); err != nil {
+			return fmt.Errorf("scan endpoint: %w", err)
+		}
+		k := key{channelID: channelID, url: url}
+		if _, ok := seen[k]; ok {
+			// 同组第一行（排序后即保留项）已记录，其余视为重复删除
+			toDelete = append(toDelete, id)
+		} else {
+			seen[k] = struct{}{}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate endpoints: %w", err)
+	}
+	if len(toDelete) == 0 {
+		return nil
+	}
+
+	for _, id := range toDelete {
+		if _, err := db.ExecContext(ctx, "DELETE FROM channel_endpoints WHERE id = ?", id); err != nil {
+			return fmt.Errorf("delete duplicate endpoint %d: %w", id, err)
+		}
+	}
+	log.Printf("[迁移] 清理了 %d 个重复端点", len(toDelete))
 	return nil
 }
 
