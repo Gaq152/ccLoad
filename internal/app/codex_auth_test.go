@@ -2,6 +2,7 @@ package app
 
 import (
 	"encoding/base64"
+	"net/http"
 	"testing"
 )
 
@@ -24,5 +25,34 @@ func TestExtractEmailFromIDToken(t *testing.T) {
 
 	if got := ExtractEmailFromIDToken(token); got != "user@example.com" {
 		t.Fatalf("expected email user@example.com, got %q", got)
+	}
+}
+
+func TestNewCodexExtraHeadersPreservesIncomingSessionHeaders(t *testing.T) {
+	incoming := http.Header{}
+	incoming.Set("conversation_id", "conv-original")
+	incoming.Set("session_id", "sess-original")
+
+	headers := NewCodexExtraHeaders("acct-test", incoming)
+
+	if headers.AccountID != "acct-test" {
+		t.Fatalf("AccountID = %q, want acct-test", headers.AccountID)
+	}
+	if headers.ConversationID != "conv-original" {
+		t.Fatalf("ConversationID = %q, want conv-original", headers.ConversationID)
+	}
+	if headers.SessionID != "sess-original" {
+		t.Fatalf("SessionID = %q, want sess-original", headers.SessionID)
+	}
+}
+
+func TestNewCodexExtraHeadersGeneratesMissingSessionHeaders(t *testing.T) {
+	headers := NewCodexExtraHeaders("acct-test", http.Header{})
+
+	if headers.ConversationID == "" {
+		t.Fatal("expected generated ConversationID")
+	}
+	if headers.SessionID == "" {
+		t.Fatal("expected generated SessionID")
 	}
 }

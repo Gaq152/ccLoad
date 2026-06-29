@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"net/http"
 	"strings"
 
 	"github.com/bytedance/sonic"
@@ -94,13 +95,30 @@ func TransformCodexRequestBody(body []byte) ([]byte, error) {
 	return sonic.Marshal(codexReq)
 }
 
-// NewCodexExtraHeaders 创建 Codex 额外请求头（每次请求生成新的 UUID）
-func NewCodexExtraHeaders(accountID string) *CodexExtraHeaders {
-	return &CodexExtraHeaders{
-		AccountID:      accountID,
-		ConversationID: uuid.New().String(),
-		SessionID:      uuid.New().String(),
+// NewCodexExtraHeaders 创建 Codex 额外请求头。
+// 原始请求已经携带会话标识时优先透传，避免破坏 Codex 服务端的会话级缓存路由。
+func NewCodexExtraHeaders(accountID string, source ...http.Header) *CodexExtraHeaders {
+	headers := &CodexExtraHeaders{AccountID: accountID}
+	if len(source) > 0 && source[0] != nil {
+		headers.ConversationID = firstCodexHeader(source[0], "conversation_id", "conversation-id")
+		headers.SessionID = firstCodexHeader(source[0], "session_id", "session-id")
 	}
+	if headers.ConversationID == "" {
+		headers.ConversationID = uuid.New().String()
+	}
+	if headers.SessionID == "" {
+		headers.SessionID = uuid.New().String()
+	}
+	return headers
+}
+
+func firstCodexHeader(h http.Header, names ...string) string {
+	for _, name := range names {
+		if value := strings.TrimSpace(h.Get(name)); value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 // TransformToCodexRequest 将 OpenAI 格式请求转换为 Codex 格式
@@ -1019,10 +1037,10 @@ When responding:
 // defaultCodexTools Codex 默认工具定义
 var defaultCodexTools = []map[string]any{
 	{
-		"type": "function",
-		"name": "shell_command",
+		"type":        "function",
+		"name":        "shell_command",
 		"description": "Runs a shell command and returns its output.",
-		"strict": false,
+		"strict":      false,
 		"parameters": map[string]any{
 			"type": "object",
 			"properties": map[string]any{

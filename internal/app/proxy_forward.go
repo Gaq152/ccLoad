@@ -1017,8 +1017,8 @@ keyLoop:
 
 			actualKey = refreshedKey
 			reqCtx.codexToken = refreshedToken
-			// 生成新的请求头（每次请求使用新的 UUID）
-			reqCtx.codexHeaders = NewCodexExtraHeaders(refreshedToken.AccountID)
+			// 构建 Codex 请求头：优先透传客户端会话标识，缺失时才生成。
+			reqCtx.codexHeaders = NewCodexExtraHeaders(refreshedToken.AccountID, reqCtx.header)
 		}
 
 		// [INFO] Gemini 官方预设：处理 OAuth 认证（适用于所有端点）
