@@ -166,7 +166,6 @@ func normalizeCodexNativeRequest(req map[string]any) {
 	// 强制设置必要字段
 	req["stream"] = true
 	req["store"] = false
-	req["parallel_tool_calls"] = true
 
 	// 删除 Codex 不支持的字段
 	for _, field := range []string{
