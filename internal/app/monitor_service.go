@@ -11,11 +11,11 @@ import (
 // MonitorService 请求监控服务
 // 提供请求/响应捕获、SSE 实时推送、存储管理功能
 type MonitorService struct {
-	enabled     atomic.Bool                                   // 监控开关
-	store       *storage.TraceStore                           // 独立存储
-	subscribers map[chan *storage.TraceListItem]struct{}      // SSE 订阅者
-	mu          sync.RWMutex                                  // 保护 subscribers
-	shutdownCh  chan struct{}                                 // 关闭信号
+	enabled     atomic.Bool                              // 监控开关
+	store       *storage.TraceStore                      // 独立存储
+	subscribers map[chan *storage.TraceListItem]struct{} // SSE 订阅者
+	mu          sync.RWMutex                             // 保护 subscribers
+	shutdownCh  chan struct{}                            // 关闭信号
 }
 
 // NewMonitorService 创建监控服务
@@ -82,25 +82,7 @@ func (s *MonitorService) saveAndBroadcast(trace *storage.Trace) {
 	trace.ID = id
 
 	// 转换为列表项（不含请求体/响应体）
-	item := &storage.TraceListItem{
-		ID:            trace.ID,
-		Time:          trace.Time,
-		ChannelID:     trace.ChannelID,
-		ChannelName:   trace.ChannelName,
-		ChannelType:   trace.ChannelType,
-		Model:         trace.Model,
-		RequestPath:   trace.RequestPath,
-		StatusCode:    trace.StatusCode,
-		Duration:      trace.Duration,
-		IsStreaming:   trace.IsStreaming,
-		IsTest:        trace.IsTest,
-		InputTokens:   trace.InputTokens,
-		OutputTokens:  trace.OutputTokens,
-		ClientIP:      trace.ClientIP,
-		APIKeyUsed:    trace.APIKeyUsed,
-		TokenID:       trace.TokenID,
-		AuthTokenName: trace.AuthTokenName, // 从 Trace 传递（Capture 时填充）
-	}
+	item := traceToListItem(trace)
 
 	// 广播给所有订阅者
 	s.mu.RLock()
@@ -124,4 +106,28 @@ func (s *MonitorService) GetStore() *storage.TraceStore {
 // ClearAll 清空所有追踪记录
 func (s *MonitorService) ClearAll(ctx context.Context) error {
 	return s.store.Clear(ctx)
+}
+
+func traceToListItem(trace *storage.Trace) *storage.TraceListItem {
+	return &storage.TraceListItem{
+		ID:                  trace.ID,
+		Time:                trace.Time,
+		ChannelID:           trace.ChannelID,
+		ChannelName:         trace.ChannelName,
+		ChannelType:         trace.ChannelType,
+		Model:               trace.Model,
+		RequestPath:         trace.RequestPath,
+		StatusCode:          trace.StatusCode,
+		Duration:            trace.Duration,
+		IsStreaming:         trace.IsStreaming,
+		IsTest:              trace.IsTest,
+		InputTokens:         trace.InputTokens,
+		OutputTokens:        trace.OutputTokens,
+		CacheReadTokens:     trace.CacheReadTokens,
+		CacheCreationTokens: trace.CacheCreationTokens,
+		ClientIP:            trace.ClientIP,
+		APIKeyUsed:          trace.APIKeyUsed,
+		TokenID:             trace.TokenID,
+		AuthTokenName:       trace.AuthTokenName,
+	}
 }
