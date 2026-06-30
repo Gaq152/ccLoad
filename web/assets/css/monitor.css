@@ -432,6 +432,7 @@
   font-size: 12px;
   white-space: nowrap;
   color: var(--theme-text-secondary);
+  line-height: 1.45;
 }
 
 .tokens-in {
@@ -440,6 +441,15 @@
 
 .tokens-out {
   color: var(--success-500);
+}
+
+.tokens-cache-read,
+.tokens-cache-rate {
+  color: var(--success-600);
+}
+
+.tokens-cache-create {
+  color: var(--primary-600);
 }
 
 /* 状态徽章 - 胶囊样式 */
@@ -912,6 +922,15 @@
 
 .dashboard-theme .tokens-out {
   color: var(--success-400);
+}
+
+.dashboard-theme .tokens-cache-read,
+.dashboard-theme .tokens-cache-rate {
+  color: var(--success-400);
+}
+
+.dashboard-theme .tokens-cache-create {
+  color: var(--primary-400);
 }
 
 /* 暗色主题 JSON 语法高亮 */

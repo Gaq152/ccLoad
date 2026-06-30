@@ -56,6 +56,9 @@ type fwResult struct {
 	// 用于499场景诊断：区分客户端在首字节前取消还是接收部分数据后取消
 	BytesReceived int64
 
+	// 监控调试信息（脱敏后保存到 debug_traces.db）
+	UpstreamRequestHeader http.Header
+
 	// [INFO] SSE错误事件（2025-12新增）
 	// 用于捕获SSE流中的error事件（如1308错误），在流结束后触发冷却逻辑
 	// 虽然HTTP状态码是200，但error事件表示实际上发生了错误

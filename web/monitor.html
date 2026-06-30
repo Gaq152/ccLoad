@@ -231,6 +231,18 @@
               <span id="detailOutputTokens">-</span>
             </div>
             <div class="detail-item">
+              <label>缓存读取:</label>
+              <span id="detailCacheReadTokens">-</span>
+            </div>
+            <div class="detail-item">
+              <label>缓存创建:</label>
+              <span id="detailCacheCreationTokens">-</span>
+            </div>
+            <div class="detail-item">
+              <label>缓存率:</label>
+              <span id="detailCacheRate">-</span>
+            </div>
+            <div class="detail-item">
               <label>客户端IP:</label>
               <span id="detailClientIP">-</span>
             </div>
@@ -246,6 +258,55 @@
               <label>测试请求:</label>
               <span id="detailIsTest">-</span>
             </div>
+          </div>
+        </div>
+
+        <!-- 请求/响应头（可折叠） -->
+        <div class="detail-section">
+          <h3 class="section-header collapsible-header">
+            <span onclick="toggleClientRequestHeaders()">客户端请求头 <span class="collapse-icon" id="clientRequestHeadersIcon">▼</span></span>
+            <button class="copy-btn" onclick="copyContent('detailClientRequestHeaders')" title="复制">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+              </svg>
+              <span class="copy-text">复制</span>
+            </button>
+          </h3>
+          <div id="clientRequestHeadersContainer" class="collapsible-content collapsed">
+            <pre id="detailClientRequestHeaders" class="code-block">-</pre>
+          </div>
+        </div>
+
+        <div class="detail-section">
+          <h3 class="section-header collapsible-header">
+            <span onclick="toggleUpstreamRequestHeaders()">上游请求头 <span class="collapse-icon" id="upstreamRequestHeadersIcon">▼</span></span>
+            <button class="copy-btn" onclick="copyContent('detailUpstreamRequestHeaders')" title="复制">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+              </svg>
+              <span class="copy-text">复制</span>
+            </button>
+          </h3>
+          <div id="upstreamRequestHeadersContainer" class="collapsible-content collapsed">
+            <pre id="detailUpstreamRequestHeaders" class="code-block">-</pre>
+          </div>
+        </div>
+
+        <div class="detail-section">
+          <h3 class="section-header collapsible-header">
+            <span onclick="toggleUpstreamResponseHeaders()">上游响应头 <span class="collapse-icon" id="upstreamResponseHeadersIcon">▼</span></span>
+            <button class="copy-btn" onclick="copyContent('detailUpstreamResponseHeaders')" title="复制">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+              </svg>
+              <span class="copy-text">复制</span>
+            </button>
+          </h3>
+          <div id="upstreamResponseHeadersContainer" class="collapsible-content collapsed">
+            <pre id="detailUpstreamResponseHeaders" class="code-block">-</pre>
           </div>
         </div>
 

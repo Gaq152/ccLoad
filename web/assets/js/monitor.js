@@ -481,8 +481,14 @@ function renderTraces() {
     // Token 显示
     const inputTokens = trace.input_tokens > 0 ? trace.input_tokens : '-';
     const outputTokens = trace.output_tokens > 0 ? trace.output_tokens : '-';
-    const tokensDisplay = (inputTokens !== '-' || outputTokens !== '-')
-      ? `<span class="tokens-in">${inputTokens}</span> / <span class="tokens-out">${outputTokens}</span>`
+    const cacheReadTokens = trace.cache_read_tokens > 0 ? trace.cache_read_tokens : '-';
+    const cacheCreationTokens = trace.cache_creation_tokens > 0 ? trace.cache_creation_tokens : '-';
+    const cacheRate = formatCacheRate(trace.input_tokens, trace.cache_read_tokens, trace.cache_creation_tokens);
+    const hasTokens = inputTokens !== '-' || outputTokens !== '-' || cacheReadTokens !== '-' || cacheCreationTokens !== '-';
+    const tokensDisplay = hasTokens
+      ? `<div><span class="tokens-in">In ${inputTokens}</span> / <span class="tokens-out">Out ${outputTokens}</span></div>
+         <div><span class="tokens-cache-read">C Out ${cacheReadTokens}</span> / <span class="tokens-cache-create">C In ${cacheCreationTokens}</span></div>
+         <div><span class="tokens-cache-rate">C% ${cacheRate}</span></div>`
       : '-';
 
     // IP/令牌 显示（换行）
@@ -536,6 +542,9 @@ async function viewDetail(id) {
     document.getElementById('detailStreaming').textContent = trace.is_streaming ? '是' : '否';
     document.getElementById('detailInputTokens').textContent = trace.input_tokens > 0 ? trace.input_tokens : '-';
     document.getElementById('detailOutputTokens').textContent = trace.output_tokens > 0 ? trace.output_tokens : '-';
+    document.getElementById('detailCacheReadTokens').textContent = trace.cache_read_tokens > 0 ? trace.cache_read_tokens : '-';
+    document.getElementById('detailCacheCreationTokens').textContent = trace.cache_creation_tokens > 0 ? trace.cache_creation_tokens : '-';
+    document.getElementById('detailCacheRate').textContent = formatCacheRate(trace.input_tokens, trace.cache_read_tokens, trace.cache_creation_tokens);
     document.getElementById('detailClientIP').textContent = trace.client_ip || '-';
     document.getElementById('detailAuthToken').textContent = trace.auth_token_name || '-';
     document.getElementById('detailAPIKey').textContent = trace.api_key_used || '-';
@@ -543,6 +552,9 @@ async function viewDetail(id) {
     document.getElementById('detailIsTest').className = trace.is_test ? 'test-indicator' : '';
 
     // 格式化 JSON（带语法高亮）
+    document.getElementById('detailClientRequestHeaders').innerHTML = formatJSONWithHighlight(trace.client_request_headers);
+    document.getElementById('detailUpstreamRequestHeaders').innerHTML = formatJSONWithHighlight(trace.upstream_request_headers);
+    document.getElementById('detailUpstreamResponseHeaders').innerHTML = formatJSONWithHighlight(trace.upstream_response_headers);
     document.getElementById('detailRequestBody').innerHTML = formatJSONWithHighlight(trace.request_body);
     document.getElementById('detailResponseBody').innerHTML = formatJSONWithHighlight(trace.response_body);
 
@@ -554,6 +566,9 @@ async function viewDetail(id) {
     const reqIcon = document.getElementById('requestBodyIcon');
     if (reqContainer) reqContainer.classList.add('collapsed');
     if (reqIcon) reqIcon.textContent = '▼';
+    resetCollapsedSection('clientRequestHeadersContainer', 'clientRequestHeadersIcon');
+    resetCollapsedSection('upstreamRequestHeadersContainer', 'upstreamRequestHeadersIcon');
+    resetCollapsedSection('upstreamResponseHeadersContainer', 'upstreamResponseHeadersIcon');
 
     const rawContainer = document.getElementById('rawResponseContainer');
     const rawIcon = document.getElementById('rawResponseIcon');
@@ -567,6 +582,15 @@ async function viewDetail(id) {
     console.error('加载详情失败:', e);
     if (window.showError) showError('加载详情失败');
   }
+}
+
+function formatCacheRate(inputTokens, cacheReadTokens, cacheCreationTokens) {
+  const input = Number(inputTokens) || 0;
+  const cacheRead = Number(cacheReadTokens) || 0;
+  const cacheCreation = Number(cacheCreationTokens) || 0;
+  const totalPromptTokens = input + cacheRead + cacheCreation;
+  if (totalPromptTokens <= 0) return '-';
+  return ((cacheRead / totalPromptTokens) * 100).toFixed(1) + '%';
 }
 
 // 关闭详情弹窗
@@ -815,6 +839,17 @@ function parseSSEResponse(responseBody) {
       if (obj.type === 'response.output_text.delta' && obj.delta) {
         reply += obj.delta;
       }
+
+      // Codex SSE: reasoning summary 增量
+      if ((obj.type === 'response.reasoning_summary_text.delta' || obj.type === 'response.reasoning_text.delta') && obj.delta) {
+        thinking += obj.delta;
+      }
+      if ((obj.type === 'response.reasoning_summary_text.done' || obj.type === 'response.reasoning_text.done') && obj.text && !thinking) {
+        thinking = obj.text;
+      }
+      if (obj.type === 'response.reasoning_summary_part.done' && obj.part?.text && !thinking) {
+        thinking = obj.part.text;
+      }
     } catch {
       // 忽略单行解析错误
     }
@@ -985,8 +1020,29 @@ function parseAndDisplayResponse(responseBody) {
 
 // 切换请求体显示
 function toggleRequestBody() {
-  const container = document.getElementById('requestBodyContainer');
-  const icon = document.getElementById('requestBodyIcon');
+  toggleCollapsedSection('requestBodyContainer', 'requestBodyIcon');
+}
+
+// 切换完整响应体显示
+function toggleRawResponse() {
+  toggleCollapsedSection('rawResponseContainer', 'rawResponseIcon');
+}
+
+function toggleClientRequestHeaders() {
+  toggleCollapsedSection('clientRequestHeadersContainer', 'clientRequestHeadersIcon');
+}
+
+function toggleUpstreamRequestHeaders() {
+  toggleCollapsedSection('upstreamRequestHeadersContainer', 'upstreamRequestHeadersIcon');
+}
+
+function toggleUpstreamResponseHeaders() {
+  toggleCollapsedSection('upstreamResponseHeadersContainer', 'upstreamResponseHeadersIcon');
+}
+
+function toggleCollapsedSection(containerId, iconId) {
+  const container = document.getElementById(containerId);
+  const icon = document.getElementById(iconId);
   if (container) {
     container.classList.toggle('collapsed');
     if (icon) {
@@ -995,16 +1051,11 @@ function toggleRequestBody() {
   }
 }
 
-// 切换完整响应体显示
-function toggleRawResponse() {
-  const container = document.getElementById('rawResponseContainer');
-  const icon = document.getElementById('rawResponseIcon');
-  if (container) {
-    container.classList.toggle('collapsed');
-    if (icon) {
-      icon.textContent = container.classList.contains('collapsed') ? '▼' : '▲';
-    }
-  }
+function resetCollapsedSection(containerId, iconId) {
+  const container = document.getElementById(containerId);
+  const icon = document.getElementById(iconId);
+  if (container) container.classList.add('collapsed');
+  if (icon) icon.textContent = '▼';
 }
 
 // 复制内容到剪贴板
@@ -1076,6 +1127,9 @@ window.applyFilters = applyFilters;
 window.setFilter = setFilter;
 window.toggleRequestBody = toggleRequestBody;
 window.toggleRawResponse = toggleRawResponse;
+window.toggleClientRequestHeaders = toggleClientRequestHeaders;
+window.toggleUpstreamRequestHeaders = toggleUpstreamRequestHeaders;
+window.toggleUpstreamResponseHeaders = toggleUpstreamResponseHeaders;
 window.copyContent = copyContent;
 window.prevPage = prevPage;
 window.nextPage = nextPage;

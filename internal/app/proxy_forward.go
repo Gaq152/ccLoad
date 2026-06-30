@@ -555,6 +555,11 @@ func (s *Server) forwardOnceAsync(ctx context.Context, cfg *model.Config, apiKey
 	if err != nil {
 		return nil, 0, err
 	}
+	upstreamRequestHeader := req.Header.Clone()
+	upstreamRequestHost := req.Host
+	if upstreamRequestHost == "" {
+		upstreamRequestHost = req.URL.Host
+	}
 
 	// 3. 发送请求
 	// [INFO] SSE 心跳保活：流式请求若上游 N 秒内未返回首字节，提前发 SSE 头并启动心跳，
@@ -640,9 +645,10 @@ func (s *Server) forwardOnceAsync(ctx context.Context, cfg *model.Config, apiKey
 			s.writeStreamErrorAndFinish(w, err)
 			d := reqCtx.Duration()
 			return &fwResult{
-				Status:        http.StatusOK,
-				FirstByteTime: d,
-				StreamDiagMsg: fmt.Sprintf("SSE保活已发头后上游失败: %v", err),
+				Status:                http.StatusOK,
+				FirstByteTime:         d,
+				StreamDiagMsg:         fmt.Sprintf("SSE保活已发头后上游失败: %v", err),
+				UpstreamRequestHeader: upstreamRequestHeader,
 			}, d, nil
 		}
 		return s.handleRequestError(reqCtx, cfg, err)
@@ -654,6 +660,12 @@ func (s *Server) forwardOnceAsync(ctx context.Context, cfg *model.Config, apiKey
 
 	// 5. 处理响应(传递channelType用于精确识别usage格式,传递渠道信息用于日志记录)
 	res, duration, err := s.handleResponse(reqCtx, resp, firstByteTime, w, cfg.ChannelType, cfg, apiKey, requestPath, isGeminiCLI, onBytesRead, headerSent)
+	if res != nil {
+		res.UpstreamRequestHeader = upstreamRequestHeader
+		if upstreamRequestHost != "" {
+			res.UpstreamRequestHeader.Set("Host", upstreamRequestHost)
+		}
+	}
 
 	// 流式传输过程中首字节超时：确保错误被正确标记为首字节超时
 	if err != nil && reqCtx.firstByteTimeoutTriggered() {
@@ -1344,7 +1356,12 @@ func (s *Server) captureForMonitorWithCapture(
 	if res != nil {
 		trace.InputTokens = res.InputTokens
 		trace.OutputTokens = res.OutputTokens
+		trace.CacheReadTokens = res.CacheReadInputTokens
+		trace.CacheCreationTokens = res.CacheCreationInputTokens
+		trace.UpstreamRequestHeaders = headersForMonitor(res.UpstreamRequestHeader, "")
+		trace.UpstreamResponseHeaders = headersForMonitor(res.Header, "")
 	}
+	trace.ClientRequestHeaders = headersForMonitor(reqCtx.header, "")
 
 	// 捕获请求体（限制大小）
 	const maxCaptureSize = 1024 * 1024 // 1MB
