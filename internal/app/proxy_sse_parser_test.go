@@ -542,3 +542,23 @@ func TestSSEUsageParser_GeminiThoughtsWithZeroCandidates(t *testing.T) {
 		t.Errorf("OutputTokens = %d, 期望 150 (thoughtsTokenCount)", output)
 	}
 }
+func TestSSEUsageParser_SkipsDoneSentinel(t *testing.T) {
+	sseData := "data: {\"usage\":{\"prompt_tokens\":100,\"completion_tokens\":20}}\n\n" +
+		"data: [DONE]\n\n"
+
+	parser := newSSEUsageParser("codex")
+	if err := parser.Feed([]byte(sseData)); err != nil {
+		t.Fatalf("Feed失败: %v", err)
+	}
+
+	input, output, _, _ := parser.GetUsage()
+	if input != 100 {
+		t.Errorf("InputTokens = %d, 期望 100", input)
+	}
+	if output != 20 {
+		t.Errorf("OutputTokens = %d, 期望 20", output)
+	}
+	if !parser.IsStreamComplete() {
+		t.Error("期望识别 [DONE] 流结束标记")
+	}
+}

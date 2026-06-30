@@ -54,8 +54,8 @@ type jsonUsageParser struct {
 type usageParser interface {
 	Feed([]byte) error
 	GetUsage() (inputTokens, outputTokens, cacheRead, cacheCreation int)
-	GetLastError() []byte    // [INFO] 返回SSE流中检测到的最后一个error事件（用于1308等错误的延迟处理）
-	IsStreamComplete() bool  // [INFO] 返回是否检测到流结束标志（[DONE]/message_stop）
+	GetLastError() []byte   // [INFO] 返回SSE流中检测到的最后一个error事件（用于1308等错误的延迟处理）
+	IsStreamComplete() bool // [INFO] 返回是否检测到流结束标志（[DONE]/message_stop）
 }
 
 const (
@@ -135,9 +135,10 @@ func (p *sseUsageParser) parseBuffer() error {
 			}
 		} else if after0, ok0 := strings.CutPrefix(line, "data:"); ok0 {
 			dataLine := strings.TrimSpace(after0)
-			// [INFO] OpenAI 流结束标志: data: [DONE]
-			if dataLine == "[DONE]" {
+			// [INFO] OpenAI/Codex 流结束标志: data: [DONE]
+			if dataLine == "[DONE]" || dataLine == "DONE" {
 				p.streamComplete = true
+				continue
 			}
 			p.dataLines = append(p.dataLines, dataLine)
 		} else if line == "" && len(p.dataLines) > 0 {
