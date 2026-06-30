@@ -449,6 +449,7 @@
       const outputTokensDisplay = tokenValue(entry.output_tokens, 'var(--neutral-700)');
       const cacheReadDisplay = tokenValue(entry.cache_read_input_tokens, 'var(--success-600)');
       const cacheCreationDisplay = tokenValue(entry.cache_creation_input_tokens, 'var(--primary-600)');
+      const cacheRateDisplay = formatLogCacheRate(entry);
 
       // 7. 成本显示(0值为空)
       const costDisplay = entry.cost ?
@@ -470,9 +471,20 @@
         outputTokensDisplay,
         cacheReadDisplay,
         cacheCreationDisplay,
+        cacheRateDisplay,
         costDisplay,
         message: entry.message || ''
       });
+    }
+
+    function formatLogCacheRate(entry) {
+      const input = Number(entry.input_tokens) || 0;
+      const cacheRead = Number(entry.cache_read_input_tokens) || 0;
+      const cacheCreation = Number(entry.cache_creation_input_tokens) || 0;
+      const totalPromptTokens = input + cacheRead + cacheCreation;
+      if (totalPromptTokens <= 0 || cacheRead <= 0) return '';
+      const rate = (cacheRead / totalPromptTokens) * 100;
+      return `<span class="token-metric-value" title="缓存读取 / (输入 + 缓存读取 + 缓存创建)" style="color: var(--success-700);">${rate.toFixed(1)}%</span>`;
     }
 
     // ============================================================
