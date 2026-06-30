@@ -214,6 +214,9 @@ func migrate(ctx context.Context, db *sql.DB, dialect Dialect) error {
 	if err := initDefaultSettings(ctx, db, dialect); err != nil {
 		return err
 	}
+	if err := migrateChannelStatsFieldsDefault(ctx, db); err != nil {
+		return fmt.Errorf("migrate channel stats fields default: %w", err)
+	}
 
 	// 清理废弃的配置项（2025-12清理）
 	if err := removeDeprecatedSettings(ctx, db); err != nil {
@@ -1043,6 +1046,30 @@ func removeDeprecatedSettings(ctx context.Context, db *sql.DB) error {
 	return nil
 }
 
+func migrateChannelStatsFieldsDefault(ctx context.Context, db *sql.DB) error {
+	const oldDefault = "calls,rate,first_byte,input,output,cache_read,cache_creation,cost"
+	const newDefault = "calls,rate,cache_rate,first_byte,input,output,cache_read,cache_creation,cost"
+
+	if _, err := db.ExecContext(ctx, `
+		UPDATE system_settings
+		SET value = ?, default_value = ?
+		WHERE key = 'channel_stats_fields'
+		  AND (value = ? OR value = '')
+	`, newDefault, newDefault, oldDefault); err != nil {
+		return err
+	}
+
+	if _, err := db.ExecContext(ctx, `
+		UPDATE system_settings
+		SET default_value = ?
+		WHERE key = 'channel_stats_fields'
+	`, newDefault); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func initDefaultSettings(ctx context.Context, db *sql.DB, dialect Dialect) error {
 	settings := []struct {
 		key, value, valueType, desc, defaultVal string
@@ -1051,7 +1078,7 @@ func initDefaultSettings(ctx context.Context, db *sql.DB, dialect Dialect) error
 		{"stats_retention_days", "365", "int", "统计数据保留天数(-1永久保留,1-3650天)", "365"},
 		{"max_key_retries", "3", "int", "单渠道最大Key重试次数", "3"},
 		{"channel_test_content", "sonnet 4.0的发布日期是什么", "string", "渠道测试默认内容", "sonnet 4.0的发布日期是什么"},
-		{"channel_stats_fields", "calls,rate,first_byte,input,output,cache_read,cache_creation,cost", "string", "渠道统计显示字段(逗号分隔)", "calls,rate,first_byte,input,output,cache_read,cache_creation,cost"},
+		{"channel_stats_fields", "calls,rate,cache_rate,first_byte,input,output,cache_read,cache_creation,cost", "string", "渠道统计显示字段(逗号分隔)", "calls,rate,cache_rate,first_byte,input,output,cache_read,cache_creation,cost"},
 		{"nav_visible_pages", "stats,trends,model-test", "string", "导航栏可选页面(stats=调用统计,trends=请求趋势,model-test=模型测试)", "stats,trends,model-test"},
 		{"endpoint_test_count", "3", "int", "端点测速次数(1-10次,取平均值)", "3"},
 		{"cooldown_mode", "exponential", "string", "冷却时间模式(exponential=递增,fixed=固定)", "exponential"},

@@ -132,11 +132,12 @@ const multiSelectOptions = {
   'channel_stats_fields': [
     { value: 'calls', label: '调用数' },
     { value: 'rate', label: '成功率' },
+    { value: 'cache_rate', label: '缓存率' },
     { value: 'first_byte', label: '首字节' },
     { value: 'input', label: '输入Token' },
     { value: 'output', label: '输出Token' },
-    { value: 'cache_read', label: '缓存读' },
-    { value: 'cache_creation', label: '缓存建' },
+    { value: 'cache_read', label: '缓存读取' },
+    { value: 'cache_creation', label: '缓存创建' },
     { value: 'cost', label: '成本' }
   ],
   'nav_visible_pages': [

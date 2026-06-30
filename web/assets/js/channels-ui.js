@@ -121,6 +121,7 @@
     const outputTokensText = cache?.outputTokensText || formatMetricNumber(stats.totalOutputTokens);
     const cacheReadText = cache?.cacheReadText || formatMetricNumber(stats.totalCacheReadInputTokens);
     const cacheCreationText = cache?.cacheCreationText || formatMetricNumber(stats.totalCacheCreationInputTokens);
+    const cacheRateText = cache?.cacheRateText || formatCacheRate(stats.totalInputTokens, stats.totalCacheReadInputTokens, stats.totalCacheCreationInputTokens);
     const costDisplay = cache?.costDisplay || formatCostValue(stats.totalCost);
 
     const successRateColor = (() => {
@@ -154,10 +155,13 @@
       parts.push(`<span class="channel-stat-badge" style="color: var(--neutral-800);"><strong>Out</strong> ${outputTokensText}</span>`);
     }
     if (channelStatsFields.includes('cache_read') && supportsCaching) {
-      parts.push(`<span class="channel-stat-badge" style="color: var(--success-600); background: var(--success-50); border-color: var(--success-100);"><strong>缓存读</strong> ${cacheReadText}</span>`);
+      parts.push(`<span class="channel-stat-badge" title="缓存读取" style="color: var(--success-600); background: var(--success-50); border-color: var(--success-100);"><strong>C Out</strong> ${cacheReadText}</span>`);
     }
     if (channelStatsFields.includes('cache_creation') && supportsCaching) {
-      parts.push(`<span class="channel-stat-badge" style="color: var(--primary-700); background: var(--primary-50); border-color: var(--primary-100);"><strong>缓存建</strong> ${cacheCreationText}</span>`);
+      parts.push(`<span class="channel-stat-badge" title="缓存创建" style="color: var(--primary-700); background: var(--primary-50); border-color: var(--primary-100);"><strong>C In</strong> ${cacheCreationText}</span>`);
+    }
+    if (channelStatsFields.includes('cache_rate') && supportsCaching) {
+      parts.push(`<span class="channel-stat-badge" title="缓存读取 / (输入 + 缓存读取 + 缓存创建)" style="color: var(--success-700); background: var(--success-50); border-color: var(--success-100);"><strong>C%</strong> ${cacheRateText}</span>`);
     }
     if (channelStatsFields.includes('cost')) {
       parts.push(`<span class="channel-stat-badge" style="color: var(--warning-700); background: var(--warning-50); border-color: var(--warning-100);"><strong>成本</strong> ${costDisplay}</span>`);
@@ -188,6 +192,7 @@
       outputTokensText: formatMetricNumber(stats.totalOutputTokens),
       cacheReadText: formatMetricNumber(stats.totalCacheReadInputTokens),
       cacheCreationText: formatMetricNumber(stats.totalCacheCreationInputTokens),
+      cacheRateText: formatCacheRate(stats.totalInputTokens, stats.totalCacheReadInputTokens, stats.totalCacheCreationInputTokens),
       costDisplay: formatCostValue(stats.totalCost)
     } : null;
 

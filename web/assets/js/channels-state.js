@@ -8,7 +8,7 @@ let currentChannelKeyCooldowns = []; // 当前编辑渠道的Key冷却信息
 let redirectTableData = []; // 模型重定向表格数据: [{from: '', to: ''}]
 let defaultTestContent = 'sonnet 4.0的发布日期是什么'; // 默认测试内容（从设置加载）
 let channelStatsRange = 'today'; // 渠道统计时间范围（从设置加载）
-let channelStatsFields = ['calls', 'rate', 'first_byte', 'input', 'output', 'cache_read', 'cache_creation', 'cost']; // 渠道统计显示字段
+let channelStatsFields = ['calls', 'rate', 'cache_rate', 'first_byte', 'input', 'output', 'cache_read', 'cache_creation', 'cost']; // 渠道统计显示字段
 let channelsCache = {}; // 按类型缓存渠道数据: {type: channels[]}
 
 // Filter state
@@ -182,6 +182,15 @@ function formatSuccessRate(success, total) {
   const ttl = Number(total);
   if (!Number.isFinite(succ) || !Number.isFinite(ttl) || ttl <= 0) return '--';
   return ((succ / ttl) * 100).toFixed(1) + '%';
+}
+
+function formatCacheRate(inputTokens, cacheReadTokens, cacheCreationTokens) {
+  const input = Number(inputTokens) || 0;
+  const cacheRead = Number(cacheReadTokens) || 0;
+  const cacheCreation = Number(cacheCreationTokens) || 0;
+  const totalPromptTokens = input + cacheRead + cacheCreation;
+  if (totalPromptTokens <= 0) return '--';
+  return ((cacheRead / totalPromptTokens) * 100).toFixed(1) + '%';
 }
 
 function formatAvgFirstByte(value) {
