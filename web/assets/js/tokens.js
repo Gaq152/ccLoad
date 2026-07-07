@@ -26,6 +26,8 @@
         document.getElementById('drawerCustomExpiryContainer').style.display =
           e.target.value === 'custom' ? 'block' : 'none';
       });
+
+      document.getElementById('drawerQuotaType').addEventListener('change', toggleDrawerQuotaInput);
     });
 
     // 时间范围选择器事件处理
@@ -302,10 +304,7 @@
      * 构建总费用HTML（附带 tokens 明细 tooltip）
      */
     function buildCostHtml(totalCostUsd, token) {
-      if (!totalCostUsd || totalCostUsd <= 0) {
-        return '<span style="color: var(--neutral-500); font-size: 13px;">-</span>';
-      }
-
+      const costNumber = Number(totalCostUsd || 0);
       const parts = [];
       if (token) {
         if (token.prompt_tokens_total > 0) parts.push(`输入 ${formatTokenCount(token.prompt_tokens_total)}`);
@@ -313,15 +312,31 @@
         if (token.cache_read_tokens_total > 0) parts.push(`缓存读 ${formatTokenCount(token.cache_read_tokens_total)}`);
         if (token.cache_creation_tokens_total > 0) parts.push(`缓存建 ${formatTokenCount(token.cache_creation_tokens_total)}`);
       }
-      const tooltip = parts.length > 0 ? parts.join(' · ') : `总费用 $${totalCostUsd.toFixed(4)}`;
+      const tooltip = parts.length > 0 ? parts.join(' · ') : `总费用 $${costNumber.toFixed(4)}`;
+      const costLine = costNumber <= 0
+        ? '<span style="color: var(--neutral-500); font-size: 13px;">-</span>'
+        : `<span class="metric-value" style="color: var(--success-700); font-size: 15px; font-weight: 700;">$${costNumber.toFixed(4)}</span>`;
+      const quotaLine = buildQuotaLineHtml(token);
 
       return `
         <div style="display: flex; flex-direction: column; align-items: center; gap: 2px;" title="${tooltip}">
-          <span class="metric-value" style="color: var(--success-700); font-size: 15px; font-weight: 700;">
-            $${totalCostUsd.toFixed(4)}
-          </span>
+          ${costLine}
+          ${quotaLine}
         </div>
       `;
+    }
+
+    function buildQuotaLineHtml(token) {
+      if (!token) return '';
+      const used = Number(token.quota_used_usd || 0);
+      const limit = token.quota_limit_usd;
+      if (limit === null || limit === undefined) {
+        return '<span style="color: var(--neutral-500); font-size: 11px;">额度 无限</span>';
+      }
+      const safeLimit = Number(limit);
+      const isExhausted = used >= safeLimit;
+      const color = isExhausted ? 'var(--error-600)' : 'var(--neutral-500)';
+      return `<span style="color: ${color}; font-size: 11px;">额度 $${used.toFixed(4)} / $${safeLimit.toFixed(4)}</span>`;
     }
 
     /**
@@ -370,6 +385,7 @@
       document.getElementById('drawerForm').reset();
       document.getElementById('drawerTokenId').value = '';
       document.getElementById('drawerCustomExpiryContainer').style.display = 'none';
+      document.getElementById('drawerQuotaLimitContainer').style.display = 'none';
 
       if (mode === 'create') {
         // 创建模式
@@ -377,6 +393,8 @@
         document.getElementById('drawerSaveBtn').textContent = '创建令牌';
         document.getElementById('drawerActive').checked = true;
         document.getElementById('drawerExpiryType').value = 'never';
+        document.getElementById('drawerQuotaType').value = 'unlimited';
+        document.getElementById('drawerQuotaLimit').value = '';
 
         // 显示渠道配置部分（创建时也可以配置）
         document.getElementById('drawerChannelSection').style.display = 'block';
@@ -397,6 +415,15 @@
           document.getElementById('drawerTokenId').value = tokenId;
           document.getElementById('drawerDescription').value = token.description;
           document.getElementById('drawerActive').checked = token.is_active;
+          if (token.quota_limit_usd === null || token.quota_limit_usd === undefined) {
+            document.getElementById('drawerQuotaType').value = 'unlimited';
+            document.getElementById('drawerQuotaLimit').value = '';
+            document.getElementById('drawerQuotaLimitContainer').style.display = 'none';
+          } else {
+            document.getElementById('drawerQuotaType').value = 'custom';
+            document.getElementById('drawerQuotaLimit').value = token.quota_limit_usd;
+            document.getElementById('drawerQuotaLimitContainer').style.display = 'block';
+          }
 
           // 设置过期时间
           if (!token.expires_at) {
@@ -417,6 +444,12 @@
       // 显示遮罩层和抽屉
       document.getElementById('drawerOverlay').classList.add('show');
       document.getElementById('configDrawer').classList.add('open');
+    }
+
+    function toggleDrawerQuotaInput() {
+      const quotaType = document.getElementById('drawerQuotaType').value;
+      document.getElementById('drawerQuotaLimitContainer').style.display =
+        quotaType === 'custom' ? 'block' : 'none';
     }
 
     /**
@@ -458,6 +491,20 @@
       }
 
       const isActive = document.getElementById('drawerActive').checked;
+      const quotaType = document.getElementById('drawerQuotaType').value;
+      let quotaLimitUsd = null;
+      if (quotaType === 'custom') {
+        const rawQuota = document.getElementById('drawerQuotaLimit').value.trim();
+        if (rawQuota === '') {
+          showToast('请输入美元额度', 'error');
+          return;
+        }
+        quotaLimitUsd = Number(rawQuota);
+        if (!Number.isFinite(quotaLimitUsd) || quotaLimitUsd < 0) {
+          showToast('额度必须是非负数', 'error');
+          return;
+        }
+      }
 
       try {
         if (drawerMode === 'create') {
@@ -467,7 +514,8 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               description,
-              expires_at: expiresAt
+              expires_at: expiresAt,
+              quota_limit_usd: quotaLimitUsd
             })
           });
           const newTokenId = data.id;
@@ -489,7 +537,8 @@
           const updateData = {
             description,
             is_active: isActive,
-            expires_at: expiresAt
+            expires_at: expiresAt,
+            quota_limit_usd: quotaLimitUsd
           };
 
           await fetchDataWithAuth(`${API_BASE}/auth-tokens/${tokenId}`, {

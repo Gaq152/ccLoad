@@ -112,6 +112,8 @@
           <label class="form-label">过期时间</label>
           <select id="drawerExpiryType" class="form-input">
             <option value="never">永不过期</option>
+            <option value="1d">1天后过期</option>
+            <option value="7d">7天后过期</option>
             <option value="30d">30天后过期</option>
             <option value="90d">90天后过期</option>
             <option value="180d">180天后过期</option>
@@ -123,6 +125,19 @@
         <div id="drawerCustomExpiryContainer" style="display: none;" class="form-group">
           <label class="form-label">选择日期时间</label>
           <input type="datetime-local" id="drawerCustomExpiry" class="form-input">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">额度限制</label>
+          <select id="drawerQuotaType" class="form-input">
+            <option value="unlimited">无限额度</option>
+            <option value="custom">自定义额度</option>
+          </select>
+        </div>
+
+        <div id="drawerQuotaLimitContainer" style="display: none;" class="form-group">
+          <label class="form-label">美元额度</label>
+          <input type="number" id="drawerQuotaLimit" class="form-input" min="0" step="0.0001" placeholder="例如：5">
         </div>
 
         <div class="form-group">
