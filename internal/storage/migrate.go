@@ -154,6 +154,9 @@ func migrate(ctx context.Context, db *sql.DB, dialect Dialect) error {
 				if err := ensureAuthTokensTokenHint(ctx, db); err != nil {
 					return fmt.Errorf("migrate auth_tokens.token_hint: %w", err)
 				}
+				if err := ensureAuthTokensQuotaLimit(ctx, db); err != nil {
+					return fmt.Errorf("migrate auth_tokens.quota_limit_usd: %w", err)
+				}
 			} else {
 				if err := ensureAuthTokensCacheFieldsSQLite(ctx, db); err != nil {
 					return fmt.Errorf("migrate auth_tokens cache fields: %w", err)
@@ -166,6 +169,9 @@ func migrate(ctx context.Context, db *sql.DB, dialect Dialect) error {
 				}
 				if err := ensureAuthTokensTokenHintSQLite(ctx, db); err != nil {
 					return fmt.Errorf("migrate auth_tokens.token_hint: %w", err)
+				}
+				if err := ensureAuthTokensQuotaLimitSQLite(ctx, db); err != nil {
+					return fmt.Errorf("migrate auth_tokens.quota_limit_usd: %w", err)
 				}
 			}
 		}
@@ -1685,9 +1691,9 @@ func migrateKiroEndpoints(ctx context.Context, db *sql.DB, dialect Dialect) erro
 		FROM channel_endpoints e
 		JOIN channels c ON c.id = e.channel_id
 		WHERE c.preset = 'kiro'
-		  AND e.url LIKE '%` + oldDomain + `%'
+		  AND e.url LIKE '%`+oldDomain+`%'
 		  AND e.channel_id NOT IN (
-			SELECT channel_id FROM channel_endpoints WHERE url LIKE '%` + newDomain + `%'
+			SELECT channel_id FROM channel_endpoints WHERE url LIKE '%`+newDomain+`%'
 		  )
 	`)
 	if err != nil {
@@ -1728,7 +1734,7 @@ func migrateKiroEndpoints(ctx context.Context, db *sql.DB, dialect Dialect) erro
 		SELECT id, quota_config
 		FROM channels
 		WHERE preset = 'kiro' AND quota_config IS NOT NULL AND quota_config != ''
-		  AND quota_config LIKE '%` + oldDomain + `%'
+		  AND quota_config LIKE '%`+oldDomain+`%'
 	`)
 	if err != nil {
 		return fmt.Errorf("query kiro quota configs: %w", err)
@@ -2034,6 +2040,41 @@ func ensureAuthTokensTokenHintSQLite(ctx context.Context, db *sql.DB) error {
 	)
 	if err != nil {
 		return fmt.Errorf("add token_hint column: %w", err)
+	}
+	return nil
+}
+
+// ensureAuthTokensQuotaLimit 确保auth_tokens表有quota_limit_usd字段(MySQL增量迁移)
+func ensureAuthTokensQuotaLimit(ctx context.Context, db *sql.DB) error {
+	var count int
+	err := db.QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='auth_tokens' AND COLUMN_NAME='quota_limit_usd'",
+	).Scan(&count)
+	if err != nil {
+		return fmt.Errorf("check quota_limit_usd existence: %w", err)
+	}
+	if count > 0 {
+		return nil
+	}
+	_, err = db.ExecContext(ctx,
+		"ALTER TABLE auth_tokens ADD COLUMN quota_limit_usd DOUBLE DEFAULT NULL COMMENT '令牌额度上限(美元)，NULL表示无限'",
+	)
+	if err != nil {
+		return fmt.Errorf("add quota_limit_usd column: %w", err)
+	}
+	return nil
+}
+
+// ensureAuthTokensQuotaLimitSQLite 确保auth_tokens表有quota_limit_usd字段(SQLite增量迁移)
+func ensureAuthTokensQuotaLimitSQLite(ctx context.Context, db *sql.DB) error {
+	if hasColumnSQLite(ctx, db, "auth_tokens", "quota_limit_usd") {
+		return nil
+	}
+	_, err := db.ExecContext(ctx,
+		"ALTER TABLE auth_tokens ADD COLUMN quota_limit_usd REAL DEFAULT NULL",
+	)
+	if err != nil {
+		return fmt.Errorf("add quota_limit_usd column: %w", err)
 	}
 	return nil
 }

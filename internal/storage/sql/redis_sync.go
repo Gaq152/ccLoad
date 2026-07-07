@@ -376,19 +376,23 @@ func (s *SQLStore) loadAuthTokensFromRedis(ctx context.Context) (int, error) {
 		if token.LastUsedAt != nil {
 			lastUsedAt = *token.LastUsedAt
 		}
+		var quotaLimit any
+		if token.QuotaLimitUSD != nil {
+			quotaLimit = *token.QuotaLimitUSD
+		}
 
 		_, err := s.db.ExecContext(ctx, `
 			REPLACE INTO auth_tokens
 			(id, token, description, created_at, expires_at, last_used_at, is_active,
 			 success_count, failure_count, stream_avg_ttfb, non_stream_avg_rt,
 			 stream_count, non_stream_count, prompt_tokens_total, completion_tokens_total,
-			 cache_read_tokens_total, cache_creation_tokens_total, total_cost_usd)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			 cache_read_tokens_total, cache_creation_tokens_total, total_cost_usd, quota_limit_usd)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`, token.ID, token.Token, token.Description, token.CreatedAt.UnixMilli(),
 			expiresAt, lastUsedAt, token.IsActive,
 			token.SuccessCount, token.FailureCount, token.StreamAvgTTFB, token.NonStreamAvgRT,
 			token.StreamCount, token.NonStreamCount, token.PromptTokensTotal, token.CompletionTokensTotal,
-			token.CacheReadTokensTotal, token.CacheCreationTokensTotal, token.TotalCostUSD)
+			token.CacheReadTokensTotal, token.CacheCreationTokensTotal, token.TotalCostUSD, quotaLimit)
 
 		if err != nil {
 			log.Printf("Warning: failed to restore auth token %d: %v", token.ID, err)

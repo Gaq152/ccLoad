@@ -187,9 +187,17 @@ func (s *Server) applyTokenStatsUpdate(upd tokenStatsUpdate) {
 	updateCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	err := s.store.UpdateTokenStats(updateCtx, upd.tokenHash, upd.isSuccess, upd.duration, upd.isStreaming, upd.firstByteTime, upd.promptTokens, upd.completionTokens, upd.cacheReadTokens, upd.cacheCreationTokens, upd.costUSD)
+	autoPaused, err := s.store.UpdateTokenStats(updateCtx, upd.tokenHash, upd.isSuccess, upd.duration, upd.isStreaming, upd.firstByteTime, upd.promptTokens, upd.completionTokens, upd.cacheReadTokens, upd.cacheCreationTokens, upd.costUSD)
 	if err != nil {
 		log.Printf("ERROR: failed to update token stats for hash=%s: %v", upd.tokenHash, err)
+		return
+	}
+	if autoPaused && s.authService != nil {
+		if err := s.authService.ReloadAuthTokens(); err != nil {
+			log.Printf("[WARN]  令牌额度耗尽后热更新失败: %v", err)
+		} else {
+			log.Printf("[INFO] API令牌额度已用尽并自动暂停: hash=%s", upd.tokenHash)
+		}
 	}
 }
 

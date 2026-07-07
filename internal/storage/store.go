@@ -75,12 +75,12 @@ type Store interface {
 	// ============================================================================
 	// 每日统计聚合
 	// ============================================================================
-	AggregateDailyStats(ctx context.Context, date time.Time) error                                    // 聚合指定日期的统计数据
-	GetDailyStats(ctx context.Context, startDate, endDate time.Time) ([]*model.DailyStat, error)      // 查询日期范围内的统计
-	GetDailyStatsSummary(ctx context.Context, startDate, endDate time.Time, filter *model.LogFilter) ([]model.StatsEntry, error) // 汇总统计
+	AggregateDailyStats(ctx context.Context, date time.Time) error                                                                                           // 聚合指定日期的统计数据
+	GetDailyStats(ctx context.Context, startDate, endDate time.Time) ([]*model.DailyStat, error)                                                             // 查询日期范围内的统计
+	GetDailyStatsSummary(ctx context.Context, startDate, endDate time.Time, filter *model.LogFilter) ([]model.StatsEntry, error)                             // 汇总统计
 	GetDailyStatsMetrics(ctx context.Context, startDate, endDate time.Time, channelType, modelFilter string, authTokenID int64) ([]model.MetricPoint, error) // 趋势图数据
-	CleanupDailyStatsBefore(ctx context.Context, cutoff time.Time) error                              // 清理过期统计
-	GetLatestDailyStatsDate(ctx context.Context) (time.Time, error)                                   // 获取最新统计日期
+	CleanupDailyStatsBefore(ctx context.Context, cutoff time.Time) error                                                                                     // 清理过期统计
+	GetLatestDailyStatsDate(ctx context.Context) (time.Time, error)                                                                                          // 获取最新统计日期
 
 	// ============================================================================
 	// API 访问令牌管理
@@ -95,7 +95,7 @@ type Store interface {
 	UpdateAuthToken(ctx context.Context, token *model.AuthToken) error
 	DeleteAuthToken(ctx context.Context, id int64) error
 	UpdateTokenLastUsed(ctx context.Context, tokenHash string, now time.Time) error
-	UpdateTokenStats(ctx context.Context, tokenHash string, isSuccess bool, duration float64, isStreaming bool, firstByteTime float64, promptTokens int64, completionTokens int64, cacheReadTokens int64, cacheCreationTokens int64, costUSD float64) error
+	UpdateTokenStats(ctx context.Context, tokenHash string, isSuccess bool, duration float64, isStreaming bool, firstByteTime float64, promptTokens int64, completionTokens int64, cacheReadTokens int64, cacheCreationTokens int64, costUSD float64) (bool, error)
 	GetAuthTokenStatsInRange(ctx context.Context, startTime, endTime time.Time) (map[int64]*model.AuthTokenRangeStats, error)
 	GetTokenChannels(ctx context.Context, tokenID int64) ([]int64, error)
 	SetTokenChannels(ctx context.Context, tokenID int64, channelIDs []int64) error

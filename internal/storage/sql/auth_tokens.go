@@ -29,16 +29,20 @@ func (s *SQLStore) CreateAuthToken(ctx context.Context, token *model.AuthToken) 
 	if token.LastUsedAt != nil {
 		lastUsedAt = *token.LastUsedAt
 	}
+	var quotaLimit any
+	if token.QuotaLimitUSD != nil {
+		quotaLimit = *token.QuotaLimitUSD
+	}
 
 	result, err := s.db.ExecContext(ctx, `
 		INSERT INTO auth_tokens (
 			token, token_encrypted, token_hint, description, created_at, expires_at, last_used_at, is_active, all_channels,
 			success_count, failure_count, stream_avg_ttfb, non_stream_avg_rt, stream_count, non_stream_count,
-			prompt_tokens_total, completion_tokens_total, total_cost_usd
+			prompt_tokens_total, completion_tokens_total, total_cost_usd, quota_limit_usd
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0.0, 0.0, 0, 0, 0, 0, 0.0)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0.0, 0.0, 0, 0, 0, 0, 0.0, ?)
 	`, token.Token, token.TokenEncrypted, token.TokenHint, token.Description, token.CreatedAt.UnixMilli(), expiresAt, lastUsedAt,
-		boolToInt(token.IsActive), boolToInt(token.AllChannels))
+		boolToInt(token.IsActive), boolToInt(token.AllChannels), quotaLimit)
 
 	if err != nil {
 		return fmt.Errorf("create auth token: %w", err)
@@ -64,12 +68,14 @@ func (s *SQLStore) GetAuthToken(ctx context.Context, id int64) (*model.AuthToken
 	var expiresAt, lastUsedAt sql.NullInt64
 	var isActive, allChannels int
 	var tokenHint sql.NullString
+	var quotaLimit sql.NullFloat64
 
 	err := s.db.QueryRowContext(ctx, `
 		SELECT
 			id, token, description, created_at, expires_at, last_used_at, is_active, all_channels,
 			success_count, failure_count, stream_avg_ttfb, non_stream_avg_rt, stream_count, non_stream_count,
 			prompt_tokens_total, completion_tokens_total, cache_read_tokens_total, cache_creation_tokens_total, total_cost_usd,
+			quota_limit_usd,
 			token_hint
 		FROM auth_tokens
 		WHERE id = ?
@@ -93,6 +99,7 @@ func (s *SQLStore) GetAuthToken(ctx context.Context, id int64) (*model.AuthToken
 		&token.CacheReadTokensTotal,
 		&token.CacheCreationTokensTotal,
 		&token.TotalCostUSD,
+		&quotaLimit,
 		&tokenHint,
 	)
 
@@ -113,6 +120,9 @@ func (s *SQLStore) GetAuthToken(ctx context.Context, id int64) (*model.AuthToken
 	}
 	token.IsActive = isActive != 0
 	token.AllChannels = allChannels != 0
+	if quotaLimit.Valid {
+		token.QuotaLimitUSD = &quotaLimit.Float64
+	}
 	if tokenHint.Valid && tokenHint.String != "" {
 		hint := tokenHint.String
 		token.TokenHint = &hint
@@ -128,12 +138,14 @@ func (s *SQLStore) GetAuthTokenByValue(ctx context.Context, tokenHash string) (*
 	var createdAtMs int64
 	var expiresAt, lastUsedAt sql.NullInt64
 	var isActive, allChannels int
+	var quotaLimit sql.NullFloat64
 
 	err := s.db.QueryRowContext(ctx, `
 		SELECT
 			id, token, description, created_at, expires_at, last_used_at, is_active, all_channels,
 			success_count, failure_count, stream_avg_ttfb, non_stream_avg_rt, stream_count, non_stream_count,
-			prompt_tokens_total, completion_tokens_total, cache_read_tokens_total, cache_creation_tokens_total, total_cost_usd
+			prompt_tokens_total, completion_tokens_total, cache_read_tokens_total, cache_creation_tokens_total, total_cost_usd,
+			quota_limit_usd
 		FROM auth_tokens
 		WHERE token = ?
 	`, tokenHash).Scan(
@@ -156,6 +168,7 @@ func (s *SQLStore) GetAuthTokenByValue(ctx context.Context, tokenHash string) (*
 		&token.CacheReadTokensTotal,
 		&token.CacheCreationTokensTotal,
 		&token.TotalCostUSD,
+		&quotaLimit,
 	)
 
 	if errors.Is(err, sql.ErrNoRows) {
@@ -175,6 +188,9 @@ func (s *SQLStore) GetAuthTokenByValue(ctx context.Context, tokenHash string) (*
 	}
 	token.IsActive = isActive != 0
 	token.AllChannels = allChannels != 0
+	if quotaLimit.Valid {
+		token.QuotaLimitUSD = &quotaLimit.Float64
+	}
 
 	return token, nil
 }
@@ -186,6 +202,7 @@ func (s *SQLStore) ListAuthTokens(ctx context.Context) ([]*model.AuthToken, erro
 			id, token, description, created_at, expires_at, last_used_at, is_active, all_channels,
 			success_count, failure_count, stream_avg_ttfb, non_stream_avg_rt, stream_count, non_stream_count,
 			prompt_tokens_total, completion_tokens_total, cache_read_tokens_total, cache_creation_tokens_total, total_cost_usd,
+			quota_limit_usd,
 			(token_encrypted IS NOT NULL AND token_encrypted != '') AS has_encrypted,
 			token_hint
 		FROM auth_tokens
@@ -204,6 +221,7 @@ func (s *SQLStore) ListAuthTokens(ctx context.Context) ([]*model.AuthToken, erro
 		var isActive, allChannels int
 		var hasEncrypted int
 		var tokenHint sql.NullString
+		var quotaLimit sql.NullFloat64
 
 		if err := rows.Scan(
 			&token.ID,
@@ -225,6 +243,7 @@ func (s *SQLStore) ListAuthTokens(ctx context.Context) ([]*model.AuthToken, erro
 			&token.CacheReadTokensTotal,
 			&token.CacheCreationTokensTotal,
 			&token.TotalCostUSD,
+			&quotaLimit,
 			&hasEncrypted,
 			&tokenHint,
 		); err != nil {
@@ -242,6 +261,9 @@ func (s *SQLStore) ListAuthTokens(ctx context.Context) ([]*model.AuthToken, erro
 		token.IsActive = isActive != 0
 		token.AllChannels = allChannels != 0
 		token.HasEncrypted = hasEncrypted != 0
+		if quotaLimit.Valid {
+			token.QuotaLimitUSD = &quotaLimit.Float64
+		}
 		if tokenHint.Valid && tokenHint.String != "" {
 			hint := tokenHint.String
 			token.TokenHint = &hint
@@ -262,7 +284,8 @@ func (s *SQLStore) ListActiveAuthTokens(ctx context.Context) ([]*model.AuthToken
 		SELECT
 			id, token, description, created_at, expires_at, last_used_at, is_active, all_channels,
 			success_count, failure_count, stream_avg_ttfb, non_stream_avg_rt, stream_count, non_stream_count,
-			prompt_tokens_total, completion_tokens_total, cache_read_tokens_total, cache_creation_tokens_total, total_cost_usd
+			prompt_tokens_total, completion_tokens_total, cache_read_tokens_total, cache_creation_tokens_total, total_cost_usd,
+			quota_limit_usd
 		FROM auth_tokens
 		WHERE is_active = 1 AND (expires_at = 0 OR expires_at > ?)
 		ORDER BY created_at DESC
@@ -278,6 +301,7 @@ func (s *SQLStore) ListActiveAuthTokens(ctx context.Context) ([]*model.AuthToken
 		var createdAtMs int64
 		var expiresAt, lastUsedAt sql.NullInt64
 		var isActive, allChannels int
+		var quotaLimit sql.NullFloat64
 
 		if err := rows.Scan(
 			&token.ID,
@@ -299,6 +323,7 @@ func (s *SQLStore) ListActiveAuthTokens(ctx context.Context) ([]*model.AuthToken
 			&token.CacheReadTokensTotal,
 			&token.CacheCreationTokensTotal,
 			&token.TotalCostUSD,
+			&quotaLimit,
 		); err != nil {
 			return nil, fmt.Errorf("scan auth token: %w", err)
 		}
@@ -313,6 +338,9 @@ func (s *SQLStore) ListActiveAuthTokens(ctx context.Context) ([]*model.AuthToken
 		}
 		token.IsActive = isActive != 0
 		token.AllChannels = allChannels != 0
+		if quotaLimit.Valid {
+			token.QuotaLimitUSD = &quotaLimit.Float64
+		}
 
 		tokens = append(tokens, token)
 	}
@@ -331,6 +359,10 @@ func (s *SQLStore) UpdateAuthToken(ctx context.Context, token *model.AuthToken) 
 	if token.LastUsedAt != nil {
 		lastUsedAt = *token.LastUsedAt
 	}
+	var quotaLimit any
+	if token.QuotaLimitUSD != nil {
+		quotaLimit = *token.QuotaLimitUSD
+	}
 
 	result, err := s.db.ExecContext(ctx, `
 		UPDATE auth_tokens
@@ -338,9 +370,10 @@ func (s *SQLStore) UpdateAuthToken(ctx context.Context, token *model.AuthToken) 
 		    expires_at = ?,
 		    last_used_at = ?,
 		    is_active = ?,
-		    all_channels = ?
+		    all_channels = ?,
+		    quota_limit_usd = ?
 		WHERE id = ?
-	`, token.Description, expiresAt, lastUsedAt, boolToInt(token.IsActive), boolToInt(token.AllChannels),
+	`, token.Description, expiresAt, lastUsedAt, boolToInt(token.IsActive), boolToInt(token.AllChannels), quotaLimit,
 		token.ID)
 
 	if err != nil {
@@ -461,6 +494,8 @@ func (s *SQLStore) UpdateTokenLastUsed(ctx context.Context, tokenHash string, no
 //   - promptTokens: 输入token数量
 //   - completionTokens: 输出token数量
 //   - costUSD: 本次请求费用(美元)
+//
+// 返回值表示本次更新是否触发额度耗尽并自动停用了令牌。
 func (s *SQLStore) UpdateTokenStats(
 	ctx context.Context,
 	tokenHash string,
@@ -473,11 +508,11 @@ func (s *SQLStore) UpdateTokenStats(
 	cacheReadTokens int64,
 	cacheCreationTokens int64,
 	costUSD float64,
-) error {
+) (bool, error) {
 	// 使用事务保证原子性（读-计算-写）
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("begin transaction: %w", err)
+		return false, fmt.Errorf("begin transaction: %w", err)
 	}
 	defer tx.Rollback() // 失败时自动回滚
 
@@ -494,6 +529,8 @@ func (s *SQLStore) UpdateTokenStats(
 		CacheReadTokensTotal     int64
 		CacheCreationTokensTotal int64
 		TotalCostUSD             float64
+		QuotaLimitUSD            sql.NullFloat64
+		IsActive                 int
 	}
 
 	err = tx.QueryRowContext(ctx, `
@@ -503,7 +540,9 @@ func (s *SQLStore) UpdateTokenStats(
 			stream_count, non_stream_count,
 			prompt_tokens_total, completion_tokens_total,
 			cache_read_tokens_total, cache_creation_tokens_total,
-			total_cost_usd
+			total_cost_usd,
+			quota_limit_usd,
+			is_active
 		FROM auth_tokens
 		WHERE token = ?
 	`, tokenHash).Scan(
@@ -518,16 +557,19 @@ func (s *SQLStore) UpdateTokenStats(
 		&stats.CacheReadTokensTotal,
 		&stats.CacheCreationTokensTotal,
 		&stats.TotalCostUSD,
+		&stats.QuotaLimitUSD,
+		&stats.IsActive,
 	)
 
 	if errors.Is(err, sql.ErrNoRows) {
-		return fmt.Errorf("token not found: %s", tokenHash)
+		return false, fmt.Errorf("token not found: %s", tokenHash)
 	}
 	if err != nil {
-		return fmt.Errorf("query current stats: %w", err)
+		return false, fmt.Errorf("query current stats: %w", err)
 	}
 
 	// 2. 增量更新计数器
+	autoPaused := false
 	if isSuccess {
 		stats.SuccessCount++
 		// 只有成功请求才累加token和费用
@@ -536,6 +578,10 @@ func (s *SQLStore) UpdateTokenStats(
 		stats.CacheReadTokensTotal += cacheReadTokens
 		stats.CacheCreationTokensTotal += cacheCreationTokens
 		stats.TotalCostUSD += costUSD
+		if stats.IsActive != 0 && stats.QuotaLimitUSD.Valid && stats.TotalCostUSD >= stats.QuotaLimitUSD.Float64 {
+			stats.IsActive = 0
+			autoPaused = true
+		}
 	} else {
 		stats.FailureCount++
 	}
@@ -568,7 +614,8 @@ func (s *SQLStore) UpdateTokenStats(
 			cache_read_tokens_total = ?,
 			cache_creation_tokens_total = ?,
 			total_cost_usd = ?,
-			last_used_at = ?
+			last_used_at = ?,
+			is_active = ?
 		WHERE token = ?
 	`,
 		stats.SuccessCount,
@@ -583,19 +630,24 @@ func (s *SQLStore) UpdateTokenStats(
 		stats.CacheCreationTokensTotal,
 		stats.TotalCostUSD,
 		now.UnixMilli(),
+		stats.IsActive,
 		tokenHash,
 	)
 
 	if err != nil {
-		return fmt.Errorf("update stats: %w", err)
+		return false, fmt.Errorf("update stats: %w", err)
 	}
 
 	// 5. 提交事务
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit transaction: %w", err)
+		return false, fmt.Errorf("commit transaction: %w", err)
 	}
 
-	return nil
+	if autoPaused {
+		s.triggerAsyncSync(syncAuthTokens)
+	}
+
+	return autoPaused, nil
 }
 
 // ============================================================================

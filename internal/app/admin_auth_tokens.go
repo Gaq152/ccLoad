@@ -4,7 +4,10 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
+	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"strings"
 	"time"
@@ -22,6 +25,33 @@ import (
 // Token 前缀（新版密钥标识）
 const TokenPrefix = "sk-ccl-"
 
+func validateAuthTokenQuotaLimit(limit *float64) error {
+	if limit == nil {
+		return nil
+	}
+	if math.IsNaN(*limit) || math.IsInf(*limit, 0) || *limit < 0 {
+		return fmt.Errorf("额度必须是非负数")
+	}
+	return nil
+}
+
+func parseOptionalQuotaLimit(raw json.RawMessage) (*float64, bool, error) {
+	if len(raw) == 0 {
+		return nil, false, nil
+	}
+	if strings.TrimSpace(string(raw)) == "null" {
+		return nil, true, nil
+	}
+	var limit float64
+	if err := json.Unmarshal(raw, &limit); err != nil {
+		return nil, true, fmt.Errorf("额度必须是数字或 null")
+	}
+	if err := validateAuthTokenQuotaLimit(&limit); err != nil {
+		return nil, true, err
+	}
+	return &limit, true, nil
+}
+
 // HandleListAuthTokens 列出所有API访问令牌（支持时间范围统计，2025-12扩展）
 // GET /admin/auth-tokens?range=today
 func (s *Server) HandleListAuthTokens(c *gin.Context) {
@@ -37,6 +67,7 @@ func (s *Server) HandleListAuthTokens(c *gin.Context) {
 
 	// 脱敏处理 + 计算过期状态
 	for _, t := range tokens {
+		t.QuotaUsedUSD = t.TotalCostUSD
 		// 优先使用 TokenHint（明文掩码，包含 sk-ccl- 前缀），否则回退到哈希掩码
 		if t.TokenHint != nil && *t.TokenHint != "" {
 			t.Token = *t.TokenHint
@@ -104,12 +135,17 @@ func (s *Server) HandleListAuthTokens(c *gin.Context) {
 // POST /admin/auth-tokens
 func (s *Server) HandleCreateAuthToken(c *gin.Context) {
 	var req struct {
-		Description string `json:"description" binding:"required"`
-		ExpiresAt   *int64 `json:"expires_at"` // Unix毫秒时间戳，nil表示永不过期
-		IsActive    *bool  `json:"is_active"`  // nil表示默认启用
+		Description   string   `json:"description" binding:"required"`
+		ExpiresAt     *int64   `json:"expires_at"`      // Unix毫秒时间戳，nil表示永不过期
+		IsActive      *bool    `json:"is_active"`       // nil表示默认启用
+		QuotaLimitUSD *float64 `json:"quota_limit_usd"` // nil表示无限额度
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
+		RespondErrorMsg(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := validateAuthTokenQuotaLimit(req.QuotaLimitUSD); err != nil {
 		RespondErrorMsg(c, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -132,11 +168,12 @@ func (s *Server) HandleCreateAuthToken(c *gin.Context) {
 	}
 
 	authToken := &model.AuthToken{
-		Token:       tokenHash,
-		Description: req.Description,
-		ExpiresAt:   req.ExpiresAt,
-		IsActive:    isActive,
-		AllChannels: true, // 默认允许所有渠道
+		Token:         tokenHash,
+		Description:   req.Description,
+		ExpiresAt:     req.ExpiresAt,
+		IsActive:      isActive,
+		AllChannels:   true, // 默认允许所有渠道
+		QuotaLimitUSD: req.QuotaLimitUSD,
 	}
 
 	// 生成明文掩码提示（保留前缀+首4+尾4，用于列表展示）
@@ -173,12 +210,13 @@ func (s *Server) HandleCreateAuthToken(c *gin.Context) {
 
 	// 返回明文令牌（仅此一次机会）
 	RespondJSON(c, http.StatusOK, gin.H{
-		"id":          authToken.ID,
-		"token":       tokenPlain, // 明文令牌，仅创建时返回
-		"description": authToken.Description,
-		"created_at":  authToken.CreatedAt,
-		"expires_at":  authToken.ExpiresAt,
-		"is_active":   authToken.IsActive,
+		"id":              authToken.ID,
+		"token":           tokenPlain, // 明文令牌，仅创建时返回
+		"description":     authToken.Description,
+		"created_at":      authToken.CreatedAt,
+		"expires_at":      authToken.ExpiresAt,
+		"is_active":       authToken.IsActive,
+		"quota_limit_usd": authToken.QuotaLimitUSD,
 	})
 }
 
@@ -192,13 +230,19 @@ func (s *Server) HandleUpdateAuthToken(c *gin.Context) {
 	}
 
 	var req struct {
-		Description *string `json:"description"`
-		IsActive    *bool   `json:"is_active"`
-		ExpiresAt   *int64  `json:"expires_at"`
-		AllChannels *bool   `json:"all_channels"` // 是否允许使用所有渠道（2025-12新增）
+		Description   *string         `json:"description"`
+		IsActive      *bool           `json:"is_active"`
+		ExpiresAt     *int64          `json:"expires_at"`
+		AllChannels   *bool           `json:"all_channels"`    // 是否允许使用所有渠道（2025-12新增）
+		QuotaLimitUSD json.RawMessage `json:"quota_limit_usd"` // null=无限；缺省=不变
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
+		RespondErrorMsg(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	quotaLimit, hasQuotaLimit, err := parseOptionalQuotaLimit(req.QuotaLimitUSD)
+	if err != nil {
 		RespondErrorMsg(c, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -229,6 +273,9 @@ func (s *Server) HandleUpdateAuthToken(c *gin.Context) {
 	if req.AllChannels != nil {
 		token.AllChannels = *req.AllChannels
 	}
+	if hasQuotaLimit {
+		token.QuotaLimitUSD = quotaLimit
+	}
 
 	// 处理启用/禁用请求
 	// 启用时检查过期时间（过期令牌不能启用）
@@ -245,6 +292,14 @@ func (s *Server) HandleUpdateAuthToken(c *gin.Context) {
 		} else {
 			token.IsActive = false
 		}
+	}
+	quotaExhausted := token.QuotaLimitUSD != nil && token.TotalCostUSD >= *token.QuotaLimitUSD
+	if quotaExhausted && req.IsActive != nil && *req.IsActive {
+		RespondErrorMsg(c, http.StatusBadRequest, "令牌额度已用尽，请先提高额度后再启用")
+		return
+	}
+	if quotaExhausted {
+		token.IsActive = false
 	}
 
 	if err := s.store.UpdateAuthToken(ctx, token); err != nil {

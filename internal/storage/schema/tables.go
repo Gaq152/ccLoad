@@ -83,6 +83,7 @@ func DefineAuthTokensTable() *TableBuilder {
 		Column("cache_read_tokens_total BIGINT NOT NULL DEFAULT 0").
 		Column("cache_creation_tokens_total BIGINT NOT NULL DEFAULT 0").
 		Column("total_cost_usd DOUBLE NOT NULL DEFAULT 0.0").
+		Column("quota_limit_usd DOUBLE DEFAULT NULL").
 		Column("token_encrypted TEXT DEFAULT NULL").
 		Column("token_hint VARCHAR(128) DEFAULT NULL").
 		Index("idx_auth_tokens_active", "is_active").
@@ -112,8 +113,8 @@ func DefineAdminSessionsTable() *TableBuilder {
 // DefineAdminCredentialsTable 定义admin_credentials表结构（管理员密码，单行表 id 恒为 1）
 func DefineAdminCredentialsTable() *TableBuilder {
 	return NewTable("admin_credentials").
-		Column("id BIGINT PRIMARY KEY").          // 恒为1（单管理员）
-		Column("password_hash TEXT NOT NULL").    // bcrypt哈希（不可逆，永不存明文）
+		Column("id BIGINT PRIMARY KEY").       // 恒为1（单管理员）
+		Column("password_hash TEXT NOT NULL"). // bcrypt哈希（不可逆，永不存明文）
 		Column("updated_at BIGINT NOT NULL")
 }
 
@@ -208,7 +209,7 @@ func DefineModelPricingTable() *TableBuilder {
 		Column("cache_read_multiplier DOUBLE NOT NULL DEFAULT 0").  // 0=使用系统默认
 		Column("cache_write_multiplier DOUBLE NOT NULL DEFAULT 0"). // 0=使用系统默认
 		Column("aliases TEXT DEFAULT ''").                          // 别名列表（逗号分隔）
-		Column("is_predefined TINYINT NOT NULL DEFAULT 0").        // 是否加入预定义模型列表
+		Column("is_predefined TINYINT NOT NULL DEFAULT 0").         // 是否加入预定义模型列表
 		Column("created_at BIGINT NOT NULL").
 		Column("updated_at BIGINT NOT NULL").
 		Index("idx_model_pricing_type", "channel_type")

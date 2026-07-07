@@ -30,16 +30,18 @@ type AuthToken struct {
 	NonStreamCount int64   `json:"non_stream_count"`  // 非流式请求计数(用于计算平均值)
 
 	// Token成本统计（2025-12新增）
-	PromptTokensTotal        int64   `json:"prompt_tokens_total"`         // 累计输入Token数
-	CompletionTokensTotal    int64   `json:"completion_tokens_total"`     // 累计输出Token数
-	CacheReadTokensTotal     int64   `json:"cache_read_tokens_total"`     // 累计缓存读Token数
-	CacheCreationTokensTotal int64   `json:"cache_creation_tokens_total"` // 累计缓存写Token数
-	TotalCostUSD             float64 `json:"total_cost_usd"`              // 累计成本(美元)
+	PromptTokensTotal        int64    `json:"prompt_tokens_total"`         // 累计输入Token数
+	CompletionTokensTotal    int64    `json:"completion_tokens_total"`     // 累计输出Token数
+	CacheReadTokensTotal     int64    `json:"cache_read_tokens_total"`     // 累计缓存读Token数
+	CacheCreationTokensTotal int64    `json:"cache_creation_tokens_total"` // 累计缓存写Token数
+	TotalCostUSD             float64  `json:"total_cost_usd"`              // 累计成本(美元)
+	QuotaLimitUSD            *float64 `json:"quota_limit_usd"`             // 额度上限(美元)，nil表示无限
+	QuotaUsedUSD             float64  `json:"quota_used_usd"`              // 额度累计已用(美元)，API响应字段
 
 	// Token 加密存储（AES-256-GCM，用于再次查看）
-	TokenEncrypted *string `json:"-"`             // 加密后的明文（不暴露到 API）
+	TokenEncrypted *string `json:"-"`                    // 加密后的明文（不暴露到 API）
 	TokenHint      *string `json:"token_hint,omitempty"` // 明文掩码（如 sk-ccl-abcd****wxyz），用于列表展示
-	HasEncrypted   bool    `json:"has_encrypted"` // 是否有加密存储（前端判断是否显示查看按钮）
+	HasEncrypted   bool    `json:"has_encrypted"`        // 是否有加密存储（前端判断是否显示查看按钮）
 
 	// API 响应计算字段（不存储到数据库）
 	IsExpiredFlag bool `json:"is_expired"` // 是否已过期（API响应时计算）
