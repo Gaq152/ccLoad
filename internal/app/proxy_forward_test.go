@@ -1,6 +1,7 @@
 package app
 
 import (
+	"ccLoad/internal/model"
 	"context"
 	"errors"
 	"io"
@@ -10,6 +11,36 @@ import (
 	"testing"
 	"time"
 )
+
+func TestBuildProxyRequestAlignsCodexSessionIDWithPromptCacheKey(t *testing.T) {
+	body := []byte(`{"input":[],"prompt_cache_key":"body-cache-key","stream":true}`)
+	hdr := http.Header{}
+	hdr.Set("Session_id", "stale-session")
+
+	req, err := (&Server{}).buildProxyRequest(
+		&requestContext{ctx: context.Background()},
+		&model.Config{
+			ChannelType: "codex",
+			Preset:      "custom",
+			URL:         "https://example.com/codex/v1",
+		},
+		"sk-upstream",
+		http.MethodPost,
+		body,
+		hdr,
+		"",
+		"/v1/responses",
+		nil,
+		false,
+	)
+	if err != nil {
+		t.Fatalf("buildProxyRequest failed: %v", err)
+	}
+
+	if got := req.Header.Get("Session_id"); got != "body-cache-key" {
+		t.Fatalf("Session_id = %q, want prompt_cache_key", got)
+	}
+}
 
 func TestHandleSuccessResponse_ExtractsUsageFromJSON(t *testing.T) {
 	body := `{"usage":{"input_tokens":10,"output_tokens":20,"cache_read_input_tokens":5,"cache_creation_input_tokens":7}}`
@@ -221,7 +252,6 @@ func TestBuildStreamDiagnostics_StreamComplete(t *testing.T) {
 		})
 	}
 }
-
 
 // errorReader 模拟返回特定错误的 Reader
 type errorReader struct {

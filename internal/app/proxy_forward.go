@@ -99,6 +99,10 @@ func (s *Server) buildProxyRequest(
 		injectAPIKeyHeaders(req, apiKey, requestPath)
 	}
 
+	if cfg.ChannelType == util.ChannelTypeCodex && strings.HasSuffix(requestPath, "/responses") {
+		alignCodexSessionIDWithPromptCacheKey(req.Header, body)
+	}
+
 	return req, nil
 }
 

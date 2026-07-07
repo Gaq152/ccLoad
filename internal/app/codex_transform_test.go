@@ -1,10 +1,24 @@
 package app
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/bytedance/sonic"
 )
+
+func TestTransformCodexRequestBodyPreservesNativeBytes(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.5","instructions":"test","input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"hi"}]}],"parallel_tool_calls":false,"prompt_cache_key":"cache-key","reasoning":{"effort":"high","summary":"auto"},"stream":true,"store":false}`)
+
+	transformed, err := TransformCodexRequestBody(body)
+	if err != nil {
+		t.Fatalf("TransformCodexRequestBody failed: %v", err)
+	}
+
+	if !bytes.Equal(transformed, body) {
+		t.Fatalf("native Codex request was modified:\n got: %s\nwant: %s", transformed, body)
+	}
+}
 
 func TestTransformCodexRequestBodyPreservesParallelToolCalls(t *testing.T) {
 	body := []byte(`{

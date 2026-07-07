@@ -34,9 +34,10 @@ func TransformCodexRequestBody(body []byte) ([]byte, error) {
 	_, hasInput := req["input"]
 
 	if hasInput {
-		// 已经是 Codex/Responses 格式，做规范化调整
-		normalizeCodexNativeRequest(req)
-		return sonic.Marshal(req)
+		// 已经是 Codex/Responses 格式，必须字节级透传。
+		// Codex CLI 的 prompt cache 对稳定前缀极其敏感，重新 marshal 会重排大量
+		// input/tools 对象字段，导致上游只能命中很短的固定缓存前缀。
+		return body, nil
 	}
 
 	// 需要从 OpenAI Chat Completions 格式转换
@@ -119,6 +120,24 @@ func firstCodexHeader(h http.Header, names ...string) string {
 		}
 	}
 	return ""
+}
+
+func alignCodexSessionIDWithPromptCacheKey(h http.Header, body []byte) {
+	promptCacheKey := codexPromptCacheKey(body)
+	if promptCacheKey == "" {
+		return
+	}
+	h.Set("Session_id", promptCacheKey)
+}
+
+func codexPromptCacheKey(body []byte) string {
+	var req struct {
+		PromptCacheKey string `json:"prompt_cache_key"`
+	}
+	if err := sonic.Unmarshal(body, &req); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(req.PromptCacheKey)
 }
 
 // TransformToCodexRequest 将 OpenAI 格式请求转换为 Codex 格式
