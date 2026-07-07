@@ -754,6 +754,31 @@ function parseSSEResponse(responseBody) {
   let currentToolName = ''; // 当前工具调用名称
   let currentToolId = ''; // 当前工具调用 ID
   let currentToolInput = ''; // 当前工具调用的累积 JSON 输入
+  let currentCodexToolItemId = ''; // 当前 Codex function_call item_id
+  const codexToolStates = new Map(); // Codex function_call 状态，按 item_id 聚合参数增量
+
+  function getCodexToolState(itemId) {
+    const key = itemId || currentCodexToolItemId || `codex_tool_${codexToolStates.size}`;
+    if (!codexToolStates.has(key)) {
+      codexToolStates.set(key, {
+        done: false,
+        call: {
+          name: '',
+          id: key,
+          input: ''
+        }
+      });
+    }
+    return codexToolStates.get(key);
+  }
+
+  function finalizeCodexToolCall(itemId) {
+    const state = getCodexToolState(itemId);
+    if (!state.done) {
+      state.done = true;
+      toolCalls.push(state.call);
+    }
+  }
 
   const lines = responseBody.split('\n');
   for (const line of lines) {
@@ -849,6 +874,40 @@ function parseSSEResponse(responseBody) {
       }
       if (obj.type === 'response.reasoning_summary_part.done' && obj.part?.text && !thinking) {
         thinking = obj.part.text;
+      }
+
+      // Codex SSE: function_call 工具调用
+      if (obj.type === 'response.output_item.added' && obj.item?.type === 'function_call') {
+        const itemId = obj.item.id || obj.item.call_id || '';
+        currentCodexToolItemId = itemId || currentCodexToolItemId;
+        const state = getCodexToolState(itemId);
+        state.call.name = obj.item.name || state.call.name;
+        state.call.id = obj.item.call_id || obj.item.id || state.call.id;
+        if (typeof obj.item.arguments === 'string' && obj.item.arguments !== '') {
+          state.call.input = obj.item.arguments;
+        }
+      }
+      if (obj.type === 'response.function_call_arguments.delta' && typeof obj.delta === 'string') {
+        const state = getCodexToolState(obj.item_id || '');
+        state.call.input += obj.delta;
+      }
+      if (obj.type === 'response.function_call_arguments.done') {
+        const state = getCodexToolState(obj.item_id || '');
+        if (typeof obj.arguments === 'string' && obj.arguments !== '') {
+          state.call.input = obj.arguments;
+        }
+        finalizeCodexToolCall(obj.item_id || '');
+      }
+      if (obj.type === 'response.output_item.done' && obj.item?.type === 'function_call') {
+        const itemId = obj.item.id || obj.item.call_id || '';
+        currentCodexToolItemId = itemId || currentCodexToolItemId;
+        const state = getCodexToolState(itemId);
+        state.call.name = obj.item.name || state.call.name;
+        state.call.id = obj.item.call_id || obj.item.id || state.call.id;
+        if (typeof obj.item.arguments === 'string' && obj.item.arguments !== '') {
+          state.call.input = obj.item.arguments;
+        }
+        finalizeCodexToolCall(itemId);
       }
     } catch {
       // 忽略单行解析错误
