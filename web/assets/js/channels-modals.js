@@ -19,6 +19,11 @@ function parseExpiresAt(raw) {
 
 // 焦点管理：保存打开模态框前的焦点元素
 let previousFocusElement = null;
+const DEFAULT_FAST_BILLING_ROWS = [
+  { model: 'gpt-5.4', multiplier: 2 },
+  { model: 'gpt-5.5', multiplier: 2.5 }
+];
+let fastBillingRows = [];
 
 /**
  * 设置模态框焦点到第一个可聚焦元素
@@ -119,6 +124,7 @@ function resetChannelModalUI() {
 
   // 重置用量监控配置
   resetQuotaConfig();
+  resetFastBillingConfig();
 
   // 重置端点列表
   if (typeof resetInlineEndpoints === 'function') {
@@ -195,6 +201,7 @@ async function editChannel(id) {
 
   // 加载用量监控配置（从缓存读取，无需网络请求）
   loadQuotaConfig(channel.quota_config);
+  loadFastBillingConfig(channel.fast_billing_config);
 
   // 初始化渠道类型相关 UI（Codex OAuth 区块）
   initChannelTypeEventListener();
@@ -591,6 +598,7 @@ async function saveChannel(event) {
     model_redirects: modelRedirects,
     enabled: document.getElementById('channelEnabled').checked,
     quota_config: getQuotaConfig(),
+    fast_billing_config: getFastBillingConfig(),
     // Codex 预设相关字段
     preset: preset,
     access_token: accessToken,
@@ -607,6 +615,9 @@ async function saveChannel(event) {
   const needsApiKey = !isOAuthChannel && !isKiroPreset || (isOAuthChannel && preset !== 'official');
   if (!formData.name || !formData.url || formData.models.length === 0) {
     if (window.showError) showError('请填写所有必填字段');
+    return;
+  }
+  if (!formData.fast_billing_config) {
     return;
   }
   if (needsApiKey && !formData.api_key) {
@@ -857,6 +868,7 @@ async function copyChannel(id, name) {
     const modelRedirects = channel.model_redirects || {};
     redirectTableData = jsonToRedirectTable(modelRedirects);
     renderRedirectTable();
+    loadFastBillingConfig(channel.fast_billing_config);
 
     // 初始化渠道类型相关 UI（Codex OAuth 区块）
     initChannelTypeEventListener();
@@ -1083,6 +1095,138 @@ function renderRedirectTable() {
 
   // 更新模型列表（用于下拉选择）
   updateModelDatalist();
+}
+
+function resetFastBillingConfig() {
+  fastBillingRows = DEFAULT_FAST_BILLING_ROWS.map(row => ({ ...row }));
+  renderFastBillingRows();
+}
+
+function loadFastBillingConfig(config) {
+  const multipliers = config && config.multipliers && typeof config.multipliers === 'object'
+    ? config.multipliers
+    : null;
+
+  if (!multipliers) {
+    resetFastBillingConfig();
+    return;
+  }
+
+  fastBillingRows = Object.entries(multipliers)
+    .map(([model, multiplier]) => ({
+      model,
+      multiplier: Number(multiplier)
+    }))
+    .filter(row => row.model);
+  renderFastBillingRows();
+}
+
+function addFastBillingRow() {
+  fastBillingRows.push({ model: '', multiplier: 1 });
+  renderFastBillingRows();
+  setTimeout(() => {
+    const rows = document.querySelectorAll('#fastBillingRows .fast-billing-row');
+    const lastRow = rows[rows.length - 1];
+    const input = lastRow?.querySelector('.fast-billing-model');
+    if (input) input.focus();
+  }, 50);
+}
+
+function deleteFastBillingRow(index) {
+  fastBillingRows.splice(index, 1);
+  renderFastBillingRows();
+}
+
+function updateFastBillingRow(index, field, value) {
+  if (!fastBillingRows[index]) return;
+  if (field === 'model') {
+    fastBillingRows[index].model = value.trim();
+  } else if (field === 'multiplier') {
+    fastBillingRows[index].multiplier = value;
+  }
+}
+
+function renderFastBillingRows() {
+  const container = document.getElementById('fastBillingRows');
+  const countEl = document.getElementById('fastBillingCount');
+  if (!container) return;
+
+  const validCount = fastBillingRows.filter(row => {
+    const rawMultiplier = String(row.multiplier ?? '').trim();
+    return row.model && rawMultiplier !== '' && Number.isFinite(Number(rawMultiplier));
+  }).length;
+  if (countEl) countEl.textContent = String(validCount);
+
+  if (fastBillingRows.length === 0) {
+    container.innerHTML = '<div class="fast-billing-empty">暂无 Fast 倍率规则</div>';
+    return;
+  }
+
+  container.innerHTML = fastBillingRows.map((row, index) => `
+    <div class="fast-billing-row" data-index="${index}">
+      <input type="text"
+        class="form-input fast-billing-model"
+        value="${escapeHtml(row.model || '')}"
+        placeholder="gpt-5.5"
+        oninput="updateFastBillingRow(${index}, 'model', this.value)">
+      <input type="number"
+        class="form-input fast-billing-multiplier"
+        value="${escapeHtml(String(row.multiplier ?? 1))}"
+        min="0"
+        step="0.01"
+        inputmode="decimal"
+        oninput="updateFastBillingRow(${index}, 'multiplier', this.value)">
+      <button type="button"
+        class="fast-billing-delete"
+        onclick="deleteFastBillingRow(${index})"
+        aria-label="删除 Fast 计费倍率"
+        title="删除">
+        ×
+      </button>
+    </div>
+  `).join('');
+}
+
+function getFastBillingConfig() {
+  const rows = document.querySelectorAll('#fastBillingRows .fast-billing-row');
+  const multipliers = {};
+  const seen = new Set();
+
+  rows.forEach(row => {
+    row.querySelectorAll('.is-invalid').forEach(input => input.classList.remove('is-invalid'));
+  });
+
+  for (const row of rows) {
+    const modelInput = row.querySelector('.fast-billing-model');
+    const multiplierInput = row.querySelector('.fast-billing-multiplier');
+    const model = (modelInput?.value || '').trim();
+    const rawMultiplier = (multiplierInput?.value || '').trim();
+    const multiplier = Number(rawMultiplier);
+    const key = model.toLowerCase();
+
+    if (!model) {
+      if (window.showError) showError('Fast 计费模型前缀不能为空');
+      modelInput?.classList.add('is-invalid');
+      modelInput?.focus();
+      return null;
+    }
+    if (!rawMultiplier || !Number.isFinite(multiplier) || multiplier < 0) {
+      if (window.showError) showError('Fast 计费倍率必须是非负数');
+      multiplierInput?.classList.add('is-invalid');
+      multiplierInput?.focus();
+      return null;
+    }
+    if (seen.has(key)) {
+      if (window.showError) showError(`Fast 计费模型前缀重复: ${model}`);
+      modelInput?.classList.add('is-invalid');
+      modelInput?.focus();
+      return null;
+    }
+    seen.add(key);
+    multipliers[model] = multiplier;
+  }
+
+  return { multipliers };
 }
 
 /**

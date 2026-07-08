@@ -501,7 +501,7 @@ function renderTraces() {
     // 模型/端点 合并显示
     const modelEndpointDisplay = `
       <div class="model-endpoint-cell">
-        <span class="model-tag">${escapeHtml(trace.model || '-')}</span>
+        <span class="model-line"><span class="model-tag">${escapeHtml(trace.model || '-')}</span>${renderFastBadge(trace)}</span>
         <span class="endpoint-text">${escapeHtml(endpoint)}</span>
       </div>
     `;
@@ -535,7 +535,16 @@ async function viewDetail(id) {
     // 填充基本信息
     document.getElementById('detailChannel').textContent = trace.channel_name || '未知';
     document.getElementById('detailChannelID').textContent = trace.channel_id || '-';
-    document.getElementById('detailModel').textContent = trace.model || '-';
+    const detailModelEl = document.getElementById('detailModel');
+    if (detailModelEl) {
+      detailModelEl.innerHTML = `<span class="detail-model-inline"><span class="model-tag">${escapeHtml(trace.model || '-')}</span>${renderFastBadge(trace, true)}</span>`;
+    }
+    const detailFastBillingEl = document.getElementById('detailFastBilling');
+    if (detailFastBillingEl) {
+      detailFastBillingEl.textContent = trace.is_fast
+        ? `${trace.service_tier || 'fast'} · ${formatFastMultiplier(trace.fast_multiplier)}x`
+        : '否';
+    }
     document.getElementById('detailRequestPath').textContent = trace.request_path || '-';
     document.getElementById('detailStatus').textContent = trace.status_code || '-';
     document.getElementById('detailDuration').textContent = trace.duration ? `${trace.duration.toFixed(3)}s` : '-';
@@ -597,6 +606,24 @@ function formatCacheRate(inputTokens, cacheReadTokens, cacheCreationTokens) {
 function closeDetailModal() {
   const modal = document.getElementById('traceDetailModal');
   if (modal) modal.classList.remove('show');
+}
+
+function renderFastBadge(trace, showMultiplier = false) {
+  if (!trace || !trace.is_fast) return '';
+
+  const multiplier = Number(trace.fast_multiplier);
+  const multiplierText = Number.isFinite(multiplier) ? `${formatFastMultiplier(multiplier)}x` : '';
+  const tier = trace.service_tier ? ` · ${trace.service_tier}` : '';
+  const title = `Fast 请求${tier}${multiplierText ? ` · ${multiplierText}` : ''}`;
+  const text = showMultiplier && multiplierText ? `FAST ${multiplierText}` : 'FAST';
+
+  return `<span class="fast-badge" title="${escapeHtml(title).replace(/"/g, '&quot;')}">${text}</span>`;
+}
+
+function formatFastMultiplier(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '1';
+  return n.toFixed(2).replace(/\.?0+$/, '');
 }
 
 // 显示清空确认弹窗

@@ -711,6 +711,28 @@
           </div>
         </div>
 
+        <div class="form-group">
+          <div class="channel-section-head">
+            <label class="form-label" style="margin: 0;">
+              Fast 计费倍率 <span class="models-hint" style="margin-left: 8px; margin-top: 0;">模型前缀匹配，共 <span id="fastBillingCount">0</span> 条</span>
+            </label>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="addFastBillingRow()" style="padding: 5px 10px; font-size: 12px; display: inline-flex; align-items: center; gap: 4px;" title="添加 Fast 计费倍率">
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M8 3.5V12.5M3.5 8H12.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <span>添加</span>
+            </button>
+          </div>
+          <div class="fast-billing-editor">
+            <div class="fast-billing-header">
+              <span>模型前缀</span>
+              <span>倍率</span>
+              <span>操作</span>
+            </div>
+            <div id="fastBillingRows" class="fast-billing-rows"></div>
+          </div>
+        </div>
+
         <!-- 用量监控配置（可选） -->
         <div class="form-group">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">

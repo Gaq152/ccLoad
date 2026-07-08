@@ -349,7 +349,7 @@
 
       // 3. 模型显示
       const modelDisplay = entry.model ?
-        `<span class="model-tag">${escapeHtml(entry.model)}</span>` :
+        `<span class="model-with-badges"><span class="model-tag">${escapeHtml(entry.model)}</span>${renderFastBadge(entry)}</span>` :
         '<span style="color: var(--neutral-500);">-</span>';
 
       // 4. 响应时间显示(流式/非流式)
@@ -485,6 +485,21 @@
       if (totalPromptTokens <= 0 || cacheRead <= 0) return '';
       const rate = (cacheRead / totalPromptTokens) * 100;
       return `<span class="token-metric-value" title="缓存读取 / (输入 + 缓存读取 + 缓存创建)" style="color: var(--success-700);">${rate.toFixed(1)}%</span>`;
+    }
+
+    function renderFastBadge(entry) {
+      if (!entry || !entry.is_fast) return '';
+
+      const multiplier = Number(entry.fast_multiplier);
+      const multiplierText = Number.isFinite(multiplier) ? `${formatFastMultiplier(multiplier)}x` : '';
+      const tier = entry.service_tier ? ` · ${entry.service_tier}` : '';
+      const title = `Fast 请求${tier}${multiplierText ? ` · ${multiplierText}` : ''}`;
+
+      return `<span class="fast-badge" title="${escapeHtml(title).replace(/"/g, '&quot;')}">FAST</span>`;
+    }
+
+    function formatFastMultiplier(value) {
+      return Number(value).toFixed(2).replace(/\.?0+$/, '');
     }
 
     // ============================================================

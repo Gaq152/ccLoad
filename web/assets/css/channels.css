@@ -16,6 +16,105 @@
       align-items: flex-start;
     }
 
+    .channel-section-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .fast-billing-editor {
+      border: 1px solid var(--neutral-200);
+      border-radius: 8px;
+      background: var(--card-bg);
+      overflow: hidden;
+    }
+
+    .fast-billing-header,
+    .fast-billing-row {
+      display: grid;
+      grid-template-columns: minmax(160px, 1fr) 120px 56px;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .fast-billing-header {
+      padding: 8px 12px;
+      background: var(--neutral-100);
+      border-bottom: 1px solid var(--neutral-200);
+      color: var(--neutral-700);
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .fast-billing-rows {
+      max-height: 220px;
+      overflow-y: auto;
+    }
+
+    .fast-billing-row {
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--neutral-100);
+    }
+
+    .fast-billing-row:last-child {
+      border-bottom: none;
+    }
+
+    .fast-billing-row .form-input {
+      min-width: 0;
+      font-size: 13px;
+    }
+
+    .fast-billing-row .form-input.is-invalid {
+      border-color: var(--error-500);
+      box-shadow: 0 0 0 2px var(--error-100);
+    }
+
+    .fast-billing-delete {
+      width: 32px;
+      height: 32px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid var(--error-300);
+      border-radius: 6px;
+      background: var(--card-bg);
+      color: var(--error-600);
+      cursor: pointer;
+      font-size: 18px;
+      line-height: 1;
+    }
+
+    .fast-billing-delete:hover {
+      background: var(--error-50);
+      border-color: var(--error-500);
+    }
+
+    .fast-billing-empty {
+      padding: 16px 12px;
+      text-align: center;
+      color: var(--neutral-500);
+      font-size: 13px;
+    }
+
+    @media (max-width: 640px) {
+      .channel-section-head {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .fast-billing-header {
+        display: none;
+      }
+
+      .fast-billing-row {
+        grid-template-columns: minmax(0, 1fr) 92px 40px;
+        padding: 10px;
+      }
+    }
+
     /* 单选框样式美化 */
     input[type="radio"] {
       width: 16px;
