@@ -17,16 +17,17 @@ import (
 
 // ChannelRequest 渠道创建/更新请求结构
 type ChannelRequest struct {
-	Name           string             `json:"name" binding:"required"`
-	APIKey         string             `json:"api_key"`                // 非官方预设时必填
-	ChannelType    string             `json:"channel_type,omitempty"` // 渠道类型:anthropic, codex, gemini
-	KeyStrategy    string             `json:"key_strategy,omitempty"` // Key使用策略:sequential, round_robin
-	URL            string             `json:"url" binding:"required,url"`
-	Priority       int                `json:"priority"`
-	Models         []string           `json:"models" binding:"required,min=1"`
-	ModelRedirects map[string]string  `json:"model_redirects,omitempty"` // 可选的模型重定向映射
-	Enabled        bool               `json:"enabled"`
-	QuotaConfig    *model.QuotaConfig `json:"quota_config,omitempty"` // 用量监控配置（可选）
+	Name              string                   `json:"name" binding:"required"`
+	APIKey            string                   `json:"api_key"`                // 非官方预设时必填
+	ChannelType       string                   `json:"channel_type,omitempty"` // 渠道类型:anthropic, codex, gemini
+	KeyStrategy       string                   `json:"key_strategy,omitempty"` // Key使用策略:sequential, round_robin
+	URL               string                   `json:"url" binding:"required,url"`
+	Priority          int                      `json:"priority"`
+	Models            []string                 `json:"models" binding:"required,min=1"`
+	ModelRedirects    map[string]string        `json:"model_redirects,omitempty"` // 可选的模型重定向映射
+	Enabled           bool                     `json:"enabled"`
+	QuotaConfig       *model.QuotaConfig       `json:"quota_config,omitempty"`        // 用量监控配置（可选）
+	FastBillingConfig *model.FastBillingConfig `json:"fast_billing_config,omitempty"` // Fast计费倍率配置（可选）
 
 	// Codex/Gemini 预设相关字段（2025-12新增）
 	Preset       string `json:"preset,omitempty"`        // "official"=官方预设, "custom"=自定义, ""=非OAuth渠道
@@ -185,6 +186,12 @@ func (cr *ChannelRequest) Validate() error {
 		}
 	}
 
+	if cr.FastBillingConfig != nil {
+		if err := cr.FastBillingConfig.Validate(); err != nil {
+			return fmt.Errorf("invalid fast_billing_config: %w", err)
+		}
+	}
+
 	// Kiro 设备指纹验证（可选字段，支持两种格式）
 	// 格式1: 64位hex字符串（旧格式，向后兼容）
 	// 格式2: JSON对象（新格式，包含完整设备信息）
@@ -282,16 +289,17 @@ func isValidDeviceFingerprint(fp string) bool {
 // ToConfig 转换为Config结构(不包含API Key,API Key单独处理)
 func (cr *ChannelRequest) ToConfig() *model.Config {
 	return &model.Config{
-		Name:           strings.TrimSpace(cr.Name),
-		ChannelType:    strings.TrimSpace(cr.ChannelType), // 传递渠道类型
-		URL:            strings.TrimSpace(cr.URL),
-		Priority:       cr.Priority,
-		Models:         cr.Models,
-		ModelRedirects: cr.ModelRedirects,
-		Enabled:        cr.Enabled,
-		QuotaConfig:    cr.QuotaConfig,  // 用量监控配置
-		Preset:         cr.Preset,       // Codex/Gemini预设类型
-		OpenAICompat:   cr.OpenAICompat, // OpenAI兼容模式
+		Name:              strings.TrimSpace(cr.Name),
+		ChannelType:       strings.TrimSpace(cr.ChannelType), // 传递渠道类型
+		URL:               strings.TrimSpace(cr.URL),
+		Priority:          cr.Priority,
+		Models:            cr.Models,
+		ModelRedirects:    cr.ModelRedirects,
+		Enabled:           cr.Enabled,
+		QuotaConfig:       cr.QuotaConfig,       // 用量监控配置
+		FastBillingConfig: cr.FastBillingConfig, // Fast计费倍率配置
+		Preset:            cr.Preset,            // Codex/Gemini预设类型
+		OpenAICompat:      cr.OpenAICompat,      // OpenAI兼容模式
 	}
 }
 

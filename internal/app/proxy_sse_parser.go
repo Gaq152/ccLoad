@@ -41,6 +41,8 @@ type sseUsageParser struct {
 	// OpenAI: data: [DONE]
 	// Anthropic: event: message_stop
 	streamComplete bool
+
+	serviceTier string
 }
 
 type jsonUsageParser struct {
@@ -49,6 +51,7 @@ type jsonUsageParser struct {
 	truncated   bool
 	channelType string // 渠道类型(anthropic/codex/gemini),用于精确平台判断
 	requestURL  string // 请求URL，用于调试日志
+	serviceTier string
 }
 
 type usageParser interface {
@@ -56,6 +59,7 @@ type usageParser interface {
 	GetUsage() (inputTokens, outputTokens, cacheRead, cacheCreation int)
 	GetLastError() []byte   // [INFO] 返回SSE流中检测到的最后一个error事件（用于1308等错误的延迟处理）
 	IsStreamComplete() bool // [INFO] 返回是否检测到流结束标志（[DONE]/message_stop）
+	GetServiceTier() string // 返回上游实际使用的 service_tier（如果响应提供）
 }
 
 const (
@@ -194,6 +198,10 @@ func (p *sseUsageParser) parseEvent(eventType, data string) error {
 		return fmt.Errorf("json unmarshal failed: %w", err)
 	}
 
+	if tier := extractServiceTier(event); tier != "" {
+		p.serviceTier = tier
+	}
+
 	usage := extractUsage(event)
 
 	if usage == nil {
@@ -236,6 +244,10 @@ func (p *sseUsageParser) IsStreamComplete() bool {
 	return p.streamComplete
 }
 
+func (p *sseUsageParser) GetServiceTier() string {
+	return p.serviceTier
+}
+
 func (p *jsonUsageParser) Feed(data []byte) error {
 	if p.truncated {
 		return nil
@@ -262,6 +274,7 @@ func (p *jsonUsageParser) GetUsage() (inputTokens, outputTokens, cacheRead, cach
 		if err := sseParser.Feed(data); err != nil {
 			log.Printf("WARN: usage sse-like parse failed: %v", err)
 		} else {
+			p.serviceTier = sseParser.GetServiceTier()
 			return sseParser.GetUsage()
 		}
 	}
@@ -285,6 +298,9 @@ func (p *jsonUsageParser) GetUsage() (inputTokens, outputTokens, cacheRead, cach
 		return 0, 0, 0, 0
 	}
 
+	if tier := extractServiceTier(payload); tier != "" {
+		p.serviceTier = tier
+	}
 	p.applyUsage(extractUsage(payload), p.channelType)
 
 	// Codex/OpenAI格式归一化: 与sseUsageParser保持一致
@@ -309,6 +325,10 @@ func (p *jsonUsageParser) GetLastError() []byte {
 // [INFO] IsStreamComplete 返回false（非流式请求无结束标志概念）
 func (p *jsonUsageParser) IsStreamComplete() bool {
 	return false // JSON解析器不处理流结束标志
+}
+
+func (p *jsonUsageParser) GetServiceTier() string {
+	return p.serviceTier
 }
 
 // ============================================================================
@@ -342,6 +362,10 @@ func (a *codexUsageAdapter) IsStreamComplete() bool {
 	// Codex 流完成由 response.completed 事件标识
 	// transformer 已经发送了 [DONE]，视为完成
 	return true
+}
+
+func (a *codexUsageAdapter) GetServiceTier() string {
+	return ""
 }
 
 func (u *usageAccumulator) applyUsage(usage map[string]any, channelType string) {
@@ -534,4 +558,19 @@ func extractUsage(payload map[string]any) map[string]any {
 	}
 
 	return nil
+}
+
+func extractServiceTier(payload map[string]any) string {
+	if payload == nil {
+		return ""
+	}
+	if tier, ok := payload["service_tier"].(string); ok {
+		return strings.TrimSpace(tier)
+	}
+	if resp, ok := payload["response"].(map[string]any); ok {
+		if tier, ok := resp["service_tier"].(string); ok {
+			return strings.TrimSpace(tier)
+		}
+	}
+	return ""
 }

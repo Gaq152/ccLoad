@@ -42,17 +42,22 @@ func (s *SQLStore) LoadChannelsFromRedis(ctx context.Context) error {
 				modelsStr, _ := util.SerializeJSON(config.Models, "[]")
 				modelRedirectsStr, _ := util.SerializeJSON(config.ModelRedirects, "{}")
 				channelType := config.GetChannelType() // 强制使用默认值anthropic
+				fastBillingConfigStr, err := serializeFastBillingConfig(config.FastBillingConfig)
+				if err != nil {
+					log.Printf("Warning: invalid fast_billing_config for channel %s: %v", config.Name, err)
+					fastBillingConfigStr, _ = serializeFastBillingConfig(nil)
+				}
 
 				// 1. 恢复渠道基本配置到channels表
 				result, err := tx.ExecContext(ctx, `
 				REPLACE INTO channels(
 					name, url, priority, models, model_redirects, channel_type,
-					enabled, cooldown_until, cooldown_duration_ms, created_at, updated_at
+					enabled, fast_billing_config, cooldown_until, cooldown_duration_ms, created_at, updated_at
 				)
-				VALUES(?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?)
+				VALUES(?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?)
 			`, config.Name, config.URL, config.Priority,
 					modelsStr, modelRedirectsStr, channelType,
-					boolToInt(config.Enabled), nowUnix, nowUnix)
+					boolToInt(config.Enabled), fastBillingConfigStr, nowUnix, nowUnix)
 
 				if err != nil {
 					log.Printf("Warning: failed to restore channel %s: %v", config.Name, err)
@@ -414,6 +419,9 @@ func normalizeChannelsWithKeys(channelsWithKeys []*model.ChannelWithKeys) {
 		}
 		if cwk.Config.ModelRedirects == nil {
 			cwk.Config.ModelRedirects = make(map[string]string)
+		}
+		if cwk.Config.FastBillingConfig == nil {
+			cwk.Config.FastBillingConfig = model.DefaultFastBillingConfig()
 		}
 
 		// 规范化APIKeys部分：确保key_strategy默认值

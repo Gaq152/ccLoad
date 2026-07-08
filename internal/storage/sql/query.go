@@ -33,12 +33,14 @@ func NewWhereBuilder() *WhereBuilder {
 //   - 违反约束将导致SQL注入漏洞，必须通过代码审查/静态分析工具检测
 //
 // 正确示例:
-//   wb.AddCondition("channel_id = ?", userInputChannelID)  // ✅ 用户输入通过args传递
-//   wb.AddCondition("status IN (?, ?)", "active", "pending") // ✅ 多个占位符
+//
+//	wb.AddCondition("channel_id = ?", userInputChannelID)  // ✅ 用户输入通过args传递
+//	wb.AddCondition("status IN (?, ?)", "active", "pending") // ✅ 多个占位符
 //
 // 错误示例:
-//   wb.AddCondition("channel_id = " + userInput)  // ❌ SQL注入风险！
-//   wb.AddCondition(fmt.Sprintf("name LIKE '%%%s%%'", userInput))  // ❌ SQL注入风险！
+//
+//	wb.AddCondition("channel_id = " + userInput)  // ❌ SQL注入风险！
+//	wb.AddCondition(fmt.Sprintf("name LIKE '%%%s%%'", userInput))  // ❌ SQL注入风险！
 //
 // 静态检查建议: 使用gosec/semgrep扫描所有调用点，确保condition参数不包含fmt.Sprintf/字符串拼接
 func (wb *WhereBuilder) AddCondition(condition string, args ...any) *WhereBuilder {
@@ -117,9 +119,10 @@ func (cs *ConfigScanner) ScanConfig(scanner interface {
 	var c model.Config
 	var modelsStr, modelRedirectsStr string
 	var enabledInt, autoSelectEndpointInt, openaiCompatInt int
-	var quotaConfigStr *string                // 可空字段，使用指针
-	var presetStr *string                     // Codex预设类型（可空）
-	var createdAtRaw, updatedAtRaw any        // 使用any接受任意类型（兼容字符串、整数或RFC3339）
+	var quotaConfigStr *string         // 可空字段，使用指针
+	var fastBillingConfigStr *string   // Fast计费倍率配置（可空）
+	var presetStr *string              // Codex预设类型（可空）
+	var createdAtRaw, updatedAtRaw any // 使用any接受任意类型（兼容字符串、整数或RFC3339）
 
 	// [INFO] Linus风格：删除rr_key_index字段（已改用内存计数器）
 	var rrKeyIndex int // 临时变量，读取后丢弃
@@ -127,11 +130,11 @@ func (cs *ConfigScanner) ScanConfig(scanner interface {
 	// 扫描顺序必须与SELECT语句一致：
 	// id, name, url, priority, sort_order, models, model_redirects, channel_type, enabled,
 	// cooldown_until, cooldown_duration_ms, key_count,
-	// rr_key_index, auto_select_endpoint, quota_config, preset, openai_compat, created_at, updated_at
+	// rr_key_index, auto_select_endpoint, quota_config, fast_billing_config, preset, openai_compat, created_at, updated_at
 	if err := scanner.Scan(&c.ID, &c.Name, &c.URL, &c.Priority, &c.SortOrder,
 		&modelsStr, &modelRedirectsStr, &c.ChannelType, &enabledInt,
 		&c.CooldownUntil, &c.CooldownDurationMs, &c.KeyCount,
-		&rrKeyIndex, &autoSelectEndpointInt, &quotaConfigStr, &presetStr, &openaiCompatInt, &createdAtRaw, &updatedAtRaw); err != nil {
+		&rrKeyIndex, &autoSelectEndpointInt, &quotaConfigStr, &fastBillingConfigStr, &presetStr, &openaiCompatInt, &createdAtRaw, &updatedAtRaw); err != nil {
 		return nil, err
 	}
 
@@ -151,6 +154,15 @@ func (cs *ConfigScanner) ScanConfig(scanner interface {
 			c.QuotaConfig = &qc
 		}
 		// 解析失败时静默忽略，保持nil
+	}
+
+	c.FastBillingConfig = model.DefaultFastBillingConfig()
+	if fastBillingConfigStr != nil && *fastBillingConfigStr != "" {
+		var fc model.FastBillingConfig
+		if err := sonic.Unmarshal([]byte(*fastBillingConfigStr), &fc); err == nil {
+			c.FastBillingConfig = &fc
+		}
+		// 解析失败时保留默认配置，保证旧渠道可继续按内置倍率计费
 	}
 
 	// 转换时间戳（支持不同数据库）

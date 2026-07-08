@@ -16,6 +16,7 @@ func DefineChannelsTable() *TableBuilder {
 		Column("rr_key_index INT NOT NULL DEFAULT 0").
 		Column("auto_select_endpoint TINYINT NOT NULL DEFAULT 1"). // 自动选择最快端点（默认开启）
 		Column("quota_config TEXT DEFAULT NULL").                  // 用量监控配置（JSON格式）
+		Column("fast_billing_config TEXT DEFAULT NULL").           // Fast模式计费倍率配置（JSON格式）
 		Column("preset VARCHAR(32) DEFAULT NULL").                 // Codex预设类型：official=官方, custom=自定义
 		Column("openai_compat TINYINT NOT NULL DEFAULT 0").        // OpenAI兼容模式（Gemini渠道使用/v1/chat/completions格式）
 		Column("sort_order INT NOT NULL DEFAULT 0").               // 同优先级内的排序顺序（拖拽排序用）
@@ -188,6 +189,9 @@ func DefineLogsTable() *TableBuilder {
 		Column("cache_read_input_tokens INT NOT NULL DEFAULT 0").
 		Column("cache_creation_input_tokens INT NOT NULL DEFAULT 0").
 		Column("cost DOUBLE NOT NULL DEFAULT 0.0").
+		Column("is_fast TINYINT NOT NULL DEFAULT 0").
+		Column("service_tier VARCHAR(32) NOT NULL DEFAULT ''").
+		Column("fast_multiplier DOUBLE NOT NULL DEFAULT 1.0").
 		Index("idx_logs_time_model", "time, model").
 		Index("idx_logs_time_channel", "time, channel_id").
 		Index("idx_logs_time_status", "time, status_code").

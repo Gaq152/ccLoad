@@ -333,8 +333,8 @@ func (s *SQLStore) ImportChannelBatch(ctx context.Context, channels []*model.Cha
 		var channelUpsertSQL string
 		if s.IsSQLite() {
 			channelUpsertSQL = `
-				INSERT INTO channels(name, url, priority, models, model_redirects, channel_type, preset, quota_config, enabled, created_at, updated_at)
-				VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				INSERT INTO channels(name, url, priority, models, model_redirects, channel_type, preset, quota_config, fast_billing_config, enabled, created_at, updated_at)
+				VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 				ON CONFLICT(name) DO UPDATE SET
 					url = excluded.url,
 					priority = excluded.priority,
@@ -343,12 +343,13 @@ func (s *SQLStore) ImportChannelBatch(ctx context.Context, channels []*model.Cha
 					channel_type = excluded.channel_type,
 					preset = excluded.preset,
 					quota_config = excluded.quota_config,
+					fast_billing_config = excluded.fast_billing_config,
 					enabled = excluded.enabled,
 					updated_at = excluded.updated_at`
 		} else {
 			channelUpsertSQL = `
-				INSERT INTO channels(name, url, priority, models, model_redirects, channel_type, preset, quota_config, enabled, created_at, updated_at)
-				VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				INSERT INTO channels(name, url, priority, models, model_redirects, channel_type, preset, quota_config, fast_billing_config, enabled, created_at, updated_at)
+				VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 				ON DUPLICATE KEY UPDATE
 					url = VALUES(url),
 					priority = VALUES(priority),
@@ -357,6 +358,7 @@ func (s *SQLStore) ImportChannelBatch(ctx context.Context, channels []*model.Cha
 					channel_type = VALUES(channel_type),
 					preset = VALUES(preset),
 					quota_config = VALUES(quota_config),
+					fast_billing_config = VALUES(fast_billing_config),
 					enabled = VALUES(enabled),
 					updated_at = VALUES(updated_at)`
 		}
@@ -401,14 +403,18 @@ func (s *SQLStore) ImportChannelBatch(ctx context.Context, channels []*model.Cha
 					quotaConfigStr = &jsonStr
 				}
 			}
+			fastBillingConfigStr, err := serializeFastBillingConfig(config.FastBillingConfig)
+			if err != nil {
+				return fmt.Errorf("invalid fast_billing_config for channel %s: %w", config.Name, err)
+			}
 
 			// 检查是否为更新操作
 			_, isUpdate := existingNames[config.Name]
 
 			// 插入或更新渠道配置
-			_, err := channelStmt.ExecContext(ctx,
+			_, err = channelStmt.ExecContext(ctx,
 				config.Name, config.URL, config.Priority,
-				modelsStr, modelRedirectsStr, channelType, presetStr, quotaConfigStr,
+				modelsStr, modelRedirectsStr, channelType, presetStr, quotaConfigStr, fastBillingConfigStr,
 				boolToInt(config.Enabled), nowUnix, nowUnix)
 			if err != nil {
 				return fmt.Errorf("import channel %s: %w", config.Name, err)

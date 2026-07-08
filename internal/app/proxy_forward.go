@@ -383,6 +383,7 @@ func (s *Server) handleSuccessResponse(
 		if errorEvent := usageParser.GetLastError(); errorEvent != nil {
 			result.SSEErrorEvent = errorEvent
 		}
+		result.ServiceTier = usageParser.GetServiceTier()
 		streamComplete = usageParser.IsStreamComplete()
 	}
 
@@ -769,6 +770,7 @@ func (s *Server) forwardAttempt(
 		res, duration, err = s.forwardOnceAsync(ctx, cfg, selectedKey, reqCtx.requestMethod,
 			bodyToSend, reqCtx.header, reqCtx.rawQuery, reqCtx.requestPath, targetWriter, reqCtx.codexHeaders, reqCtx.isGeminiCLI, reqCtx.onBytesRead)
 	}
+	applyFastBillingToResult(cfg, actualModel, reqCtx.body, res)
 
 	// 监控捕获（仅在监控开启时执行，异步不阻塞主流程）
 	// 使用 ResponseCapture 捕获的数据（包括流式响应）
@@ -1364,6 +1366,9 @@ func (s *Server) captureForMonitorWithCapture(
 		trace.CacheCreationTokens = res.CacheCreationInputTokens
 		trace.UpstreamRequestHeaders = headersForMonitor(res.UpstreamRequestHeader, "")
 		trace.UpstreamResponseHeaders = headersForMonitor(res.Header, "")
+		trace.IsFast = res.IsFast
+		trace.ServiceTier = res.ServiceTier
+		trace.FastMultiplier = res.FastMultiplier
 	}
 	trace.ClientRequestHeaders = headersForMonitor(reqCtx.header, "")
 

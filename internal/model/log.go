@@ -57,6 +57,9 @@ type LogEntry struct {
 	CacheReadInputTokens     int     `json:"cache_read_input_tokens"`
 	CacheCreationInputTokens int     `json:"cache_creation_input_tokens"`
 	Cost                     float64 `json:"cost"`
+	IsFast                   bool    `json:"is_fast"`
+	ServiceTier              string  `json:"service_tier,omitempty"`
+	FastMultiplier           float64 `json:"fast_multiplier"`
 }
 
 // LogFilter is the request log query filter.

@@ -110,6 +110,16 @@ func deepCopyConfig(src *modelpkg.Config) *modelpkg.Config {
 		}
 	}
 
+	if src.FastBillingConfig != nil {
+		dst.FastBillingConfig = &modelpkg.FastBillingConfig{}
+		if src.FastBillingConfig.Multipliers != nil {
+			dst.FastBillingConfig.Multipliers = make(map[string]float64, len(src.FastBillingConfig.Multipliers))
+			for k, v := range src.FastBillingConfig.Multipliers {
+				dst.FastBillingConfig.Multipliers[k] = v
+			}
+		}
+	}
+
 	return &dst
 }
 

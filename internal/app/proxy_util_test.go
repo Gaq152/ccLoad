@@ -1,6 +1,7 @@
 package app
 
 import (
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -199,5 +200,49 @@ func TestBuildLogEntry_UsesGenericOAuthLabel(t *testing.T) {
 		if entry.APIKeyHash != "" {
 			t.Fatalf("expected empty api key hash for OAuth %s, got %q", channelType, entry.APIKeyHash)
 		}
+	}
+}
+
+func TestBuildLogEntry_PreservesFastBillingMetadataAndCost(t *testing.T) {
+	res := &fwResult{
+		Status:         200,
+		InputTokens:    1000,
+		OutputTokens:   500,
+		ServiceTier:    "priority",
+		IsFast:         true,
+		FastMultiplier: 2.5,
+		CostUSD:        0.025,
+		CostCalculated: true,
+	}
+
+	entry := buildLogEntry(
+		"gpt-5.5",
+		1,
+		"test-channel",
+		"codex",
+		200,
+		1.2,
+		false,
+		"sk-test-key",
+		"https://api.example.com",
+		0,
+		"",
+		"",
+		res,
+		"",
+		time.Now(),
+	)
+
+	if !entry.IsFast {
+		t.Fatal("IsFast = false, want true")
+	}
+	if entry.ServiceTier != "priority" {
+		t.Fatalf("ServiceTier = %q, want priority", entry.ServiceTier)
+	}
+	if entry.FastMultiplier != 2.5 {
+		t.Fatalf("FastMultiplier = %v, want 2.5", entry.FastMultiplier)
+	}
+	if math.Abs(entry.Cost-0.025) > 1e-9 {
+		t.Fatalf("Cost = %v, want 0.025", entry.Cost)
 	}
 }

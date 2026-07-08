@@ -1,6 +1,8 @@
 package model
 
 import (
+	"fmt"
+	"math"
 	"strings"
 	"time"
 )
@@ -28,6 +30,9 @@ type Config struct {
 	// 用量监控配置（2025-12新增）
 	QuotaConfig *QuotaConfig `json:"quota_config,omitempty"` // 用量查询配置
 
+	// Fast 计费倍率配置（2026-07新增）
+	FastBillingConfig *FastBillingConfig `json:"fast_billing_config,omitempty"` // Fast 模式计费倍率配置
+
 	// Codex预设类型（2025-12新增）
 	Preset string `json:"preset,omitempty"` // "official"=官方预设, "custom"=自定义, ""=非Codex渠道
 
@@ -52,6 +57,63 @@ type ChannelEndpoint struct {
 	LastTestAt int64  `json:"last_test_at"` // 最后测速时间戳
 	SortOrder  int    `json:"sort_order"`   // 排序顺序
 	CreatedAt  int64  `json:"created_at"`
+}
+
+// FastBillingConfig 渠道级 Fast 模式计费倍率配置
+type FastBillingConfig struct {
+	Multipliers map[string]float64 `json:"multipliers,omitempty"` // 模型前缀 -> 计费倍率
+}
+
+// DefaultFastBillingConfig 返回内置 Fast 模式默认倍率
+func DefaultFastBillingConfig() *FastBillingConfig {
+	return &FastBillingConfig{
+		Multipliers: map[string]float64{
+			"gpt-5.4": 2,
+			"gpt-5.5": 2.5,
+		},
+	}
+}
+
+// ResolveMultiplier 按最长模型前缀匹配 Fast 计费倍率；未命中时返回 1
+func (f *FastBillingConfig) ResolveMultiplier(model string) float64 {
+	model = strings.ToLower(strings.TrimSpace(model))
+	if model == "" {
+		return 1
+	}
+
+	if f == nil {
+		return DefaultFastBillingConfig().ResolveMultiplier(model)
+	}
+
+	bestLen := 0
+	bestMultiplier := 1.0
+	for prefix, multiplier := range f.Multipliers {
+		prefix = strings.ToLower(strings.TrimSpace(prefix))
+		if prefix == "" {
+			continue
+		}
+		if strings.HasPrefix(model, prefix) && len(prefix) > bestLen {
+			bestLen = len(prefix)
+			bestMultiplier = multiplier
+		}
+	}
+	return bestMultiplier
+}
+
+// Validate 校验 Fast 计费倍率配置，避免保存不可计费值
+func (f *FastBillingConfig) Validate() error {
+	if f == nil {
+		return nil
+	}
+	for modelPrefix, multiplier := range f.Multipliers {
+		if strings.TrimSpace(modelPrefix) == "" {
+			return fmt.Errorf("fast billing model cannot be empty")
+		}
+		if math.IsNaN(multiplier) || math.IsInf(multiplier, 0) || multiplier < 0 {
+			return fmt.Errorf("fast billing multiplier for %q must be a finite non-negative number", modelPrefix)
+		}
+	}
+	return nil
 }
 
 // EndpointTestResult 端点测速结果（用于批量更新）

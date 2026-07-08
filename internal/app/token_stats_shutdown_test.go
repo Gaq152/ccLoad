@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -86,5 +87,43 @@ func TestUpdateTokenStatsDuringShutdown(t *testing.T) {
 	}
 	if got.TotalCostUSD <= 0 {
 		t.Fatalf("TotalCostUSD = %f, want > 0", got.TotalCostUSD)
+	}
+}
+
+func TestUpdateTokenStatsUsesPrecomputedFastBillingCost(t *testing.T) {
+	store, err := storage.CreateSQLiteStore(":memory:", nil)
+	if err != nil {
+		t.Fatalf("CreateSQLiteStore failed: %v", err)
+	}
+
+	srv := NewServer(store)
+	srv.isShuttingDown.Store(true)
+
+	ctx := context.Background()
+	tokenHash := strings.Repeat("b", 64)
+	if err := store.CreateAuthToken(ctx, &model.AuthToken{
+		Token:       tokenHash,
+		Description: "fast billing",
+		IsActive:    true,
+	}); err != nil {
+		t.Fatalf("CreateAuthToken failed: %v", err)
+	}
+
+	srv.updateTokenStatsAsync(tokenHash, true, 1.23, false, &fwResult{
+		InputTokens:    1000,
+		OutputTokens:   500,
+		IsFast:         true,
+		ServiceTier:    "priority",
+		FastMultiplier: 2.5,
+		CostUSD:        0.025,
+		CostCalculated: true,
+	}, "gpt-5.5")
+
+	got, err := store.GetAuthTokenByValue(ctx, tokenHash)
+	if err != nil {
+		t.Fatalf("GetAuthTokenByValue failed: %v", err)
+	}
+	if math.Abs(got.TotalCostUSD-0.025) > 1e-9 {
+		t.Fatalf("TotalCostUSD = %v, want 0.025", got.TotalCostUSD)
 	}
 }

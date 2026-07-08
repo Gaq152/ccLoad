@@ -129,5 +129,8 @@ func traceToListItem(trace *storage.Trace) *storage.TraceListItem {
 		APIKeyUsed:          trace.APIKeyUsed,
 		TokenID:             trace.TokenID,
 		AuthTokenName:       trace.AuthTokenName,
+		IsFast:              trace.IsFast,
+		ServiceTier:         trace.ServiceTier,
+		FastMultiplier:      trace.FastMultiplier,
 	}
 }

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"ccLoad/internal/model"
 	"strings"
 	"testing"
 )
@@ -8,27 +9,27 @@ import (
 // TestChannelRequestValidation_ChannelType 测试 channel_type 白名单校验
 func TestChannelRequestValidation_ChannelType(t *testing.T) {
 	tests := []struct {
-		name        string
-		channelType string
-		wantErr     bool
+		name           string
+		channelType    string
+		wantErr        bool
 		wantNormalized string
 	}{
 		{
-			name:        "空值应该通过（使用默认值）",
-			channelType: "",
-			wantErr:     false,
+			name:           "空值应该通过（使用默认值）",
+			channelType:    "",
+			wantErr:        false,
 			wantNormalized: "",
 		},
 		{
-			name:        "anthropic 小写应该通过",
-			channelType: "anthropic",
-			wantErr:     false,
+			name:           "anthropic 小写应该通过",
+			channelType:    "anthropic",
+			wantErr:        false,
 			wantNormalized: "anthropic",
 		},
 		{
-			name:        "Anthropic 大写应该标准化为小写",
-			channelType: "Anthropic",
-			wantErr:     false,
+			name:           "Anthropic 大写应该标准化为小写",
+			channelType:    "Anthropic",
+			wantErr:        false,
 			wantNormalized: "anthropic",
 		},
 		{
@@ -42,9 +43,9 @@ func TestChannelRequestValidation_ChannelType(t *testing.T) {
 			wantErr:     true,
 		},
 		{
-			name:        "带空格的 anthropic 应该 trim 并通过",
-			channelType: "  anthropic  ",
-			wantErr:     false,
+			name:           "带空格的 anthropic 应该 trim 并通过",
+			channelType:    "  anthropic  ",
+			wantErr:        false,
 			wantNormalized: "anthropic",
 		},
 		{
@@ -98,45 +99,45 @@ func TestChannelRequestValidation_ChannelType(t *testing.T) {
 // TestChannelRequestValidation_KeyStrategy 测试 key_strategy 白名单校验
 func TestChannelRequestValidation_KeyStrategy(t *testing.T) {
 	tests := []struct {
-		name        string
-		keyStrategy string
-		wantErr     bool
+		name           string
+		keyStrategy    string
+		wantErr        bool
 		wantNormalized string
 	}{
 		{
-			name:        "空值应该通过（使用默认值）",
-			keyStrategy: "",
-			wantErr:     false,
+			name:           "空值应该通过（使用默认值）",
+			keyStrategy:    "",
+			wantErr:        false,
 			wantNormalized: "",
 		},
 		{
-			name:        "sequential 小写应该通过",
-			keyStrategy: "sequential",
-			wantErr:     false,
+			name:           "sequential 小写应该通过",
+			keyStrategy:    "sequential",
+			wantErr:        false,
 			wantNormalized: "sequential",
 		},
 		{
-			name:        "Sequential 大写应该标准化为小写",
-			keyStrategy: "Sequential",
-			wantErr:     false,
+			name:           "Sequential 大写应该标准化为小写",
+			keyStrategy:    "Sequential",
+			wantErr:        false,
 			wantNormalized: "sequential",
 		},
 		{
-			name:        "round_robin 应该通过",
-			keyStrategy: "round_robin",
-			wantErr:     false,
+			name:           "round_robin 应该通过",
+			keyStrategy:    "round_robin",
+			wantErr:        false,
 			wantNormalized: "round_robin",
 		},
 		{
-			name:        "ROUND_ROBIN 大写应该标准化为小写",
-			keyStrategy: "ROUND_ROBIN",
-			wantErr:     false,
+			name:           "ROUND_ROBIN 大写应该标准化为小写",
+			keyStrategy:    "ROUND_ROBIN",
+			wantErr:        false,
 			wantNormalized: "round_robin",
 		},
 		{
-			name:        "带空格的 sequential 应该 trim 并通过",
-			keyStrategy: "  sequential  ",
-			wantErr:     false,
+			name:           "带空格的 sequential 应该 trim 并通过",
+			keyStrategy:    "  sequential  ",
+			wantErr:        false,
 			wantNormalized: "sequential",
 		},
 		{
@@ -177,6 +178,40 @@ func TestChannelRequestValidation_KeyStrategy(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestChannelRequestValidation_FastBillingConfig(t *testing.T) {
+	valid := &ChannelRequest{
+		Name:        "test-channel",
+		APIKey:      "test-key",
+		URL:         "https://example.com",
+		Models:      []string{"gpt-5.5"},
+		ChannelType: "anthropic",
+		FastBillingConfig: &model.FastBillingConfig{
+			Multipliers: map[string]float64{"gpt-5.5": 3},
+		},
+	}
+	if err := valid.Validate(); err != nil {
+		t.Fatalf("valid fast billing config rejected: %v", err)
+	}
+	if valid.ToConfig().FastBillingConfig.ResolveMultiplier("gpt-5.5") != 3 {
+		t.Fatalf("ToConfig did not preserve fast billing config")
+	}
+
+	invalid := &ChannelRequest{
+		Name:        "test-channel",
+		APIKey:      "test-key",
+		URL:         "https://example.com",
+		Models:      []string{"gpt-5.5"},
+		ChannelType: "anthropic",
+		FastBillingConfig: &model.FastBillingConfig{
+			Multipliers: map[string]float64{"gpt-5.5": -1},
+		},
+	}
+	err := invalid.Validate()
+	if err == nil || !strings.Contains(err.Error(), "fast_billing_config") {
+		t.Fatalf("Validate() error = %v, want fast_billing_config error", err)
 	}
 }
 

@@ -302,6 +302,34 @@ data: {"type":"response.completed","sequence_number":28,"response":{"id":"resp_0
 	}
 }
 
+func TestSSEUsageParserCapturesServiceTierFromResponse(t *testing.T) {
+	parser := newSSEUsageParser("codex")
+	sseData := `event: response.completed
+data: {"type":"response.completed","response":{"service_tier":"priority","usage":{"input_tokens":10,"output_tokens":2}}}
+
+`
+
+	if err := parser.Feed([]byte(sseData)); err != nil {
+		t.Fatalf("Feed失败: %v", err)
+	}
+
+	if got := parser.GetServiceTier(); got != "priority" {
+		t.Fatalf("service tier = %q, want priority", got)
+	}
+}
+
+func TestJSONUsageParserCapturesServiceTierFromResponse(t *testing.T) {
+	parser := newJSONUsageParser("codex", "https://example.com/v1/responses")
+	if err := parser.Feed([]byte(`{"service_tier":"priority","usage":{"input_tokens":10,"output_tokens":2}}`)); err != nil {
+		t.Fatalf("Feed失败: %v", err)
+	}
+
+	_, _, _, _ = parser.GetUsage()
+	if got := parser.GetServiceTier(); got != "priority" {
+		t.Fatalf("service tier = %q, want priority", got)
+	}
+}
+
 func TestSSEUsageParser_OpenAIChatCompletionsSSE(t *testing.T) {
 	// 测试OpenAI Chat Completions API的SSE流式响应
 	// OpenAI Chat使用prompt_tokens + completion_tokens格式

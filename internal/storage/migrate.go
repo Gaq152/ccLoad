@@ -73,12 +73,18 @@ func migrate(ctx context.Context, db *sql.DB, dialect Dialect) error {
 				if err := ensureLogsAPIKeyHash(ctx, db); err != nil {
 					return fmt.Errorf("migrate logs.api_key_hash: %w", err)
 				}
+				if err := ensureLogsFastBillingFields(ctx, db); err != nil {
+					return fmt.Errorf("migrate logs fast billing fields: %w", err)
+				}
 			} else {
 				if err := ensureLogsAPIBaseURLSQLite(ctx, db); err != nil {
 					return fmt.Errorf("migrate logs.api_base_url: %w", err)
 				}
 				if err := ensureLogsAPIKeyHashSQLite(ctx, db); err != nil {
 					return fmt.Errorf("migrate logs.api_key_hash: %w", err)
+				}
+				if err := ensureLogsFastBillingFieldsSQLite(ctx, db); err != nil {
+					return fmt.Errorf("migrate logs fast billing fields: %w", err)
 				}
 			}
 		}
@@ -91,6 +97,9 @@ func migrate(ctx context.Context, db *sql.DB, dialect Dialect) error {
 				}
 				if err := ensureChannelsQuotaConfig(ctx, db); err != nil {
 					return fmt.Errorf("migrate channels.quota_config: %w", err)
+				}
+				if err := ensureChannelsFastBillingConfig(ctx, db); err != nil {
+					return fmt.Errorf("migrate channels.fast_billing_config: %w", err)
 				}
 				if err := ensureChannelsPreset(ctx, db); err != nil {
 					return fmt.Errorf("migrate channels.preset: %w", err)
@@ -107,6 +116,9 @@ func migrate(ctx context.Context, db *sql.DB, dialect Dialect) error {
 				}
 				if err := ensureChannelsQuotaConfigSQLite(ctx, db); err != nil {
 					return fmt.Errorf("migrate channels.quota_config: %w", err)
+				}
+				if err := ensureChannelsFastBillingConfigSQLite(ctx, db); err != nil {
+					return fmt.Errorf("migrate channels.fast_billing_config: %w", err)
 				}
 				if err := ensureChannelsPresetSQLite(ctx, db); err != nil {
 					return fmt.Errorf("migrate channels.preset: %w", err)
@@ -676,6 +688,50 @@ func ensureLogsAPIKeyHashSQLite(ctx context.Context, db *sql.DB) error {
 	return nil
 }
 
+func ensureLogsFastBillingFields(ctx context.Context, db *sql.DB) error {
+	fields := []struct {
+		name string
+		ddl  string
+	}{
+		{"is_fast", "ALTER TABLE logs ADD COLUMN is_fast TINYINT NOT NULL DEFAULT 0 COMMENT '是否Fast计费'"},
+		{"service_tier", "ALTER TABLE logs ADD COLUMN service_tier VARCHAR(32) NOT NULL DEFAULT '' COMMENT '上游service_tier'"},
+		{"fast_multiplier", "ALTER TABLE logs ADD COLUMN fast_multiplier DOUBLE NOT NULL DEFAULT 1.0 COMMENT 'Fast计费倍率'"},
+	}
+	for _, field := range fields {
+		exists, err := hasColumnMySQL(ctx, db, "logs", field.name)
+		if err != nil {
+			return err
+		}
+		if exists {
+			continue
+		}
+		if _, err := db.ExecContext(ctx, field.ddl); err != nil {
+			return fmt.Errorf("add logs.%s column: %w", field.name, err)
+		}
+	}
+	return nil
+}
+
+func ensureLogsFastBillingFieldsSQLite(ctx context.Context, db *sql.DB) error {
+	fields := []struct {
+		name string
+		ddl  string
+	}{
+		{"is_fast", "ALTER TABLE logs ADD COLUMN is_fast INTEGER NOT NULL DEFAULT 0"},
+		{"service_tier", "ALTER TABLE logs ADD COLUMN service_tier TEXT NOT NULL DEFAULT ''"},
+		{"fast_multiplier", "ALTER TABLE logs ADD COLUMN fast_multiplier REAL NOT NULL DEFAULT 1.0"},
+	}
+	for _, field := range fields {
+		if hasColumnSQLite(ctx, db, "logs", field.name) {
+			continue
+		}
+		if _, err := db.ExecContext(ctx, field.ddl); err != nil {
+			return fmt.Errorf("add logs.%s column: %w", field.name, err)
+		}
+	}
+	return nil
+}
+
 func ensureChannelsAutoSelectEndpoint(ctx context.Context, db *sql.DB) error {
 	var count int
 	err := db.QueryRowContext(ctx,
@@ -1000,6 +1056,36 @@ func ensureChannelsQuotaConfigSQLite(ctx context.Context, db *sql.DB) error {
 		return fmt.Errorf("add quota_config column: %w", err)
 	}
 
+	return nil
+}
+
+func ensureChannelsFastBillingConfig(ctx context.Context, db *sql.DB) error {
+	exists, err := hasColumnMySQL(ctx, db, "channels", "fast_billing_config")
+	if err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+	_, err = db.ExecContext(ctx,
+		"ALTER TABLE channels ADD COLUMN fast_billing_config TEXT DEFAULT NULL COMMENT 'Fast模式计费倍率配置(JSON格式,新增2026-07)'",
+	)
+	if err != nil {
+		return fmt.Errorf("add fast_billing_config column: %w", err)
+	}
+	return nil
+}
+
+func ensureChannelsFastBillingConfigSQLite(ctx context.Context, db *sql.DB) error {
+	if hasColumnSQLite(ctx, db, "channels", "fast_billing_config") {
+		return nil
+	}
+	_, err := db.ExecContext(ctx,
+		"ALTER TABLE channels ADD COLUMN fast_billing_config TEXT DEFAULT NULL",
+	)
+	if err != nil {
+		return fmt.Errorf("add fast_billing_config column: %w", err)
+	}
 	return nil
 }
 
@@ -1828,6 +1914,19 @@ func ensurePricingIsPredefinedSQLite(ctx context.Context, db *sql.DB) error {
 	}
 	_, err := db.ExecContext(ctx, "ALTER TABLE model_pricing ADD COLUMN is_predefined TINYINT NOT NULL DEFAULT 0")
 	return err
+}
+
+// hasColumnMySQL 检查 MySQL 表是否有指定列
+func hasColumnMySQL(ctx context.Context, db *sql.DB, table, column string) (bool, error) {
+	var count int
+	err := db.QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND COLUMN_NAME=?",
+		table, column,
+	).Scan(&count)
+	if err != nil {
+		return false, fmt.Errorf("check %s.%s existence: %w", table, column, err)
+	}
+	return count > 0, nil
 }
 
 // hasColumnSQLite 检查 SQLite 表是否有指定列

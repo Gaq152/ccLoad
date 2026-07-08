@@ -48,6 +48,12 @@ type fwResult struct {
 	OutputTokens             int
 	CacheReadInputTokens     int
 	CacheCreationInputTokens int
+	ServiceTier              string // 上游实际使用的 service_tier（fast/priority/default）
+	IsFast                   bool   // 是否按 Fast 模式计费
+	FastMultiplier           float64
+	BaseCostUSD              float64 // 未应用 Fast 倍率前的基础成本
+	CostUSD                  float64 // 应用 Fast 倍率后的最终成本
+	CostCalculated           bool    // CostUSD 是否已经按当前计费规则计算
 
 	// 流传输诊断信息（2025-12新增）
 	StreamDiagMsg string // 流中断/不完整时的诊断消息，合并到成功日志的Message字段
@@ -575,19 +581,38 @@ func buildLogEntry(originalModel string, channelID int64, channelName string, ch
 		entry.OutputTokens = res.OutputTokens
 		entry.CacheReadInputTokens = res.CacheReadInputTokens
 		entry.CacheCreationInputTokens = res.CacheCreationInputTokens
+		entry.IsFast = res.IsFast
+		entry.ServiceTier = res.ServiceTier
+		entry.FastMultiplier = res.FastMultiplier
+		if entry.FastMultiplier == 0 {
+			entry.FastMultiplier = 1
+		}
 
 		// 成本计算（2025-11新增，基于token统计）
 		if res.InputTokens > 0 || res.OutputTokens > 0 || res.CacheReadInputTokens > 0 || res.CacheCreationInputTokens > 0 {
-			entry.Cost = util.CalculateCost(
-				originalModel,
-				res.InputTokens,
-				res.OutputTokens,
-				res.CacheReadInputTokens,
-				res.CacheCreationInputTokens,
-			)
+			if res.CostCalculated {
+				entry.Cost = res.CostUSD
+			} else {
+				entry.Cost = util.CalculateCost(
+					originalModel,
+					res.InputTokens,
+					res.OutputTokens,
+					res.CacheReadInputTokens,
+					res.CacheCreationInputTokens,
+				)
+			}
 		}
 	} else {
 		entry.Message = "unknown"
+	}
+
+	if res != nil {
+		entry.IsFast = res.IsFast
+		entry.ServiceTier = res.ServiceTier
+		entry.FastMultiplier = res.FastMultiplier
+		if entry.FastMultiplier == 0 {
+			entry.FastMultiplier = 1
+		}
 	}
 
 	return entry

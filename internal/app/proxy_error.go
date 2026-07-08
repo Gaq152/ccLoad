@@ -226,13 +226,17 @@ func (s *Server) updateTokenStatsAsync(tokenHash string, isSuccess bool, duratio
 		completionTokens = int64(res.OutputTokens)
 		cacheReadTokens = int64(res.CacheReadInputTokens)
 		cacheCreationTokens = int64(res.CacheCreationInputTokens)
-		costUSD = util.CalculateCost(
-			actualModel,
-			res.InputTokens,
-			res.OutputTokens,
-			res.CacheReadInputTokens,
-			res.CacheCreationInputTokens,
-		)
+		if res.CostCalculated {
+			costUSD = res.CostUSD
+		} else {
+			costUSD = util.CalculateCost(
+				actualModel,
+				res.InputTokens,
+				res.OutputTokens,
+				res.CacheReadInputTokens,
+				res.CacheCreationInputTokens,
+			)
+		}
 
 		// 财务安全检查：费用为0但有token消耗时告警（可能是定价缺失）
 		if costUSD == 0.0 && (res.InputTokens > 0 || res.OutputTokens > 0) {
@@ -316,6 +320,7 @@ func (s *Server) handleProxySuccess(
 	s.invalidateChannelRelatedCache(cfg.ID)
 
 	// 记录成功日志
+	applyFastBillingToResult(cfg, actualModel, reqCtx.body, res)
 	s.AddLogAsync(buildLogEntry(actualModel, cfg.ID, cfg.Name, cfg.GetChannelType(), res.Status,
 		duration, reqCtx.isStreaming, selectedKey, cfg.URL, reqCtx.tokenID, reqCtx.tokenName, reqCtx.clientIP, res, "", reqCtx.attemptStartTime))
 
