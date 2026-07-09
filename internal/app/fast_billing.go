@@ -16,20 +16,27 @@ type fastBillingInfo struct {
 }
 
 func resolveFastBilling(cfg *model.Config, actualModel string, requestBody []byte, res *fwResult) fastBillingInfo {
-	serviceTier := ""
+	responseTier := ""
 	if res != nil {
-		serviceTier = strings.TrimSpace(res.ServiceTier)
+		responseTier = normalizeServiceTier(res.ServiceTier)
+	}
+	requestTier := normalizeServiceTier(extractRequestServiceTier(requestBody))
+
+	serviceTier := responseTier
+	if isFastServiceTier(requestTier) {
+		// Fast/priority 是请求侧主动选择的计费模式；部分 Codex 上游响应仍回 default，
+		// 不能用响应层级反向清掉请求已经选择的 Fast 计费信号。
+		serviceTier = requestTier
 	}
 	if serviceTier == "" {
-		serviceTier = extractRequestServiceTier(requestBody)
+		serviceTier = requestTier
 	}
-	serviceTier = strings.ToLower(strings.TrimSpace(serviceTier))
 
 	info := fastBillingInfo{
 		ServiceTier: serviceTier,
 		Multiplier:  1,
 	}
-	if serviceTier == "fast" || serviceTier == "priority" {
+	if isFastServiceTier(serviceTier) {
 		info.IsFast = true
 		if cfg != nil {
 			info.Multiplier = cfg.FastBillingConfig.ResolveMultiplier(actualModel)
@@ -38,6 +45,15 @@ func resolveFastBilling(cfg *model.Config, actualModel string, requestBody []byt
 		}
 	}
 	return info
+}
+
+func normalizeServiceTier(serviceTier string) string {
+	return strings.ToLower(strings.TrimSpace(serviceTier))
+}
+
+func isFastServiceTier(serviceTier string) bool {
+	serviceTier = normalizeServiceTier(serviceTier)
+	return serviceTier == "fast" || serviceTier == "priority"
 }
 
 func applyFastBillingCost(baseCost float64, info fastBillingInfo) float64 {

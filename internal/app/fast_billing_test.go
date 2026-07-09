@@ -27,7 +27,7 @@ func TestResolveFastBillingUsesRequestTierWhenResponseMissing(t *testing.T) {
 	}
 }
 
-func TestResolveFastBillingResponseDefaultOverridesRequestFast(t *testing.T) {
+func TestResolveFastBillingRequestFastOverridesResponseDefault(t *testing.T) {
 	cfg := &model.Config{
 		FastBillingConfig: &model.FastBillingConfig{
 			Multipliers: map[string]float64{"gpt-5.5": 2.5},
@@ -37,14 +37,35 @@ func TestResolveFastBillingResponseDefaultOverridesRequestFast(t *testing.T) {
 
 	info := resolveFastBilling(cfg, "gpt-5.5", []byte(`{"service_tier":"fast"}`), res)
 
-	if info.IsFast {
-		t.Fatal("IsFast = true, want false")
+	if !info.IsFast {
+		t.Fatal("IsFast = false, want true")
 	}
-	if info.ServiceTier != "default" {
-		t.Fatalf("ServiceTier = %q, want default", info.ServiceTier)
+	if info.ServiceTier != "fast" {
+		t.Fatalf("ServiceTier = %q, want fast", info.ServiceTier)
 	}
-	if info.Multiplier != 1 {
-		t.Fatalf("Multiplier = %v, want 1", info.Multiplier)
+	if info.Multiplier != 2.5 {
+		t.Fatalf("Multiplier = %v, want 2.5", info.Multiplier)
+	}
+}
+
+func TestResolveFastBillingRequestPriorityOverridesResponseDefault(t *testing.T) {
+	cfg := &model.Config{
+		FastBillingConfig: &model.FastBillingConfig{
+			Multipliers: map[string]float64{"gpt-5.5": 2.5},
+		},
+	}
+	res := &fwResult{ServiceTier: "default"}
+
+	info := resolveFastBilling(cfg, "gpt-5.5", []byte(`{"service_tier":"priority"}`), res)
+
+	if !info.IsFast {
+		t.Fatal("IsFast = false, want true")
+	}
+	if info.ServiceTier != "priority" {
+		t.Fatalf("ServiceTier = %q, want priority", info.ServiceTier)
+	}
+	if info.Multiplier != 2.5 {
+		t.Fatalf("Multiplier = %v, want 2.5", info.Multiplier)
 	}
 }
 
