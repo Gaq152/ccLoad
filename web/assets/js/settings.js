@@ -377,6 +377,7 @@ function renderPricing() {
       output_price: formatPrice(e.output_price),
       high_input_display: e.input_price_high > 0 ? '$' + formatPrice(e.input_price_high) : '<span style="color:var(--neutral-400);">-</span>',
       high_output_display: e.output_price_high > 0 ? '$' + formatPrice(e.output_price_high) : '<span style="color:var(--neutral-400);">-</span>',
+      high_price_threshold_display: formatTokenThreshold(e.high_price_threshold),
       aliases_display: aliasesDisplay,
       aliases_full: aliasesFull,
       predefined_badge: predefinedBadge
@@ -390,6 +391,11 @@ function formatPrice(val) {
   if (val < 0.01) return val.toFixed(4);
   if (val < 1) return val.toFixed(3);
   return val.toFixed(2);
+}
+
+function formatTokenThreshold(val) {
+  const threshold = Number(val) || 272000;
+  return threshold % 1000 === 0 ? `${threshold / 1000}K` : threshold.toLocaleString();
 }
 
 function initPricingEventDelegation() {
@@ -415,6 +421,12 @@ function initPricingEventDelegation() {
   // 搜索和筛选
   document.getElementById('pricing-search')?.addEventListener('input', renderPricing);
   document.getElementById('pricing-type-filter')?.addEventListener('change', renderPricing);
+  document.getElementById('pricingChannelType')?.addEventListener('change', (event) => {
+    // 新建模型时按渠道给出正确默认值；编辑时保留该模型已经保存的自定义阈值。
+    if (!document.getElementById('pricingDrawerId').value) {
+      document.getElementById('pricingHighPriceThreshold').value = event.target.value === 'gemini' ? 200000 : 272000;
+    }
+  });
 }
 
 // ============================================================================
@@ -432,6 +444,7 @@ function openPricingDrawer(entry) {
   document.getElementById('pricingOutputPrice').value = isEdit ? entry.output_price : '';
   document.getElementById('pricingInputPriceHigh').value = isEdit ? entry.input_price_high : 0;
   document.getElementById('pricingOutputPriceHigh').value = isEdit ? entry.output_price_high : 0;
+  document.getElementById('pricingHighPriceThreshold').value = isEdit ? (entry.high_price_threshold || 272000) : 272000;
   document.getElementById('pricingCacheReadMul').value = isEdit ? entry.cache_read_multiplier : 0;
   document.getElementById('pricingCacheWriteMul').value = isEdit ? entry.cache_write_multiplier : 0;
 
@@ -463,6 +476,7 @@ async function savePricingEntry() {
     output_price: parseFloat(document.getElementById('pricingOutputPrice').value) || 0,
     input_price_high: parseFloat(document.getElementById('pricingInputPriceHigh').value) || 0,
     output_price_high: parseFloat(document.getElementById('pricingOutputPriceHigh').value) || 0,
+    high_price_threshold: parseInt(document.getElementById('pricingHighPriceThreshold').value, 10) || 272000,
     cache_read_multiplier: parseFloat(document.getElementById('pricingCacheReadMul').value) || 0,
     cache_write_multiplier: parseFloat(document.getElementById('pricingCacheWriteMul').value) || 0,
     aliases: document.getElementById('pricingAliases').value.split('\n').map(s => s.trim()).filter(Boolean),

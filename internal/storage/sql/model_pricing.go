@@ -13,6 +13,7 @@ import (
 // scanPricingColumns 定义 model_pricing 表的查询字段列表
 const pricingColumns = `id, model, display_name, channel_type,
 	input_price, output_price, input_price_high, output_price_high,
+	high_price_threshold,
 	cache_read_multiplier, cache_write_multiplier,
 	aliases, is_predefined,
 	created_at, updated_at`
@@ -25,6 +26,7 @@ func scanPricingEntry(scanner interface{ Scan(dest ...any) error }) (*model.Mode
 	if err := scanner.Scan(
 		&e.ID, &e.Model, &e.DisplayName, &e.ChannelType,
 		&e.InputPrice, &e.OutputPrice, &e.InputPriceHigh, &e.OutputPriceHigh,
+		&e.HighPriceThreshold,
 		&e.CacheReadMultiplier, &e.CacheWriteMultiplier,
 		&aliasesRaw, &isPredefined,
 		&e.CreatedAt, &e.UpdatedAt,
@@ -94,12 +96,14 @@ func (s *SQLStore) CreateModelPricing(ctx context.Context, entry *model.ModelPri
 	result, err := s.db.ExecContext(ctx, `
 		INSERT INTO model_pricing (model, display_name, channel_type,
 		    input_price, output_price, input_price_high, output_price_high,
+		    high_price_threshold,
 		    cache_read_multiplier, cache_write_multiplier,
 		    aliases, is_predefined,
 		    created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, entry.Model, entry.DisplayName, entry.ChannelType,
 		entry.InputPrice, entry.OutputPrice, entry.InputPriceHigh, entry.OutputPriceHigh,
+		entry.HighPriceThreshold,
 		entry.CacheReadMultiplier, entry.CacheWriteMultiplier,
 		preparePricingAliases(entry), boolToInt(entry.IsPredefined),
 		entry.CreatedAt, entry.UpdatedAt,
@@ -124,12 +128,14 @@ func (s *SQLStore) UpdateModelPricing(ctx context.Context, entry *model.ModelPri
 		UPDATE model_pricing
 		SET model = ?, display_name = ?, channel_type = ?,
 		    input_price = ?, output_price = ?, input_price_high = ?, output_price_high = ?,
+		    high_price_threshold = ?,
 		    cache_read_multiplier = ?, cache_write_multiplier = ?,
 		    aliases = ?, is_predefined = ?,
 		    updated_at = ?
 		WHERE id = ?
 	`, entry.Model, entry.DisplayName, entry.ChannelType,
 		entry.InputPrice, entry.OutputPrice, entry.InputPriceHigh, entry.OutputPriceHigh,
+		entry.HighPriceThreshold,
 		entry.CacheReadMultiplier, entry.CacheWriteMultiplier,
 		preparePricingAliases(entry), boolToInt(entry.IsPredefined),
 		entry.UpdatedAt, entry.ID,
@@ -182,10 +188,11 @@ func (s *SQLStore) BatchCreateModelPricing(ctx context.Context, entries []*model
 			query = `
 				INSERT INTO model_pricing (model, display_name, channel_type,
 				    input_price, output_price, input_price_high, output_price_high,
+				    high_price_threshold,
 				    cache_read_multiplier, cache_write_multiplier,
 				    aliases, is_predefined,
 				    created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 				ON DUPLICATE KEY UPDATE
 				    display_name = VALUES(display_name),
 				    channel_type = VALUES(channel_type),
@@ -193,6 +200,7 @@ func (s *SQLStore) BatchCreateModelPricing(ctx context.Context, entries []*model
 				    output_price = VALUES(output_price),
 				    input_price_high = VALUES(input_price_high),
 				    output_price_high = VALUES(output_price_high),
+				    high_price_threshold = VALUES(high_price_threshold),
 				    cache_read_multiplier = VALUES(cache_read_multiplier),
 				    cache_write_multiplier = VALUES(cache_write_multiplier),
 				    aliases = VALUES(aliases),
@@ -203,10 +211,11 @@ func (s *SQLStore) BatchCreateModelPricing(ctx context.Context, entries []*model
 			query = `
 				INSERT OR REPLACE INTO model_pricing (model, display_name, channel_type,
 				    input_price, output_price, input_price_high, output_price_high,
+				    high_price_threshold,
 				    cache_read_multiplier, cache_write_multiplier,
 				    aliases, is_predefined,
 				    created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			`
 		}
 
@@ -222,6 +231,7 @@ func (s *SQLStore) BatchCreateModelPricing(ctx context.Context, entries []*model
 			_, err := stmt.ExecContext(ctx,
 				e.Model, e.DisplayName, e.ChannelType,
 				e.InputPrice, e.OutputPrice, e.InputPriceHigh, e.OutputPriceHigh,
+				e.HighPriceThreshold,
 				e.CacheReadMultiplier, e.CacheWriteMultiplier,
 				preparePricingAliases(e), boolToInt(e.IsPredefined),
 				e.CreatedAt, e.UpdatedAt,

@@ -150,8 +150,9 @@
                     <th>类型</th>
                     <th style="text-align: right;">输入价格 <span class="field-tip"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><span class="tip-text">$/1M tokens</span></span></th>
                     <th style="text-align: right;">输出价格 <span class="field-tip"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><span class="tip-text">$/1M tokens</span></span></th>
-                    <th style="text-align: right;">高价输入 <span class="field-tip"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><span class="tip-text">长上下文(>200K)输入价</span></span></th>
-                    <th style="text-align: right;">高价输出 <span class="field-tip"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><span class="tip-text">长上下文(>200K)输出价</span></span></th>
+                    <th style="text-align: right;">高价输入 <span class="field-tip"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><span class="tip-text">输入 token 超过模型阈值后的输入价</span></span></th>
+                    <th style="text-align: right;">高价输出 <span class="field-tip"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><span class="tip-text">输入 token 超过模型阈值后的输出价</span></span></th>
+                    <th style="text-align: right;">高价阈值 <span class="field-tip"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><span class="tip-text">按输入 token 判断；OpenAI 默认 272K，Gemini 默认 200K</span></span></th>
                     <th>别名 <span class="field-tip"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><span class="tip-text">模型名变体，自动匹配到同一定价</span></span></th>
                     <th style="width: 80px;">操作</th>
                   </tr>
@@ -386,6 +387,7 @@
       <td style="text-align: right; font-family: monospace;">${{output_price}}</td>
       <td style="text-align: right; font-family: monospace;">{{{high_input_display}}}</td>
       <td style="text-align: right; font-family: monospace;">{{{high_output_display}}}</td>
+      <td style="text-align: right; font-family: monospace;">{{high_price_threshold_display}}</td>
       <td style="max-width: 200px;">
         <div style="font-size: 11px; color: var(--neutral-500); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{aliases_full}}">{{{aliases_display}}}</div>
       </td>
@@ -461,7 +463,7 @@
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
           <div class="form-group">
             <label class="form-label">高价输入 ($/1M)
-              <span class="field-tip"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><span class="tip-text">长上下文场景（如 Gemini >200K token）的输入价格。设为 0 表示不启用分段定价。</span></span>
+              <span class="field-tip"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><span class="tip-text">输入 token 超过高价阈值时使用。设为 0 表示不启用分段定价。</span></span>
             </label>
             <input type="number" id="pricingInputPriceHigh" class="form-input" step="0.001" min="0" value="0">
           </div>
@@ -471,6 +473,13 @@
             </label>
             <input type="number" id="pricingOutputPriceHigh" class="form-input" step="0.001" min="0" value="0">
           </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">高价阈值（输入 tokens）
+            <span class="field-tip"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><span class="tip-text">仅按非缓存输入 token 判断，超过该值后高价输入和高价输出同时生效。OpenAI 默认 272000，Gemini 默认 200000。</span></span>
+          </label>
+          <input type="number" id="pricingHighPriceThreshold" class="form-input" step="1000" min="1" value="272000">
         </div>
 
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">

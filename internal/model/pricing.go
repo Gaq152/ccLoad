@@ -10,11 +10,12 @@ type ModelPricingEntry struct {
 	OutputPrice          float64  `json:"output_price"`
 	InputPriceHigh       float64  `json:"input_price_high"`
 	OutputPriceHigh      float64  `json:"output_price_high"`
+	HighPriceThreshold   int64    `json:"high_price_threshold"`
 	CacheReadMultiplier  float64  `json:"cache_read_multiplier"`
 	CacheWriteMultiplier float64  `json:"cache_write_multiplier"`
-	AliasesRaw           string   `json:"-"`                        // 数据库存储（逗号分隔）
-	Aliases              []string `json:"aliases,omitempty"`         // API 传输（切片形式）
-	IsPredefined         bool     `json:"is_predefined"`            // 是否加入预定义模型列表
+	AliasesRaw           string   `json:"-"`                 // 数据库存储（逗号分隔）
+	Aliases              []string `json:"aliases,omitempty"` // API 传输（切片形式）
+	IsPredefined         bool     `json:"is_predefined"`     // 是否加入预定义模型列表
 	CreatedAt            int64    `json:"created_at"`
 	UpdatedAt            int64    `json:"updated_at"`
 }

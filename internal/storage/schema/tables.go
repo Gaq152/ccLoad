@@ -203,17 +203,18 @@ func DefineLogsTable() *TableBuilder {
 func DefineModelPricingTable() *TableBuilder {
 	return NewTable("model_pricing").
 		Column("id INT PRIMARY KEY AUTO_INCREMENT").
-		Column("model VARCHAR(191) NOT NULL UNIQUE").               // 基础模型名
-		Column("display_name VARCHAR(191) DEFAULT ''").             // 前端显示名
-		Column("channel_type VARCHAR(64) NOT NULL").                // anthropic/openai/gemini
-		Column("input_price DOUBLE NOT NULL").                      // $/1M tokens
-		Column("output_price DOUBLE NOT NULL").                     // $/1M tokens
-		Column("input_price_high DOUBLE NOT NULL DEFAULT 0").       // 长上下文输入价
-		Column("output_price_high DOUBLE NOT NULL DEFAULT 0").      // 长上下文输出价
-		Column("cache_read_multiplier DOUBLE NOT NULL DEFAULT 0").  // 0=使用系统默认
-		Column("cache_write_multiplier DOUBLE NOT NULL DEFAULT 0"). // 0=使用系统默认
-		Column("aliases TEXT DEFAULT ''").                          // 别名列表（逗号分隔）
-		Column("is_predefined TINYINT NOT NULL DEFAULT 0").         // 是否加入预定义模型列表
+		Column("model VARCHAR(191) NOT NULL UNIQUE").                  // 基础模型名
+		Column("display_name VARCHAR(191) DEFAULT ''").                // 前端显示名
+		Column("channel_type VARCHAR(64) NOT NULL").                   // anthropic/openai/gemini
+		Column("input_price DOUBLE NOT NULL").                         // $/1M tokens
+		Column("output_price DOUBLE NOT NULL").                        // $/1M tokens
+		Column("input_price_high DOUBLE NOT NULL DEFAULT 0").          // 长上下文输入价
+		Column("output_price_high DOUBLE NOT NULL DEFAULT 0").         // 长上下文输出价
+		Column("high_price_threshold BIGINT NOT NULL DEFAULT 272000"). // 高价档输入Token阈值
+		Column("cache_read_multiplier DOUBLE NOT NULL DEFAULT 0").     // 0=使用系统默认
+		Column("cache_write_multiplier DOUBLE NOT NULL DEFAULT 0").    // 0=使用系统默认
+		Column("aliases TEXT DEFAULT ''").                             // 别名列表（逗号分隔）
+		Column("is_predefined TINYINT NOT NULL DEFAULT 0").            // 是否加入预定义模型列表
 		Column("created_at BIGINT NOT NULL").
 		Column("updated_at BIGINT NOT NULL").
 		Index("idx_model_pricing_type", "channel_type")

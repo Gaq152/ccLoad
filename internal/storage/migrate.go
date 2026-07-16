@@ -188,7 +188,7 @@ func migrate(ctx context.Context, db *sql.DB, dialect Dialect) error {
 			}
 		}
 
-		// 增量迁移：确保model_pricing表有aliases和is_predefined字段（2026-04新增）
+		// 增量迁移：确保model_pricing表的扩展定价字段存在
 		if tb.Name() == "model_pricing" {
 			if dialect == DialectMySQL {
 				if err := ensurePricingAliases(ctx, db); err != nil {
@@ -197,12 +197,18 @@ func migrate(ctx context.Context, db *sql.DB, dialect Dialect) error {
 				if err := ensurePricingIsPredefined(ctx, db); err != nil {
 					return fmt.Errorf("migrate model_pricing.is_predefined: %w", err)
 				}
+				if err := ensurePricingHighPriceThreshold(ctx, db); err != nil {
+					return fmt.Errorf("migrate model_pricing.high_price_threshold: %w", err)
+				}
 			} else {
 				if err := ensurePricingAliasesSQLite(ctx, db); err != nil {
 					return fmt.Errorf("migrate model_pricing.aliases: %w", err)
 				}
 				if err := ensurePricingIsPredefinedSQLite(ctx, db); err != nil {
 					return fmt.Errorf("migrate model_pricing.is_predefined: %w", err)
+				}
+				if err := ensurePricingHighPriceThresholdSQLite(ctx, db); err != nil {
+					return fmt.Errorf("migrate model_pricing.high_price_threshold: %w", err)
 				}
 			}
 		}
@@ -1913,6 +1919,34 @@ func ensurePricingIsPredefinedSQLite(ctx context.Context, db *sql.DB) error {
 		return nil
 	}
 	_, err := db.ExecContext(ctx, "ALTER TABLE model_pricing ADD COLUMN is_predefined TINYINT NOT NULL DEFAULT 0")
+	return err
+}
+
+// ensurePricingHighPriceThreshold 为旧库增加每模型高价档阈值。
+// OpenAI/GPT 默认 272K；已有 Gemini 行继续保留原来的 200K 行为。
+func ensurePricingHighPriceThreshold(ctx context.Context, db *sql.DB) error {
+	exists, err := hasColumnMySQL(ctx, db, "model_pricing", "high_price_threshold")
+	if err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+	if _, err := db.ExecContext(ctx, "ALTER TABLE model_pricing ADD COLUMN high_price_threshold BIGINT NOT NULL DEFAULT 272000"); err != nil {
+		return err
+	}
+	_, err = db.ExecContext(ctx, "UPDATE model_pricing SET high_price_threshold = 200000 WHERE channel_type = 'gemini'")
+	return err
+}
+
+func ensurePricingHighPriceThresholdSQLite(ctx context.Context, db *sql.DB) error {
+	if hasColumnSQLite(ctx, db, "model_pricing", "high_price_threshold") {
+		return nil
+	}
+	if _, err := db.ExecContext(ctx, "ALTER TABLE model_pricing ADD COLUMN high_price_threshold BIGINT NOT NULL DEFAULT 272000"); err != nil {
+		return err
+	}
+	_, err := db.ExecContext(ctx, "UPDATE model_pricing SET high_price_threshold = 200000 WHERE channel_type = 'gemini'")
 	return err
 }
 

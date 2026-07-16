@@ -12,13 +12,14 @@ import (
 
 // ModelPricing AI模型定价（单位：美元/百万tokens）
 type ModelPricing struct {
-	InputPrice  float64 // 基础输入token价格（$/1M tokens, ≤200k context for Gemini）
-	OutputPrice float64 // 输出token价格（$/1M tokens, ≤200k context for Gemini）
+	InputPrice  float64 // 基础输入token价格（$/1M tokens）
+	OutputPrice float64 // 输出token价格（$/1M tokens）
 
-	// 长上下文定价（Gemini >200k tokens）
+	// 长上下文分段定价
 	// 如果为0，表示无分段定价，使用InputPrice/OutputPrice
-	InputPriceHigh  float64 // 高上下文输入价格（$/1M tokens, >200k context）
-	OutputPriceHigh float64 // 高上下文输出价格（$/1M tokens, >200k context）
+	InputPriceHigh     float64 // 高上下文输入价格（$/1M tokens）
+	OutputPriceHigh    float64 // 高上下文输出价格（$/1M tokens）
+	HighPriceThreshold int64   // 切换到高价档的输入token阈值
 }
 
 // DBPricingEntry DB 定价缓存条目（轻量结构，不依赖 model 包）
@@ -30,6 +31,7 @@ type DBPricingEntry struct {
 	OutputPrice          float64 // $/1M tokens
 	InputPriceHigh       float64 // 长上下文输入价
 	OutputPriceHigh      float64 // 长上下文输出价
+	HighPriceThreshold   int64   // 高价档输入Token阈值
 	CacheReadMultiplier  float64 // 0=使用系统默认
 	CacheWriteMultiplier float64 // 0=使用系统默认
 }
@@ -87,16 +89,36 @@ func GetDefaultPricing() []DBPricingEntry {
 	entries := make([]DBPricingEntry, 0, len(basePricing))
 	for model, p := range basePricing {
 		channelType := classifyModelChannelType(model)
+		threshold := p.HighPriceThreshold
+		if threshold <= 0 {
+			threshold = DefaultHighPriceThresholdForChannel(channelType)
+		}
 		entries = append(entries, DBPricingEntry{
-			Model:           model,
-			ChannelType:     channelType,
-			InputPrice:      p.InputPrice,
-			OutputPrice:     p.OutputPrice,
-			InputPriceHigh:  p.InputPriceHigh,
-			OutputPriceHigh: p.OutputPriceHigh,
+			Model:              model,
+			ChannelType:        channelType,
+			InputPrice:         p.InputPrice,
+			OutputPrice:        p.OutputPrice,
+			InputPriceHigh:     p.InputPriceHigh,
+			OutputPriceHigh:    p.OutputPriceHigh,
+			HighPriceThreshold: threshold,
 		})
 	}
 	return entries
+}
+
+const (
+	// DefaultHighPriceThreshold 是 OpenAI/GPT 模型默认的高价档输入Token阈值。
+	DefaultHighPriceThreshold int64 = 272_000
+	// GeminiHighPriceThreshold 保留 Gemini 官方的 200K 长上下文分段规则。
+	GeminiHighPriceThreshold int64 = 200_000
+)
+
+// DefaultHighPriceThresholdForChannel 返回新建或旧版请求未传阈值时的默认值。
+func DefaultHighPriceThresholdForChannel(channelType string) int64 {
+	if strings.EqualFold(channelType, "gemini") {
+		return GeminiHighPriceThreshold
+	}
+	return DefaultHighPriceThreshold
 }
 
 // classifyModelChannelType 根据模型名推断渠道类型
@@ -148,26 +170,26 @@ var basePricing = map[string]ModelPricing{
 	"claude-haiku":  {InputPrice: 1.00, OutputPrice: 5.00},
 
 	// ========== OpenAI GPT系列 ==========
-	"gpt-5.2":        {InputPrice: 1.75, OutputPrice: 14.00},
-	"gpt-5.3-codex":  {InputPrice: 1.75, OutputPrice: 14.00},
-	"gpt-5.2-pro":    {InputPrice: 21.00, OutputPrice: 168.00},
-	"gpt-5":          {InputPrice: 1.25, OutputPrice: 10.00},
-	"gpt-5-mini":     {InputPrice: 0.25, OutputPrice: 2.00},
-	"gpt-5-nano":     {InputPrice: 0.05, OutputPrice: 0.40},
-	"gpt-5-pro":      {InputPrice: 15.00, OutputPrice: 120.00},
+	"gpt-5.2":            {InputPrice: 1.75, OutputPrice: 14.00},
+	"gpt-5.3-codex":      {InputPrice: 1.75, OutputPrice: 14.00},
+	"gpt-5.2-pro":        {InputPrice: 21.00, OutputPrice: 168.00},
+	"gpt-5":              {InputPrice: 1.25, OutputPrice: 10.00},
+	"gpt-5-mini":         {InputPrice: 0.25, OutputPrice: 2.00},
+	"gpt-5-nano":         {InputPrice: 0.05, OutputPrice: 0.40},
+	"gpt-5-pro":          {InputPrice: 15.00, OutputPrice: 120.00},
 	"gpt-5.1-codex-mini": {InputPrice: 0.25, OutputPrice: 2.00},
-	"gpt-4.1":        {InputPrice: 2.00, OutputPrice: 8.00},
-	"gpt-4.1-mini":   {InputPrice: 0.40, OutputPrice: 1.60},
-	"gpt-4.1-nano":   {InputPrice: 0.10, OutputPrice: 0.40},
-	"gpt-4o":         {InputPrice: 2.50, OutputPrice: 10.00},
-	"gpt-4o-legacy":  {InputPrice: 5.00, OutputPrice: 15.00}, // 2024-05-13等旧版
-	"gpt-4o-mini":    {InputPrice: 0.15, OutputPrice: 0.60},
-	"gpt-4-turbo":    {InputPrice: 10.00, OutputPrice: 30.00},
-	"gpt-4":          {InputPrice: 30.00, OutputPrice: 60.00},
-	"gpt-4-32k":      {InputPrice: 60.00, OutputPrice: 120.00},
-	"gpt-3.5-turbo":  {InputPrice: 0.50, OutputPrice: 1.50},
-	"gpt-3.5-legacy": {InputPrice: 1.50, OutputPrice: 2.00}, // 旧版本
-	"gpt-3.5-16k":    {InputPrice: 3.00, OutputPrice: 4.00},
+	"gpt-4.1":            {InputPrice: 2.00, OutputPrice: 8.00},
+	"gpt-4.1-mini":       {InputPrice: 0.40, OutputPrice: 1.60},
+	"gpt-4.1-nano":       {InputPrice: 0.10, OutputPrice: 0.40},
+	"gpt-4o":             {InputPrice: 2.50, OutputPrice: 10.00},
+	"gpt-4o-legacy":      {InputPrice: 5.00, OutputPrice: 15.00}, // 2024-05-13等旧版
+	"gpt-4o-mini":        {InputPrice: 0.15, OutputPrice: 0.60},
+	"gpt-4-turbo":        {InputPrice: 10.00, OutputPrice: 30.00},
+	"gpt-4":              {InputPrice: 30.00, OutputPrice: 60.00},
+	"gpt-4-32k":          {InputPrice: 60.00, OutputPrice: 120.00},
+	"gpt-3.5-turbo":      {InputPrice: 0.50, OutputPrice: 1.50},
+	"gpt-3.5-legacy":     {InputPrice: 1.50, OutputPrice: 2.00}, // 旧版本
+	"gpt-3.5-16k":        {InputPrice: 3.00, OutputPrice: 4.00},
 
 	// ========== OpenAI o系列 ==========
 	"o1":               {InputPrice: 15.00, OutputPrice: 60.00},
@@ -189,11 +211,13 @@ var basePricing = map[string]ModelPricing{
 	"gemini-3-pro": {
 		InputPrice: 2.00, OutputPrice: 12.00,
 		InputPriceHigh: 4.00, OutputPriceHigh: 18.00,
+		HighPriceThreshold: GeminiHighPriceThreshold,
 	},
 	"gemini-3-flash": {InputPrice: 0.40, OutputPrice: 3.00}, // Gemini 3 Flash 系列
 	"gemini-2.5-pro": {
 		InputPrice: 1.25, OutputPrice: 10.00,
 		InputPriceHigh: 2.50, OutputPriceHigh: 15.00,
+		HighPriceThreshold: GeminiHighPriceThreshold,
 	},
 	"gemini-2.5-flash":      {InputPrice: 0.30, OutputPrice: 2.50},
 	"gemini-2.5-flash-lite": {InputPrice: 0.10, OutputPrice: 0.40},
@@ -301,10 +325,11 @@ func getDBPricing(model string) (ModelPricing, bool) {
 	}
 	e := v.(DBPricingEntry)
 	return ModelPricing{
-		InputPrice:      e.InputPrice,
-		OutputPrice:     e.OutputPrice,
-		InputPriceHigh:  e.InputPriceHigh,
-		OutputPriceHigh: e.OutputPriceHigh,
+		InputPrice:         e.InputPrice,
+		OutputPrice:        e.OutputPrice,
+		InputPriceHigh:     e.InputPriceHigh,
+		OutputPriceHigh:    e.OutputPriceHigh,
+		HighPriceThreshold: e.HighPriceThreshold,
 	}, true
 }
 
@@ -326,11 +351,6 @@ const (
 	// Cache Write = Input Price × 1.25 (25%溢价)
 	// 仅适用于Claude模型（OpenAI不支持cache_creation）
 	cacheWriteMultiplier = 1.25
-
-	// geminiLongContextThreshold Gemini长上下文阈值（tokens）
-	// 超过此阈值的请求将使用InputPriceHigh/OutputPriceHigh定价
-	// 参考：https://ai.google.dev/gemini-api/docs/pricing
-	geminiLongContextThreshold = 200_000
 )
 
 // CalculateCost 计算单次请求的成本（美元）
@@ -369,10 +389,9 @@ func CalculateCost(model string, inputTokens, outputTokens, cacheReadTokens, cac
 	// 注意:价格是per 1M tokens,需要除以1,000,000
 	cost := 0.0
 
-	// Gemini长上下文分段定价逻辑
-	// 官方文档: https://ai.google.dev/pricing (updated: 2025-01)
+	// 长上下文分段定价逻辑。阈值按模型配置，OpenAI默认272K、Gemini默认200K。
 	// 阈值判断:仅针对输入侧非缓存token(不包括输出,不包括缓存)
-	useHighPricing := pricing.InputPriceHigh > 0 && inputTokens > geminiLongContextThreshold
+	useHighPricing := pricing.InputPriceHigh > 0 && pricing.HighPriceThreshold > 0 && int64(inputTokens) > pricing.HighPriceThreshold
 
 	// 选择适用的价格
 	inputPricePerM := pricing.InputPrice
@@ -627,10 +646,11 @@ func fuzzyMatchModel(model string) (ModelPricing, bool) {
 	})
 	if bestLen > 0 {
 		return ModelPricing{
-			InputPrice:      bestMatch.InputPrice,
-			OutputPrice:     bestMatch.OutputPrice,
-			InputPriceHigh:  bestMatch.InputPriceHigh,
-			OutputPriceHigh: bestMatch.OutputPriceHigh,
+			InputPrice:         bestMatch.InputPrice,
+			OutputPrice:        bestMatch.OutputPrice,
+			InputPriceHigh:     bestMatch.InputPriceHigh,
+			OutputPriceHigh:    bestMatch.OutputPriceHigh,
+			HighPriceThreshold: bestMatch.HighPriceThreshold,
 		}, true
 	}
 

@@ -156,15 +156,16 @@ func (s *Server) HandleImportDefaultPricing(c *gin.Context) {
 			aliases = aliasList
 		}
 		entries = append(entries, &model.ModelPricingEntry{
-			Model:           d.Model,
-			DisplayName:     d.Model,
-			ChannelType:     d.ChannelType,
-			InputPrice:      d.InputPrice,
-			OutputPrice:     d.OutputPrice,
-			InputPriceHigh:  d.InputPriceHigh,
-			OutputPriceHigh: d.OutputPriceHigh,
-			Aliases:         aliases,
-			IsPredefined:    predefinedSet[d.Model],
+			Model:              d.Model,
+			DisplayName:        d.Model,
+			ChannelType:        d.ChannelType,
+			InputPrice:         d.InputPrice,
+			OutputPrice:        d.OutputPrice,
+			InputPriceHigh:     d.InputPriceHigh,
+			OutputPriceHigh:    d.OutputPriceHigh,
+			HighPriceThreshold: d.HighPriceThreshold,
+			Aliases:            aliases,
+			IsPredefined:       predefinedSet[d.Model],
 		})
 	}
 
@@ -195,7 +196,7 @@ func (s *Server) refreshPricingCache() {
 
 	dbEntries := make([]util.DBPricingEntry, 0, len(entries))
 	predefinedByType := make(map[string][]string) // channelType → models
-	aliasMap := make(map[string]string)            // alias → base model
+	aliasMap := make(map[string]string)           // alias → base model
 
 	for _, e := range entries {
 		dbEntries = append(dbEntries, util.DBPricingEntry{
@@ -206,6 +207,7 @@ func (s *Server) refreshPricingCache() {
 			OutputPrice:          e.OutputPrice,
 			InputPriceHigh:       e.InputPriceHigh,
 			OutputPriceHigh:      e.OutputPriceHigh,
+			HighPriceThreshold:   e.HighPriceThreshold,
 			CacheReadMultiplier:  e.CacheReadMultiplier,
 			CacheWriteMultiplier: e.CacheWriteMultiplier,
 		})
@@ -276,6 +278,13 @@ func validatePricingEntry(e *model.ModelPricingEntry) error {
 	}
 	if e.OutputPriceHigh < 0 {
 		return fmt.Errorf("output_price_high must be >= 0")
+	}
+	// 兼容旧版客户端未传该字段的请求，并按渠道写入明确的默认值。
+	if e.HighPriceThreshold == 0 {
+		e.HighPriceThreshold = util.DefaultHighPriceThresholdForChannel(e.ChannelType)
+	}
+	if e.HighPriceThreshold < 0 {
+		return fmt.Errorf("high_price_threshold must be >= 0")
 	}
 	if e.CacheReadMultiplier < 0 {
 		return fmt.Errorf("cache_read_multiplier must be >= 0")
