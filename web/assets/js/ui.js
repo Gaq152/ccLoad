@@ -346,6 +346,12 @@
       const visiblePages = await App.ui.getVisiblePages();
       const topbar = App.ui._buildTopbar(activeKey, visiblePages);
       document.body.appendChild(topbar);
+      if (topbar._mobileBottomNav) {
+        document.body.appendChild(topbar._mobileBottomNav);
+      }
+
+      // 移动端使用独立的信息架构：底部主导航、折叠筛选和数据卡片。
+      App.ui.enhanceMobileExperience(activeKey);
 
       // 更新主题切换按钮图标
       if (window.ThemeManager && ThemeManager.refreshButton) {
@@ -394,7 +400,7 @@
       });
 
       const docBtn = h('button', {
-        class: 'btn btn-icon',
+        class: 'btn btn-icon topbar-desktop-action',
         onclick: () => {
           const guide = document.getElementById('guide-section');
           if (guide) {
@@ -409,26 +415,331 @@
 
       // 版本徽章 - 开发模式显示 DEV，构建时由 GitHub Actions 替换为实际版本
       const versionBadge = h('span', {
-        class: 'version-badge',
+        class: 'version-badge topbar-desktop-action',
         style: 'cursor: pointer;',
         title: '点击检查更新',
         onclick: () => App.ui.checkUpdate(versionBadge.textContent)
       }, '>DEV<');
 
+      const logoutBtn = h('button', {
+        class: 'btn btn-secondary btn-sm topbar-desktop-action',
+        onclick: loggedIn ? App.auth.logout : () => window.location.href = '/web/login.html'
+      }, loggedIn ? '注销' : '登录');
+
+      const mobileMenuBtn = h('button', {
+        class: 'mobile-menu-toggle',
+        type: 'button',
+        title: '打开导航菜单',
+        'aria-label': '打开导航菜单',
+        'aria-expanded': 'false',
+        'aria-controls': 'mobile-nav-panel'
+      }, [
+        h('span', { class: 'mobile-menu-line', 'aria-hidden': 'true' }),
+        h('span', { class: 'mobile-menu-line', 'aria-hidden': 'true' }),
+        h('span', { class: 'mobile-menu-line', 'aria-hidden': 'true' })
+      ]);
+
       const right = h('div', { class: 'topbar-right' }, [
         versionBadge,
         docBtn,
         themeBtn,
+        logoutBtn,
+        mobileMenuBtn
+      ]);
+
+      const mobileBackdrop = h('button', {
+        class: 'mobile-nav-backdrop',
+        type: 'button',
+        tabindex: '-1',
+        'aria-label': '关闭导航菜单',
+        'aria-hidden': 'true'
+      });
+
+      const closeMobileBtn = h('button', {
+        class: 'mobile-nav-close',
+        type: 'button',
+        'aria-label': '关闭导航菜单',
+        title: '关闭导航菜单'
+      }, '×');
+
+      const mobileNav = h('div', {
+        class: 'mobile-nav-panel',
+        id: 'mobile-nav-panel',
+        role: 'dialog',
+        'aria-label': '主导航',
+        'aria-hidden': 'true'
+      }, [
+        h('div', { class: 'mobile-nav-header' }, [
+          h('strong', {}, '导航'),
+          closeMobileBtn
+        ]),
+        h('nav', { class: 'mobile-nav-links', 'aria-label': '移动端主导航' }, [
+          ...filteredNavs.map(n => h('a', {
+            class: `mobile-nav-link ${n.key === active || (n.key === 'trends' && active === 'trend') ? 'active' : ''}`,
+            href: n.href
+          }, [icons[n.icon](), h('span', {}, n.label)]))
+        ]),
+        h('div', { class: 'mobile-nav-actions' }, [
+          h('button', {
+            class: 'mobile-nav-action',
+            type: 'button',
+            onclick: () => {
+              const guide = document.getElementById('guide-section');
+              if (guide) guide.scrollIntoView({ behavior: 'smooth' });
+              else window.location.href = '/web/index.html#guide-section';
+            }
+          }, '使用文档'),
+          h('button', {
+            class: 'mobile-nav-action mobile-nav-logout',
+            type: 'button',
+            onclick: loggedIn ? App.auth.logout : () => window.location.href = '/web/login.html'
+          }, loggedIn ? '注销登录' : '登录')
+        ])
+      ]);
+
+      const setMobileNavOpen = (open) => {
+        mobileMenuBtn.setAttribute('aria-expanded', String(open));
+        mobileMenuBtn.setAttribute('aria-label', open ? '关闭导航菜单' : '打开导航菜单');
+        mobileMenuBtn.title = open ? '关闭导航菜单' : '打开导航菜单';
+        mobileBackdrop.setAttribute('aria-hidden', String(!open));
+        mobileNav.setAttribute('aria-hidden', String(!open));
+        mobileBackdrop.classList.toggle('open', open);
+        mobileNav.classList.toggle('open', open);
+        document.body.classList.toggle('mobile-nav-open', open);
+      };
+
+      mobileMenuBtn.addEventListener('click', () => {
+        setMobileNavOpen(mobileMenuBtn.getAttribute('aria-expanded') !== 'true');
+      });
+      mobileBackdrop.addEventListener('click', () => setMobileNavOpen(false));
+      closeMobileBtn.addEventListener('click', () => setMobileNavOpen(false));
+      mobileNav.querySelectorAll('a').forEach(link => {
+        link.addEventListener('click', () => setMobileNavOpen(false));
+      });
+      document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && mobileMenuBtn.getAttribute('aria-expanded') === 'true') {
+          setMobileNavOpen(false);
+          mobileMenuBtn.focus();
+        }
+      });
+
+      const primaryMobileKeys = ['index', 'channels', 'tokens', 'logs'];
+      const mobileLabels = {
+        index: '概览',
+        channels: '渠道',
+        tokens: '令牌',
+        logs: '日志'
+      };
+      const mobilePrimaryNavs = primaryMobileKeys
+        .map(key => filteredNavs.find(item => item.key === key))
+        .filter(Boolean);
+      const moreIsActive = !primaryMobileKeys.includes(active);
+      const mobileBottomNav = h('nav', {
+        class: 'mobile-bottom-nav',
+        'aria-label': '移动端快捷导航'
+      }, [
+        ...mobilePrimaryNavs.map(item => h('a', {
+          class: `mobile-bottom-link ${item.key === active ? 'active' : ''}`,
+          href: item.href,
+          'aria-current': item.key === active ? 'page' : 'false'
+        }, [icons[item.icon](), h('span', {}, mobileLabels[item.key] || item.label)])),
         h('button', {
-          class: 'btn btn-secondary btn-sm',
-          onclick: loggedIn ? App.auth.logout : () => window.location.href = '/web/login.html'
-        }, loggedIn ? '注销' : '登录')
+          class: `mobile-bottom-link mobile-bottom-more ${moreIsActive ? 'active' : ''}`,
+          type: 'button',
+          'aria-label': '打开更多页面',
+          onclick: () => setMobileNavOpen(true)
+        }, [icons.cog(), h('span', {}, '更多')])
       ]);
 
       bar.appendChild(left);
       bar.appendChild(nav);
       bar.appendChild(right);
+      bar.appendChild(mobileBackdrop);
+      bar.appendChild(mobileNav);
+      // backdrop-filter 会让 fixed 子元素以顶栏为定位容器，底栏需挂到 body。
+      bar._mobileBottomNav = mobileBottomNav;
       return bar;
+    },
+
+    /**
+     * 把复杂桌面页面增强为可直接触控的移动端界面。
+     * 页面脚本会异步替换表格内容，因此使用轻量 MutationObserver 同步标签。
+     */
+    enhanceMobileExperience: function(activeKey) {
+      document.body.dataset.page = activeKey || '';
+
+      const setupMobileMouseDragScroll = () => {
+        const root = document.documentElement;
+        if (root.dataset.mobileMouseDragScroll === 'true') return;
+        root.dataset.mobileMouseDragScroll = 'true';
+
+        const mobileViewport = window.matchMedia('(max-width: 768px)');
+        const interactiveSelector = [
+          'a', 'button', 'input', 'select', 'textarea', 'label',
+          '[role="button"]', '[contenteditable="true"]',
+          '.modal', '[role="dialog"]', '.mobile-bottom-nav', '.topbar'
+        ].join(',');
+
+        let activePointerId = null;
+        let startY = 0;
+        let startScrollY = 0;
+        let dragged = false;
+        let suppressClick = false;
+
+        const finishDrag = (event) => {
+          if (activePointerId === null || (event.pointerId !== undefined && event.pointerId !== activePointerId)) return;
+          activePointerId = null;
+          root.classList.remove('mobile-mouse-dragging');
+          if (dragged) {
+            suppressClick = true;
+            window.setTimeout(() => { suppressClick = false; }, 0);
+          }
+        };
+
+        document.addEventListener('pointerdown', (event) => {
+          if (!mobileViewport.matches || event.pointerType !== 'mouse' || event.button !== 0) return;
+          if (document.body.classList.contains('mobile-nav-open')) return;
+          if (event.target.closest(interactiveSelector)) return;
+
+          activePointerId = event.pointerId;
+          startY = event.clientY;
+          startScrollY = window.scrollY;
+          dragged = false;
+        }, { capture: true, passive: true });
+
+        document.addEventListener('pointermove', (event) => {
+          if (event.pointerId !== activePointerId) return;
+          const distance = event.clientY - startY;
+          if (!dragged && Math.abs(distance) < 6) return;
+
+          dragged = true;
+          root.classList.add('mobile-mouse-dragging');
+          window.scrollTo(0, startScrollY - distance);
+          event.preventDefault();
+        }, { capture: true, passive: false });
+
+        document.addEventListener('pointerup', finishDrag, { capture: true });
+        document.addEventListener('pointercancel', finishDrag, { capture: true });
+        window.addEventListener('blur', () => finishDrag({ pointerId: activePointerId }));
+        document.addEventListener('click', (event) => {
+          if (!suppressClick) return;
+          event.preventDefault();
+          event.stopPropagation();
+        }, { capture: true });
+      };
+
+      const tableSelectors = {
+        index: ['.console-table'],
+        logs: ['.logs-table'],
+        tokens: ['#tokens-container table'],
+        stats: ['.stats-table'],
+        monitor: ['.monitor-table'],
+        'model-test': ['#model-test-tbody'],
+        settings: ['#pricing-tbody']
+      };
+
+      const resolveTable = (element) => {
+        if (!element) return null;
+        return element.tagName === 'TABLE' ? element : element.closest('table');
+      };
+
+      const labelMobileTable = (table) => {
+        if (!table) return;
+        table.classList.add('mobile-data-table');
+        const wrapper = table.closest('.table-container, .token-table, .console-table-wrapper');
+        if (wrapper) wrapper.classList.add('mobile-card-table-wrap');
+
+        const headers = Array.from(table.querySelectorAll('thead tr:first-child th')).map((header, index) => {
+          const readableHeader = header.cloneNode(true);
+          readableHeader.querySelectorAll('.field-tip, .sort-indicator').forEach(element => element.remove());
+          const text = (readableHeader.textContent || '').replace(/\s+/g, ' ').trim();
+          return text || (index === 0 ? '选择' : `字段 ${index + 1}`);
+        });
+
+        table.querySelectorAll('tbody tr').forEach(row => {
+          const cells = Array.from(row.children).filter(cell => cell.tagName === 'TD');
+          cells.forEach((cell, index) => {
+            if (cell.hasAttribute('colspan')) {
+              cell.classList.add('mobile-table-state');
+              return;
+            }
+            const label = headers[index] || `字段 ${index + 1}`;
+            cell.dataset.mobileLabel = label;
+            cell.classList.toggle('mobile-table-actions', /^(操作|信息)$/.test(label));
+            if (!cell.querySelector(':scope > .mobile-cell-value')) {
+              const value = document.createElement('div');
+              value.className = 'mobile-cell-value';
+              while (cell.firstChild) value.appendChild(cell.firstChild);
+              cell.appendChild(value);
+            }
+          });
+        });
+      };
+
+      const setupMobileFilter = (controls, index) => {
+        if (!controls || controls.dataset.mobileEnhanced === 'true') return;
+        const host = controls.closest('.filter-bar') || controls.parentElement;
+        if (!host) return;
+
+        controls.dataset.mobileEnhanced = 'true';
+        controls.classList.add('mobile-collapsible-filters');
+        if (!controls.id) controls.id = `mobile-filter-controls-${index}`;
+
+        const toggle = App.ui.h('button', {
+          class: 'mobile-filter-toggle',
+          type: 'button',
+          'aria-expanded': 'false',
+          'aria-controls': controls.id
+        }, [
+          App.ui.h('span', { class: 'mobile-filter-toggle-title' }, '筛选条件'),
+          App.ui.h('span', { class: 'mobile-filter-summary' }, ''),
+          App.ui.h('span', { class: 'mobile-filter-chevron', 'aria-hidden': 'true' }, '⌄')
+        ]);
+
+        toggle.addEventListener('click', () => {
+          const expanded = toggle.getAttribute('aria-expanded') !== 'true';
+          toggle.setAttribute('aria-expanded', String(expanded));
+          controls.classList.toggle('mobile-filter-expanded', expanded);
+        });
+        host.insertBefore(toggle, controls);
+      };
+
+      const updateFilterSummaries = () => {
+        document.querySelectorAll('.mobile-collapsible-filters').forEach(controls => {
+          const toggle = controls.previousElementSibling;
+          if (!toggle || !toggle.classList.contains('mobile-filter-toggle')) return;
+          const summary = toggle.querySelector('.mobile-filter-summary');
+          const info = controls.querySelector('.filter-info');
+          if (summary) {
+            summary.textContent = info ? (info.textContent || '').replace(/\s+/g, ' ').trim() : '';
+          }
+        });
+      };
+
+      const syncMobileEnhancements = () => {
+        document.querySelectorAll('.filter-controls').forEach(setupMobileFilter);
+        (tableSelectors[activeKey] || []).forEach(selector => {
+          document.querySelectorAll(selector).forEach(element => labelMobileTable(resolveTable(element)));
+        });
+        updateFilterSummaries();
+      };
+
+      setupMobileMouseDragScroll();
+      syncMobileEnhancements();
+
+      if (App.ui._mobileExperienceObserver) {
+        App.ui._mobileExperienceObserver.disconnect();
+      }
+      let syncScheduled = false;
+      App.ui._mobileExperienceObserver = new MutationObserver(() => {
+        if (syncScheduled) return;
+        syncScheduled = true;
+        requestAnimationFrame(() => {
+          syncScheduled = false;
+          syncMobileEnhancements();
+        });
+      });
+      App.ui._mobileExperienceObserver.observe(document.body, { childList: true, subtree: true });
     },
 
     /**

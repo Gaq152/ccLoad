@@ -381,37 +381,46 @@ function updatePaginationUI() {
   if (jumpInput) jumpInput.max = totalPages;
 }
 
-function prevPage() {
+function scrollMonitorResultsToTop() {
+  if (!window.matchMedia('(max-width: 768px)').matches) return;
+  document.querySelector('.monitor-table')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function prevPage() {
   if (currentPage > 1) {
     currentPage--;
-    loadTraces();
+    await loadTraces();
+    scrollMonitorResultsToTop();
   }
 }
 
-function nextPage() {
+async function nextPage() {
   if (currentPage < totalPages) {
     currentPage++;
-    loadTraces();
+    await loadTraces();
+    scrollMonitorResultsToTop();
   }
 }
 
-function jumpToPage() {
+async function jumpToPage() {
   const input = document.getElementById('monitorJumpPage');
   if (!input) return;
   const page = parseInt(input.value, 10);
   if (page >= 1 && page <= totalPages && page !== currentPage) {
     currentPage = page;
-    loadTraces();
+    await loadTraces();
+    scrollMonitorResultsToTop();
   }
   input.value = '';
 }
 
-function changePageSize() {
+async function changePageSize() {
   const select = document.getElementById('monitorPageSize');
   if (!select) return;
   pageSize = parseInt(select.value, 10) || 50;
   currentPage = 1;
-  loadTraces();
+  await loadTraces();
+  scrollMonitorResultsToTop();
 }
 
 function goToFirstPage() {

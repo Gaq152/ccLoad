@@ -368,6 +368,12 @@ function initChannelStatusTabs() {
 // 倒计时
 function startCountdown() {
   if (countdownInterval) clearInterval(countdownInterval);
+  countdownInterval = null;
+  if (window.matchMedia('(max-width: 768px)').matches) {
+    const countdown = document.getElementById('refresh-countdown');
+    if (countdown) countdown.textContent = '手动';
+    return;
+  }
   countdownInterval = setInterval(() => {
     refreshCountdown--;
     document.getElementById('refresh-countdown').textContent = refreshCountdown + 's';
@@ -394,8 +400,10 @@ document.addEventListener('visibilitychange', function() {
   if (document.hidden) {
     if (countdownInterval) clearInterval(countdownInterval);
   } else {
-    // 返回页面时也使用缓存逻辑
-    initWithCache();
+    // 桌面端恢复缓存刷新；移动端保持当前阅读位置和数据，避免切回即重绘。
+    if (!window.matchMedia('(max-width: 768px)').matches) {
+      initWithCache();
+    }
     startCountdown();
   }
 });
@@ -408,7 +416,9 @@ document.addEventListener('DOMContentLoaded', async function() {
   connectLogStream();
   await initWithCache();
   // 立即更新倒计时显示
-  document.getElementById('refresh-countdown').textContent = refreshCountdown + 's';
+  document.getElementById('refresh-countdown').textContent = window.matchMedia('(max-width: 768px)').matches
+    ? '手动'
+    : refreshCountdown + 's';
   startCountdown();
 
   // 初始化快速开始区域

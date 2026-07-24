@@ -1063,8 +1063,10 @@
         }
       });
 
-      // 定期刷新数据（每5分钟）
-      setInterval(loadData, 5 * 60 * 1000);
+      // 移动端仅按筛选变化或用户重新进入时加载，避免图表在阅读中重绘。
+      if (!window.matchMedia('(max-width: 768px)').matches) {
+        setInterval(loadData, 5 * 60 * 1000);
+      }
     });
 
     // 初始化渠道类型筛选器

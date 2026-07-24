@@ -370,7 +370,7 @@ function renderPricing() {
     const row = TemplateEngine.render('tpl-pricing-row', {
       id: e.id,
       model: e.model,
-      display_name: e.display_name || e.model,
+      display_name: e.display_name && e.display_name !== e.model ? e.display_name : '',
       channel_type: e.channel_type,
       channel_type_label: channelTypeLabels[e.channel_type] || e.channel_type,
       input_price: formatPrice(e.input_price),

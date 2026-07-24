@@ -624,8 +624,9 @@
     function initAutoRefresh() {
       const toggle = document.getElementById('autoRefreshToggle');
       const saved = localStorage.getItem(AUTO_REFRESH_KEY);
-      // 默认开启
-      const enabled = saved !== 'false';
+      // 移动端首次默认关闭，避免读数据时整块重绘；尊重用户已明确保存的选择。
+      const isMobileViewport = window.matchMedia('(max-width: 768px)').matches;
+      const enabled = saved === null ? !isMobileViewport : saved === 'true';
       autoRefreshEnabled = enabled;
 
       if (toggle) {

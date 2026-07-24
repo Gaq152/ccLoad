@@ -650,21 +650,28 @@
       if (totalCountEl) totalCountEl.textContent = totalLogs || data.length;
     }
 
-    function prevLogsPage() {
+    function scrollLogsResultsToTop() {
+      if (!window.matchMedia('(max-width: 768px)').matches) return;
+      document.querySelector('.logs-table')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    async function prevLogsPage() {
       if (currentLogsPage > 1) {
         currentLogsPage--;
-        load();
+        await load();
+        scrollLogsResultsToTop();
       }
     }
 
-    function nextLogsPage() {
+    async function nextLogsPage() {
       if (currentLogsPage < totalLogsPages) {
         currentLogsPage++;
-        load();
+        await load();
+        scrollLogsResultsToTop();
       }
     }
 
-    function jumpToPage() {
+    async function jumpToPage() {
       const jumpPageInput = document.getElementById('logs_jump_page');
       if (!jumpPageInput) return;
 
@@ -684,20 +691,22 @@
       // 跳转到目标页
       if (targetPage !== currentLogsPage) {
         currentLogsPage = targetPage;
-        load();
+        await load();
+        scrollLogsResultsToTop();
       }
 
       // 清空输入框
       jumpPageInput.value = '';
     }
 
-    function changePageSize() {
+    async function changePageSize() {
       const newPageSize = parseInt(document.getElementById('page_size').value);
       if (newPageSize !== logsPageSize) {
         logsPageSize = newPageSize;
         currentLogsPage = 1;
         totalLogsPages = 1;
-        load();
+        await load();
+        scrollLogsResultsToTop();
       }
     }
 

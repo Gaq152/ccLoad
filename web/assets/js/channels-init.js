@@ -55,10 +55,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   await window.ChannelTypeManager.renderChannelTypeRadios('channelTypeRadios');
 
-  // 优先从 localStorage 恢复，其次检查 URL 参数，最后默认 claude
+  // 移动端首次进入直接展示全部渠道，避免保存的类型让其它渠道完全不可见。
+  // 带渠道 ID 的深链仍优先定位到该渠道类型，桌面端继续恢复原筛选。
   const savedFilters = loadChannelsFilters();
   const targetChannelType = await getTargetChannelType();
-  const initialType = targetChannelType || (savedFilters?.channelType) || 'anthropic';
+  const isMobileViewport = window.matchMedia('(max-width: 768px)').matches;
+  const initialType = targetChannelType || (isMobileViewport ? 'all' : savedFilters?.channelType) || 'anthropic';
 
   filters.channelType = initialType;
   if (savedFilters) {
@@ -68,7 +70,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('modelFilter').value = filters.model;
   }
 
-  // 初始化渠道类型 Tab（不包含"全部"选项）
+  // 初始化渠道类型 Tab
   await initChannelTypeTabs(initialType);
 
   await loadDefaultTestContent();
@@ -93,18 +95,23 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   // 页面可见性监听（后台标签页暂停倒计时，节省CPU）
+  let hiddenAt = 0;
   document.addEventListener('visibilitychange', function() {
     if (document.hidden) {
+      hiddenAt = Date.now();
       stopCooldownCountdown();
       stopCooldownSSE();
       AutoTestTimer.stop();
     } else {
-      // 页面重新可见时，重新加载数据并启动倒计时
+      // 短时间切回只恢复实时能力，不清空列表重绘；离开超过 60 秒再刷新。
       if (typeof syncChannelsFilterControls === 'function') {
         syncChannelsFilterControls();
       }
-      clearChannelsCache();
-      loadChannels(filters.channelType);
+      if (!hiddenAt || Date.now() - hiddenAt >= 60000) {
+        clearChannelsCache();
+        loadChannels(filters.channelType);
+      }
+      hiddenAt = 0;
       startCooldownSSE();
       AutoTestTimer.init();
     }
@@ -119,7 +126,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 });
 
-// 初始化渠道类型 Tab 切换（不包含"全部"选项）
+// 初始化渠道类型 Tab 切换
 async function initChannelTypeTabs(initialType) {
   const container = document.getElementById('channelTypeTabs');
   if (!container) return;
@@ -133,18 +140,21 @@ async function initChannelTypeTabs(initialType) {
     'gemini': '<img src="/web/assets/images/gemini-icon.svg" alt="Gemini" style="width: 16px; height: 16px;">'
   };
 
-  // 只添加各渠道类型 Tab，不添加"全部"
-  types.forEach(type => {
+  const displayTypes = [
+    { value: 'all', display_name: '全部', description: '显示全部渠道类型' },
+    ...types
+  ];
+
+  displayTypes.forEach(type => {
     const tab = document.createElement('button');
     tab.className = 'channel-type-tab' + (type.value === initialType ? ' active' : '');
     tab.dataset.type = type.value;
     tab.title = type.description || type.display_name;
 
-    const icon = typeIcons[type.value] || '<span>🔘</span>';
-    tab.innerHTML = `
-      <span class="channel-type-tab-icon">${icon}</span>
-      <span>${type.display_name}</span>
-    `;
+    const icon = typeIcons[type.value] || '';
+    tab.innerHTML = icon
+      ? `<span class="channel-type-tab-icon">${icon}</span><span>${type.display_name}</span>`
+      : `<span>${type.display_name}</span>`;
 
     tab.addEventListener('click', () => {
       // 更新滑动指示器位置
