@@ -117,6 +117,7 @@ func traceToListItem(trace *storage.Trace) *storage.TraceListItem {
 		ChannelType:         trace.ChannelType,
 		Model:               trace.Model,
 		RequestPath:         trace.RequestPath,
+		RequestType:         trace.RequestType,
 		StatusCode:          trace.StatusCode,
 		Duration:            trace.Duration,
 		IsStreaming:         trace.IsStreaming,

@@ -81,6 +81,7 @@ func TestFastBillingLogRoundTrip(t *testing.T) {
 	err := store.AddLog(ctx, &model.LogEntry{
 		Time:           model.JSONTime{Time: time.Now()},
 		Model:          "gpt-5.5",
+		RequestType:    "compact_v2",
 		StatusCode:     200,
 		Message:        "ok",
 		IsFast:         true,
@@ -108,12 +109,15 @@ func TestFastBillingLogRoundTrip(t *testing.T) {
 	if logs[0].FastMultiplier != 2.5 {
 		t.Fatalf("FastMultiplier = %v, want 2.5", logs[0].FastMultiplier)
 	}
+	if logs[0].RequestType != "compact_v2" {
+		t.Fatalf("RequestType = %q, want compact_v2", logs[0].RequestType)
+	}
 
 	rangeLogs, err := store.ListLogsRange(ctx, time.Now().Add(-time.Hour), time.Now().Add(time.Hour), 10, 0, nil)
 	if err != nil {
 		t.Fatalf("ListLogsRange failed: %v", err)
 	}
-	if len(rangeLogs) != 1 || !rangeLogs[0].IsFast || rangeLogs[0].FastMultiplier != 2.5 {
+	if len(rangeLogs) != 1 || !rangeLogs[0].IsFast || rangeLogs[0].FastMultiplier != 2.5 || rangeLogs[0].RequestType != "compact_v2" {
 		t.Fatalf("ListLogsRange fast metadata = %+v, want one fast log with multiplier 2.5", rangeLogs)
 	}
 }

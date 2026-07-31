@@ -804,7 +804,7 @@ func (s *Server) forwardAttempt(
 			_, _ = s.cooldownManager.HandleError(ctx, cfg.ID, keyIndex, status, res.SSEErrorEvent, false, nil)
 			s.invalidateChannelRelatedCache(cfg.ID)
 			// 记录失败日志
-			s.AddLogAsync(buildLogEntry(actualModel, cfg.ID, cfg.Name, cfg.GetChannelType(), status,
+			s.AddLogAsync(buildLogEntry(actualModel, reqCtx.requestType, cfg.ID, cfg.Name, cfg.GetChannelType(), status,
 				duration, reqCtx.isStreaming, selectedKey, cfg.URL, reqCtx.tokenID, reqCtx.tokenName, reqCtx.clientIP, res, diag, reqCtx.attemptStartTime))
 			// 返回成功（因为已经写出了部分数据）
 			return &proxyResult{
@@ -827,7 +827,7 @@ func (s *Server) forwardAttempt(
 			_, _ = s.cooldownManager.HandleError(ctx, cfg.ID, keyIndex, util.StatusStreamIncomplete, []byte(res.StreamDiagMsg), false, nil)
 			s.invalidateChannelRelatedCache(cfg.ID)
 			// 记录失败日志
-			s.AddLogAsync(buildLogEntry(actualModel, cfg.ID, cfg.Name, cfg.GetChannelType(), util.StatusStreamIncomplete,
+			s.AddLogAsync(buildLogEntry(actualModel, reqCtx.requestType, cfg.ID, cfg.Name, cfg.GetChannelType(), util.StatusStreamIncomplete,
 				duration, reqCtx.isStreaming, selectedKey, cfg.URL, reqCtx.tokenID, reqCtx.tokenName, reqCtx.clientIP, res, res.StreamDiagMsg, reqCtx.attemptStartTime))
 			// 返回成功（因为已经写出了200状态码和部分数据）
 			return &proxyResult{
@@ -851,7 +851,7 @@ func (s *Server) forwardAttempt(
 			defer cancel()
 			s.disableKiroChannel(disableCtx, cfg.ID, "月度额度耗尽 (MONTHLY_REQUEST_COUNT)")
 			// 记录日志
-			s.AddLogAsync(buildLogEntry(actualModel, cfg.ID, cfg.Name, cfg.GetChannelType(), res.Status,
+			s.AddLogAsync(buildLogEntry(actualModel, reqCtx.requestType, cfg.ID, cfg.Name, cfg.GetChannelType(), res.Status,
 				duration, reqCtx.isStreaming, selectedKey, cfg.URL, reqCtx.tokenID, reqCtx.tokenName, reqCtx.clientIP, res, "Kiro 月度额度耗尽，渠道已禁用", reqCtx.attemptStartTime))
 			// 切换到下一个渠道
 			return nil, cooldown.ActionRetryChannel
@@ -861,7 +861,7 @@ func (s *Server) forwardAttempt(
 			defer cancel()
 			s.disableKiroChannel(disableCtx, cfg.ID, "账号暂停 (TEMPORARILY_SUSPENDED)")
 			// 记录日志
-			s.AddLogAsync(buildLogEntry(actualModel, cfg.ID, cfg.Name, cfg.GetChannelType(), res.Status,
+			s.AddLogAsync(buildLogEntry(actualModel, reqCtx.requestType, cfg.ID, cfg.Name, cfg.GetChannelType(), res.Status,
 				duration, reqCtx.isStreaming, selectedKey, cfg.URL, reqCtx.tokenID, reqCtx.tokenName, reqCtx.clientIP, res, "Kiro 账号暂停，渠道已禁用", reqCtx.attemptStartTime))
 			// 切换到下一个渠道
 			return nil, cooldown.ActionRetryChannel
@@ -1349,6 +1349,7 @@ func (s *Server) captureForMonitorWithCapture(
 		ChannelType:   cfg.GetChannelType(),
 		Model:         actualModel,
 		RequestPath:   reqCtx.requestPath,
+		RequestType:   reqCtx.requestType,
 		Duration:      duration,
 		IsStreaming:   reqCtx.isStreaming,
 		IsTest:        isTest,

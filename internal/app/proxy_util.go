@@ -76,6 +76,7 @@ type proxyRequestContext struct {
 	originalModel string
 	requestMethod string
 	requestPath   string
+	requestType   string
 	rawQuery      string
 	body          []byte
 	header        http.Header
@@ -511,7 +512,7 @@ func getAPIKeyDisplayForLog(apiKeyUsed string, channelType string) string {
 }
 
 // buildLogEntry 构建日志条目（消除重复代码，遵循DRY原则）
-func buildLogEntry(originalModel string, channelID int64, channelName string, channelType string, statusCode int,
+func buildLogEntry(originalModel string, requestType string, channelID int64, channelName string, channelType string, statusCode int,
 	duration float64, isStreaming bool, apiKeyUsed string, apiBaseURL string, authTokenID int64, authTokenName string, clientIP string,
 	res *fwResult, errMsg string, startTime time.Time) *model.LogEntry {
 
@@ -527,6 +528,7 @@ func buildLogEntry(originalModel string, channelID int64, channelName string, ch
 	entry := &model.LogEntry{
 		Time:          model.JSONTime{Time: logTime},
 		Model:         originalModel,
+		RequestType:   requestType,
 		ChannelID:     channelID,
 		ChannelName:   channelName,
 		ChannelType:   channelType,

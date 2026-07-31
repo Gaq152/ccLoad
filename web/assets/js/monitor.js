@@ -486,6 +486,7 @@ function renderTraces() {
 
     // 端点显示（简化路径）
     const endpoint = trace.request_path || '-';
+    const requestTypeBadge = renderRequestTypeBadge(trace.request_type, trace.request_path);
 
     // Token 显示
     const inputTokens = trace.input_tokens > 0 ? trace.input_tokens : '-';
@@ -511,7 +512,7 @@ function renderTraces() {
     const modelEndpointDisplay = `
       <div class="model-endpoint-cell">
         <span class="model-line"><span class="model-tag">${escapeHtml(trace.model || '-')}</span>${renderFastBadge(trace)}</span>
-        <span class="endpoint-text">${escapeHtml(endpoint)}</span>
+        <span class="endpoint-line">${requestTypeBadge}<span class="endpoint-text">${escapeHtml(endpoint)}</span></span>
       </div>
     `;
 
@@ -555,6 +556,7 @@ async function viewDetail(id) {
         : '否';
     }
     document.getElementById('detailRequestPath').textContent = trace.request_path || '-';
+    document.getElementById('detailRequestType').innerHTML = renderRequestTypeBadge(trace.request_type, trace.request_path, true) || '-';
     document.getElementById('detailStatus').textContent = trace.status_code || '-';
     document.getElementById('detailDuration').textContent = trace.duration ? `${trace.duration.toFixed(3)}s` : '-';
     document.getElementById('detailStreaming').textContent = trace.is_streaming ? '是' : '否';
@@ -627,6 +629,30 @@ function renderFastBadge(trace, showMultiplier = false) {
   const text = showMultiplier && multiplierText ? `FAST ${multiplierText}` : 'FAST';
 
   return `<span class="fast-badge" title="${escapeHtml(title).replace(/"/g, '&quot;')}">${text}</span>`;
+}
+
+function getRequestTypeMeta(requestType, requestPath = '') {
+  let type = requestType || '';
+  const path = (requestPath || '').replace(/\/$/, '');
+  if (!type) {
+    if (path.endsWith('/responses/compact')) type = 'compact_v1';
+    else if (path.endsWith('/alpha/search')) type = 'search';
+  }
+
+  const meta = {
+    responses: { label: '普通', title: '普通 Responses 请求' },
+    compact_v1: { label: '压缩 V1', title: '独立 /responses/compact 压缩请求' },
+    compact_v2: { label: '压缩 V2', title: '携带 compaction_trigger 的 Responses 请求' },
+    search: { label: '搜索', title: 'Codex Search 请求' }
+  }[type];
+  return meta ? { type, ...meta } : null;
+}
+
+function renderRequestTypeBadge(requestType, requestPath = '', detail = false) {
+  const meta = getRequestTypeMeta(requestType, requestPath);
+  if (!meta) return '';
+  const detailClass = detail ? ' request-type-badge-detail' : '';
+  return `<span class="request-type-badge request-type-${meta.type}${detailClass}" title="${escapeHtml(meta.title).replace(/"/g, '&quot;')}">${escapeHtml(meta.label)}</span>`;
 }
 
 function formatFastMultiplier(value) {

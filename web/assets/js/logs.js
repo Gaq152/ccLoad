@@ -273,7 +273,7 @@
         row.innerHTML = `
           <td>${formatTime(req.start_time)}</td>
           <td>${escapeHtml(req.client_ip || '-')}</td>
-          <td><span class="model-tag">${escapeHtml(req.model)}</span></td>
+          <td><div class="model-request-cell"><span class="model-tag">${escapeHtml(req.model)}</span>${renderRequestTypeBadge(req.request_type)}</div></td>
           <td class="config-info">${channelDisplay}</td>
           <td style="text-align: center;">${keyDisplay}</td>
           <td><span class="status-pending">进行中</span></td>
@@ -348,9 +348,10 @@
       }
 
       // 3. 模型显示
-      const modelDisplay = entry.model ?
+      const modelValue = entry.model ?
         `<span class="model-with-badges"><span class="model-tag">${escapeHtml(entry.model)}</span>${renderFastBadge(entry)}</span>` :
         '<span style="color: var(--neutral-500);">-</span>';
+      const modelDisplay = `<div class="model-request-cell">${modelValue}${renderRequestTypeBadge(entry.request_type)}</div>`;
 
       // 4. 响应时间显示(流式/非流式)
       const hasDuration = entry.duration !== undefined && entry.duration !== null;
@@ -496,6 +497,17 @@
       const title = `Fast 请求${tier}${multiplierText ? ` · ${multiplierText}` : ''}`;
 
       return `<span class="fast-badge" title="${escapeHtml(title).replace(/"/g, '&quot;')}">FAST</span>`;
+    }
+
+    function renderRequestTypeBadge(requestType) {
+      const meta = {
+        responses: { label: '普通', title: '普通 Responses 请求' },
+        compact_v1: { label: '压缩 V1', title: '独立 /responses/compact 压缩请求' },
+        compact_v2: { label: '压缩 V2', title: '携带 compaction_trigger 的 Responses 请求' },
+        search: { label: '搜索', title: 'Codex Search 请求' }
+      }[requestType];
+      if (!meta) return '';
+      return `<span class="request-type-badge request-type-${requestType}" title="${escapeHtml(meta.title).replace(/"/g, '&quot;')}">${escapeHtml(meta.label)}</span>`;
     }
 
     function formatFastMultiplier(value) {

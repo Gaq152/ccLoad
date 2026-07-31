@@ -12,6 +12,7 @@ import (
 type ActiveRequest struct {
 	ID            int64  `json:"id"`
 	Model         string `json:"model"`
+	RequestType   string `json:"request_type,omitempty"`
 	ClientIP      string `json:"client_ip"`
 	StartTime     int64  `json:"start_time"` // Unix秒
 	Streaming     bool   `json:"is_streaming"`
@@ -39,11 +40,12 @@ func newActiveRequestManager() *activeRequestManager {
 }
 
 // Register 注册一个新的活跃请求，返回请求ID（用于后续移除）
-func (m *activeRequestManager) Register(model, clientIP string, streaming bool) int64 {
+func (m *activeRequestManager) Register(model, requestType, clientIP string, streaming bool) int64 {
 	id := m.nextID.Add(1)
 	req := &ActiveRequest{
 		ID:           id,
 		Model:        model,
+		RequestType:  requestType,
 		ClientIP:     clientIP,
 		StartTime:    time.Now().Unix(),
 		Streaming:    streaming,

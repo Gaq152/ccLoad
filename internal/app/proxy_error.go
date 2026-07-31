@@ -95,11 +95,13 @@ func (s *Server) handleNetworkError(
 ) (*proxyResult, cooldown.Action) {
 	statusCode, _, _ := util.ClassifyError(err)
 	var attemptStart time.Time
+	var requestType string
 	if reqCtx != nil {
 		attemptStart = reqCtx.attemptStartTime
+		requestType = reqCtx.requestType
 	}
 	// [INFO] 修复：使用 actualModel 而非 reqCtx.originalModel
-	s.AddLogAsync(buildLogEntry(actualModel, cfg.ID, cfg.Name, cfg.GetChannelType(), statusCode,
+	s.AddLogAsync(buildLogEntry(actualModel, requestType, cfg.ID, cfg.Name, cfg.GetChannelType(), statusCode,
 		duration, false, selectedKey, cfg.URL, authTokenID, authTokenName, clientIP, res, err.Error(), attemptStart))
 
 	// [FIX] 保留 499 取消场景下已消耗的 token 统计（但不计入 failure_count）
@@ -321,7 +323,7 @@ func (s *Server) handleProxySuccess(
 
 	// 记录成功日志
 	applyFastBillingToResult(cfg, actualModel, reqCtx.body, res)
-	s.AddLogAsync(buildLogEntry(actualModel, cfg.ID, cfg.Name, cfg.GetChannelType(), res.Status,
+	s.AddLogAsync(buildLogEntry(actualModel, reqCtx.requestType, cfg.ID, cfg.Name, cfg.GetChannelType(), res.Status,
 		duration, reqCtx.isStreaming, selectedKey, cfg.URL, reqCtx.tokenID, reqCtx.tokenName, reqCtx.clientIP, res, "", reqCtx.attemptStartTime))
 
 	// 异步更新Token统计
@@ -396,7 +398,7 @@ func (s *Server) handleProxyErrorResponse(
 		}
 	}
 
-	s.AddLogAsync(buildLogEntry(actualModel, cfg.ID, cfg.Name, cfg.GetChannelType(), res.Status,
+	s.AddLogAsync(buildLogEntry(actualModel, reqCtx.requestType, cfg.ID, cfg.Name, cfg.GetChannelType(), res.Status,
 		duration, reqCtx.isStreaming, selectedKey, cfg.URL, reqCtx.tokenID, reqCtx.tokenName, reqCtx.clientIP, res, errMsg, reqCtx.attemptStartTime))
 
 	// 异步更新Token统计（失败请求不计费）

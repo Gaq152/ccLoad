@@ -19,7 +19,7 @@ func TestBuildLogEntry_StreamDiagMsg(t *testing.T) {
 			InputTokens:  10,
 			OutputTokens: 20,
 		}
-		entry := buildLogEntry("claude-3", channelID, channelName, channelType, 200, 1.5, true, "sk-test", "https://api.example.com", 0, "", "", res, "", time.Now())
+		entry := buildLogEntry("claude-3", "", channelID, channelName, channelType, 200, 1.5, true, "sk-test", "https://api.example.com", 0, "", "", res, "", time.Now())
 		if entry.Message != "ok" {
 			t.Errorf("expected Message='ok', got %q", entry.Message)
 		}
@@ -33,7 +33,7 @@ func TestBuildLogEntry_StreamDiagMsg(t *testing.T) {
 			Status:        200,
 			StreamDiagMsg: "[WARN] 流传输中断: 错误=unexpected EOF | 已读取=1024字节(分5次)",
 		}
-		entry := buildLogEntry("claude-3", channelID, channelName, channelType, 200, 1.5, true, "sk-test", "https://api.example.com", 0, "", "", res, "", time.Now())
+		entry := buildLogEntry("claude-3", "", channelID, channelName, channelType, 200, 1.5, true, "sk-test", "https://api.example.com", 0, "", "", res, "", time.Now())
 		if entry.Message != res.StreamDiagMsg {
 			t.Errorf("expected Message=%q, got %q", res.StreamDiagMsg, entry.Message)
 		}
@@ -44,7 +44,7 @@ func TestBuildLogEntry_StreamDiagMsg(t *testing.T) {
 			Status:        200,
 			StreamDiagMsg: "[WARN] 流响应不完整: 正常EOF但无usage | 已读取=512字节(分3次)",
 		}
-		entry := buildLogEntry("claude-3", channelID, channelName, channelType, 200, 1.5, true, "sk-test", "https://api.example.com", 0, "", "", res, "", time.Now())
+		entry := buildLogEntry("claude-3", "", channelID, channelName, channelType, 200, 1.5, true, "sk-test", "https://api.example.com", 0, "", "", res, "", time.Now())
 		if entry.Message != res.StreamDiagMsg {
 			t.Errorf("expected Message=%q, got %q", res.StreamDiagMsg, entry.Message)
 		}
@@ -56,7 +56,7 @@ func TestBuildLogEntry_StreamDiagMsg(t *testing.T) {
 			StreamDiagMsg: "[WARN] 流传输中断",
 		}
 		errMsg := "network error"
-		entry := buildLogEntry("claude-3", channelID, channelName, channelType, 200, 1.5, true, "sk-test", "https://api.example.com", 0, "", "", res, errMsg, time.Now())
+		entry := buildLogEntry("claude-3", "", channelID, channelName, channelType, 200, 1.5, true, "sk-test", "https://api.example.com", 0, "", "", res, errMsg, time.Now())
 		if entry.Message != errMsg {
 			t.Errorf("expected Message=%q, got %q", errMsg, entry.Message)
 		}
@@ -150,6 +150,7 @@ func TestFilterAndWriteResponseHeaders_StripsHopByHop(t *testing.T) {
 func TestBuildLogEntry_SetsAPIKeyHashForKeyAuth(t *testing.T) {
 	entry := buildLogEntry(
 		"claude-3",
+		"",
 		1,
 		"test-channel",
 		"anthropic",
@@ -178,6 +179,7 @@ func TestBuildLogEntry_UsesGenericOAuthLabel(t *testing.T) {
 	for _, channelType := range []string{"anthropic", "codex", "gemini", "kiro"} {
 		entry := buildLogEntry(
 			"claude-3",
+			"",
 			1,
 			"test-channel",
 			channelType,
@@ -217,6 +219,7 @@ func TestBuildLogEntry_PreservesFastBillingMetadataAndCost(t *testing.T) {
 
 	entry := buildLogEntry(
 		"gpt-5.5",
+		"compact_v2",
 		1,
 		"test-channel",
 		"codex",
@@ -232,6 +235,9 @@ func TestBuildLogEntry_PreservesFastBillingMetadataAndCost(t *testing.T) {
 		"",
 		time.Now(),
 	)
+	if entry.RequestType != "compact_v2" {
+		t.Fatalf("RequestType = %q, want compact_v2", entry.RequestType)
+	}
 
 	if !entry.IsFast {
 		t.Fatal("IsFast = false, want true")

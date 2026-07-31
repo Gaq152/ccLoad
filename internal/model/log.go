@@ -37,6 +37,7 @@ type LogEntry struct {
 	ID            int64    `json:"id"`
 	Time          JSONTime `json:"time"`
 	Model         string   `json:"model"`
+	RequestType   string   `json:"request_type,omitempty"`
 	ChannelID     int64    `json:"channel_id"`
 	ChannelName   string   `json:"channel_name,omitempty"`
 	ChannelType   string   `json:"channel_type,omitempty"`

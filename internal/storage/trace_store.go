@@ -20,6 +20,7 @@ type Trace struct {
 	ChannelType             string  `json:"channel_type"`
 	Model                   string  `json:"model"`
 	RequestPath             string  `json:"request_path"` // 请求路径（端点）
+	RequestType             string  `json:"request_type"` // 请求类型（Responses/压缩/搜索）
 	StatusCode              int     `json:"status_code"`
 	Duration                float64 `json:"duration"`
 	IsStreaming             bool    `json:"is_streaming"`
@@ -51,6 +52,7 @@ type TraceListItem struct {
 	ChannelType         string  `json:"channel_type"`
 	Model               string  `json:"model"`
 	RequestPath         string  `json:"request_path"`
+	RequestType         string  `json:"request_type"`
 	StatusCode          int     `json:"status_code"`
 	Duration            float64 `json:"duration"`
 	IsStreaming         bool    `json:"is_streaming"`
@@ -127,6 +129,7 @@ CREATE TABLE IF NOT EXISTS traces (
     channel_type VARCHAR(64) NOT NULL DEFAULT '',
     model VARCHAR(191) NOT NULL DEFAULT '',
     request_path VARCHAR(255) NOT NULL DEFAULT '',
+    request_type VARCHAR(32) NOT NULL DEFAULT '',
     status_code INT NOT NULL DEFAULT 0,
     duration DOUBLE NOT NULL DEFAULT 0.0,
     is_streaming TINYINT NOT NULL DEFAULT 0,
@@ -157,6 +160,7 @@ CREATE INDEX IF NOT EXISTS idx_traces_time ON traces(time DESC);
 	// 迁移：为旧表添加新字段（如果不存在）
 	_, _ = db.ExecContext(ctx, "ALTER TABLE traces ADD COLUMN is_test TINYINT NOT NULL DEFAULT 0")
 	_, _ = db.ExecContext(ctx, "ALTER TABLE traces ADD COLUMN request_path VARCHAR(255) NOT NULL DEFAULT ''")
+	_, _ = db.ExecContext(ctx, "ALTER TABLE traces ADD COLUMN request_type VARCHAR(32) NOT NULL DEFAULT ''")
 	_, _ = db.ExecContext(ctx, "ALTER TABLE traces ADD COLUMN input_tokens INT NOT NULL DEFAULT 0")
 	_, _ = db.ExecContext(ctx, "ALTER TABLE traces ADD COLUMN output_tokens INT NOT NULL DEFAULT 0")
 	_, _ = db.ExecContext(ctx, "ALTER TABLE traces ADD COLUMN cache_read_tokens INT NOT NULL DEFAULT 0")
@@ -179,11 +183,11 @@ func (s *TraceStore) Save(ctx context.Context, t *Trace) (int64, error) {
 		fastMultiplier = 1
 	}
 	query := `
-INSERT INTO traces (time, channel_id, channel_name, channel_type, model, request_path, status_code, duration, is_streaming, is_test, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, request_body, response_body, client_request_headers, upstream_request_headers, upstream_response_headers, client_ip, api_key_used, token_id, is_fast, service_tier, fast_multiplier)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO traces (time, channel_id, channel_name, channel_type, model, request_path, request_type, status_code, duration, is_streaming, is_test, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, request_body, response_body, client_request_headers, upstream_request_headers, upstream_response_headers, client_ip, api_key_used, token_id, is_fast, service_tier, fast_multiplier)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 	result, err := s.db.ExecContext(ctx, query,
-		t.Time, t.ChannelID, t.ChannelName, t.ChannelType, t.Model, t.RequestPath,
+		t.Time, t.ChannelID, t.ChannelName, t.ChannelType, t.Model, t.RequestPath, t.RequestType,
 		t.StatusCode, t.Duration, t.IsStreaming, t.IsTest, t.InputTokens, t.OutputTokens, t.CacheReadTokens, t.CacheCreationTokens,
 		t.RequestBody, t.ResponseBody, t.ClientRequestHeaders, t.UpstreamRequestHeaders, t.UpstreamResponseHeaders, t.ClientIP, t.APIKeyUsed, t.TokenID,
 		traceBoolToInt(t.IsFast), t.ServiceTier, fastMultiplier,
@@ -216,7 +220,7 @@ func (s *TraceStore) List(ctx context.Context, limit, offset int, statusFilter s
 	}
 
 	query := fmt.Sprintf(`
-SELECT id, time, channel_id, channel_name, channel_type, model, request_path, status_code, duration, is_streaming, is_test, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, client_ip, api_key_used, token_id, is_fast, service_tier, fast_multiplier
+SELECT id, time, channel_id, channel_name, channel_type, model, request_path, request_type, status_code, duration, is_streaming, is_test, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, client_ip, api_key_used, token_id, is_fast, service_tier, fast_multiplier
 FROM traces
 %s
 ORDER BY time DESC
@@ -236,7 +240,7 @@ LIMIT ? OFFSET ?
 		var isStreaming, isTest, isFast int
 		if err := rows.Scan(
 			&item.ID, &item.Time, &item.ChannelID, &item.ChannelName, &item.ChannelType,
-			&item.Model, &item.RequestPath, &item.StatusCode, &item.Duration, &isStreaming, &isTest,
+			&item.Model, &item.RequestPath, &item.RequestType, &item.StatusCode, &item.Duration, &isStreaming, &isTest,
 			&item.InputTokens, &item.OutputTokens, &item.CacheReadTokens, &item.CacheCreationTokens, &item.ClientIP, &item.APIKeyUsed, &item.TokenID,
 			&isFast, &item.ServiceTier, &item.FastMultiplier,
 		); err != nil {
@@ -254,7 +258,7 @@ LIMIT ? OFFSET ?
 // Get 获取单条追踪记录详情（含请求体/响应体）
 func (s *TraceStore) Get(ctx context.Context, id int64) (*Trace, error) {
 	query := `
-SELECT id, time, channel_id, channel_name, channel_type, model, request_path, status_code, duration, is_streaming, is_test, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, request_body, response_body, client_request_headers, upstream_request_headers, upstream_response_headers, client_ip, api_key_used, token_id, is_fast, service_tier, fast_multiplier
+SELECT id, time, channel_id, channel_name, channel_type, model, request_path, request_type, status_code, duration, is_streaming, is_test, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, request_body, response_body, client_request_headers, upstream_request_headers, upstream_response_headers, client_ip, api_key_used, token_id, is_fast, service_tier, fast_multiplier
 FROM traces
 WHERE id = ?
 `
@@ -264,7 +268,7 @@ WHERE id = ?
 
 	err := s.db.QueryRowContext(ctx, query, id).Scan(
 		&trace.ID, &trace.Time, &trace.ChannelID, &trace.ChannelName, &trace.ChannelType,
-		&trace.Model, &trace.RequestPath, &trace.StatusCode, &trace.Duration, &isStreaming, &isTest,
+		&trace.Model, &trace.RequestPath, &trace.RequestType, &trace.StatusCode, &trace.Duration, &isStreaming, &isTest,
 		&trace.InputTokens, &trace.OutputTokens, &trace.CacheReadTokens, &trace.CacheCreationTokens, &requestBody, &responseBody,
 		&clientRequestHeaders, &upstreamRequestHeaders, &upstreamResponseHeaders, &trace.ClientIP, &trace.APIKeyUsed, &trace.TokenID,
 		&isFast, &trace.ServiceTier, &trace.FastMultiplier,

@@ -61,6 +61,9 @@ func migrate(ctx context.Context, db *sql.DB, dialect Dialect) error {
 		// 增量迁移：确保logs新增字段存在（2025-12新增）
 		if tb.Name() == "logs" {
 			if dialect == DialectMySQL {
+				if err := ensureLogsRequestType(ctx, db); err != nil {
+					return fmt.Errorf("migrate logs.request_type: %w", err)
+				}
 				if err := ensureLogsAuthTokenID(ctx, db); err != nil {
 					return fmt.Errorf("migrate logs.auth_token_id: %w", err)
 				}
@@ -77,6 +80,9 @@ func migrate(ctx context.Context, db *sql.DB, dialect Dialect) error {
 					return fmt.Errorf("migrate logs fast billing fields: %w", err)
 				}
 			} else {
+				if err := ensureLogsRequestTypeSQLite(ctx, db); err != nil {
+					return fmt.Errorf("migrate logs.request_type: %w", err)
+				}
 				if err := ensureLogsAPIBaseURLSQLite(ctx, db); err != nil {
 					return fmt.Errorf("migrate logs.api_base_url: %w", err)
 				}
@@ -283,6 +289,23 @@ func migrate(ctx context.Context, db *sql.DB, dialect Dialect) error {
 	}
 
 	return nil
+}
+
+func ensureLogsRequestType(ctx context.Context, db *sql.DB) error {
+	exists, err := hasColumnMySQL(ctx, db, "logs", "request_type")
+	if err != nil || exists {
+		return err
+	}
+	_, err = db.ExecContext(ctx, "ALTER TABLE logs ADD COLUMN request_type VARCHAR(32) NOT NULL DEFAULT '' COMMENT '请求类型(responses/compact/search)'")
+	return err
+}
+
+func ensureLogsRequestTypeSQLite(ctx context.Context, db *sql.DB) error {
+	if hasColumnSQLite(ctx, db, "logs", "request_type") {
+		return nil
+	}
+	_, err := db.ExecContext(ctx, "ALTER TABLE logs ADD COLUMN request_type TEXT NOT NULL DEFAULT ''")
+	return err
 }
 
 // migrateChannelEndpoints 为没有端点的渠道自动创建默认端点（2025-12新增）

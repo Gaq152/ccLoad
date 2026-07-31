@@ -403,6 +403,48 @@
   vertical-align: middle;
 }
 
+.monitor-table .model-endpoint-cell .endpoint-line {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.request-type-badge {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  height: 17px;
+  padding: 0 5px;
+  border: 1px solid var(--neutral-300);
+  border-radius: 4px;
+  background: var(--neutral-100);
+  color: var(--neutral-700);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.request-type-compact_v1,
+.request-type-compact_v2 {
+  border-color: color-mix(in srgb, var(--theme-accent) 35%, transparent);
+  background: color-mix(in srgb, var(--theme-accent) 12%, transparent);
+  color: var(--theme-accent);
+}
+
+.request-type-search {
+  border-color: color-mix(in srgb, var(--theme-success) 35%, transparent);
+  background: color-mix(in srgb, var(--theme-success) 12%, transparent);
+  color: var(--theme-success);
+}
+
+.request-type-badge-detail {
+  height: 21px;
+  padding: 0 7px;
+  font-size: 11px;
+}
+
 .fast-badge {
   display: inline-flex;
   align-items: center;

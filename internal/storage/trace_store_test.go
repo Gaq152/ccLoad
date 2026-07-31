@@ -21,6 +21,8 @@ func TestTraceStoreFastBillingRoundTrip(t *testing.T) {
 		ChannelName:    "fast-channel",
 		ChannelType:    "codex",
 		Model:          "gpt-5.5",
+		RequestPath:    "/v1/responses",
+		RequestType:    "compact_v2",
 		StatusCode:     200,
 		IsFast:         true,
 		ServiceTier:    "priority",
@@ -40,6 +42,9 @@ func TestTraceStoreFastBillingRoundTrip(t *testing.T) {
 	if !items[0].IsFast || items[0].ServiceTier != "priority" || items[0].FastMultiplier != 2.5 {
 		t.Fatalf("list fast metadata = %+v, want fast priority 2.5", items[0])
 	}
+	if items[0].RequestType != "compact_v2" {
+		t.Fatalf("list request type = %q, want compact_v2", items[0].RequestType)
+	}
 
 	trace, err := store.Get(ctx, id)
 	if err != nil {
@@ -47,5 +52,8 @@ func TestTraceStoreFastBillingRoundTrip(t *testing.T) {
 	}
 	if !trace.IsFast || trace.ServiceTier != "priority" || trace.FastMultiplier != 2.5 {
 		t.Fatalf("detail fast metadata = %+v, want fast priority 2.5", trace)
+	}
+	if trace.RequestType != "compact_v2" {
+		t.Fatalf("detail request type = %q, want compact_v2", trace.RequestType)
 	}
 }

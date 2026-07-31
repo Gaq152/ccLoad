@@ -198,6 +198,7 @@ func (s *Server) HandleProxyRequest(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	requestType := util.DetectRequestType(requestPath, all)
 
 	timeout := parseTimeout(c.Request.URL.Query(), c.Request.Header)
 	ctx := c.Request.Context()
@@ -232,6 +233,7 @@ func (s *Server) HandleProxyRequest(c *gin.Context) {
 		s.AddLogAsync(&model.LogEntry{
 			Time:        model.JSONTime{Time: time.Now()},
 			Model:       originalModel,
+			RequestType: requestType,
 			StatusCode:  503,
 			Message:     "no available upstream (all cooled or none)",
 			IsStreaming: isStreaming,
@@ -242,13 +244,14 @@ func (s *Server) HandleProxyRequest(c *gin.Context) {
 	}
 
 	// 注册活跃请求（用于实时追踪进行中的请求）
-	activeReqID := s.activeReqManager.Register(originalModel, c.ClientIP(), isStreaming)
+	activeReqID := s.activeReqManager.Register(originalModel, requestType, c.ClientIP(), isStreaming)
 	defer s.activeReqManager.Remove(activeReqID)
 
 	reqCtx := &proxyRequestContext{
 		originalModel: originalModel,
 		requestMethod: requestMethod,
 		requestPath:   requestPath,
+		requestType:   requestType,
 		rawQuery:      c.Request.URL.RawQuery,
 		body:          all,
 		header:        c.Request.Header,
@@ -315,6 +318,7 @@ func (s *Server) HandleProxyRequest(c *gin.Context) {
 	s.AddLogAsync(&model.LogEntry{
 		Time:        model.JSONTime{Time: time.Now()},
 		Model:       originalModel,
+		RequestType: requestType,
 		StatusCode:  finalStatus,
 		Message:     msg,
 		IsStreaming: isStreaming,

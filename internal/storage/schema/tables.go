@@ -173,6 +173,7 @@ func DefineLogsTable() *TableBuilder {
 		Column("id INT PRIMARY KEY AUTO_INCREMENT").
 		Column("time BIGINT NOT NULL").
 		Column("model VARCHAR(191) NOT NULL DEFAULT ''").
+		Column("request_type VARCHAR(32) NOT NULL DEFAULT ''").
 		Column("channel_id INT NOT NULL DEFAULT 0").
 		Column("status_code INT NOT NULL").
 		Column("message TEXT NOT NULL").
