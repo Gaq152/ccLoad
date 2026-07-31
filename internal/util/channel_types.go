@@ -24,7 +24,7 @@ var ChannelTypes = []ChannelTypeConfig{
 		Value:        ChannelTypeCodex,
 		DisplayName:  "Codex",
 		Description:  "Codex兼容API",
-		PathPatterns: []string{"/v1/responses", "/v1/chat/completions"},
+		PathPatterns: []string{"/v1/responses", "/v1/chat/completions", CodexSearchPath},
 		MatchType:    MatchTypePrefix,
 	},
 	{
@@ -81,6 +81,7 @@ const (
 	ChannelTypeAnthropic = "anthropic"
 	ChannelTypeCodex     = "codex"
 	ChannelTypeGemini    = "gemini"
+	CodexSearchPath      = "/v1/alpha/search"
 )
 
 // 匹配类型常量（路径匹配方式）

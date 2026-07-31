@@ -107,9 +107,9 @@ func (s *Server) parseIncomingRequest(c *gin.Context) (string, []byte, bool, int
 		originalModel = extractModelFromPath(requestPath)
 	}
 
-	// 对于GET请求，如果无法提取模型名称，使用通配符
+	// GET 和 Codex Search 请求不依赖模型名称，使用通配符按渠道类型选路。
 	if originalModel == "" {
-		if requestMethod == http.MethodGet {
+		if requestMethod == http.MethodGet || requestPath == util.CodexSearchPath {
 			originalModel = "*"
 		} else {
 			s.releaseMemoryBudget(heldSize)

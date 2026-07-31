@@ -42,6 +42,50 @@ func TestBuildProxyRequestAlignsCodexSessionIDWithPromptCacheKey(t *testing.T) {
 	}
 }
 
+func TestBuildProxyRequestForwardsCodexSearchToBaseURL(t *testing.T) {
+	body := []byte(`{"search_query":[{"q":"golang"}]}`)
+	hdr := http.Header{}
+	hdr.Set("Content-Type", "application/json")
+	hdr.Set("X-Request-ID", "search-request")
+
+	req, err := (&Server{}).buildProxyRequest(
+		&requestContext{ctx: context.Background()},
+		&model.Config{
+			ChannelType: "codex",
+			Preset:      "custom",
+			URL:         "https://example.com/v1",
+		},
+		"sk-upstream",
+		http.MethodPost,
+		body,
+		hdr,
+		"trace=true",
+		"/v1/alpha/search",
+		nil,
+		false,
+	)
+	if err != nil {
+		t.Fatalf("buildProxyRequest failed: %v", err)
+	}
+
+	if got, want := req.URL.String(), "https://example.com/v1/alpha/search?trace=true"; got != want {
+		t.Fatalf("upstream URL = %q, want %q", got, want)
+	}
+	if req.Method != http.MethodPost {
+		t.Fatalf("method = %q, want POST", req.Method)
+	}
+	if got := req.Header.Get("X-Request-ID"); got != "search-request" {
+		t.Fatalf("X-Request-ID = %q, want search-request", got)
+	}
+	forwardedBody, err := io.ReadAll(req.Body)
+	if err != nil {
+		t.Fatalf("read forwarded body: %v", err)
+	}
+	if string(forwardedBody) != string(body) {
+		t.Fatalf("forwarded body = %q, want %q", forwardedBody, body)
+	}
+}
+
 func TestHandleSuccessResponse_ExtractsUsageFromJSON(t *testing.T) {
 	body := `{"usage":{"input_tokens":10,"output_tokens":20,"cache_read_input_tokens":5,"cache_creation_input_tokens":7}}`
 	resp := &http.Response{

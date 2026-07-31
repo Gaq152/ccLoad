@@ -15,6 +15,7 @@ func TestDetectChannelTypeFromPath(t *testing.T) {
 		// Codex paths
 		{"Codex Responses", "/v1/responses", ChannelTypeCodex},
 		{"Codex Chat Completions", "/v1/chat/completions", ChannelTypeCodex},
+		{"Codex Search", CodexSearchPath, ChannelTypeCodex},
 
 		// Gemini paths
 		{"Gemini Stream", "/v1beta/models/gemini-pro:streamGenerateContent", ChannelTypeGemini},

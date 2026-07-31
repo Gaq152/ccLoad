@@ -2,6 +2,7 @@ package app
 
 import (
 	"bytes"
+	"ccLoad/internal/util"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -88,6 +89,14 @@ func TestParseIncomingRequest_ValidJSON(t *testing.T) {
 			name:         "GET请求-无模型使用通配符",
 			body:         "",
 			path:         "/v1/models",
+			expectModel:  "*",
+			expectStream: false,
+			expectError:  false,
+		},
+		{
+			name:         "Codex搜索请求-无模型使用通配符",
+			body:         `{"search_query":[{"q":"golang"}]}`,
+			path:         util.CodexSearchPath,
 			expectModel:  "*",
 			expectStream: false,
 			expectError:  false,
