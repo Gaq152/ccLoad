@@ -78,6 +78,11 @@ type Server struct {
 	monitorService   *MonitorService       // 请求监控服务
 	traceStore       *storage.TraceStore   // 追踪数据存储（独立数据库）
 
+	// models.dev 定价目录短时缓存，避免打开选择器后导入时重复拉取大 JSON。
+	modelsDevMu        sync.Mutex
+	modelsDevCatalog   []ModelsDevCatalogEntry
+	modelsDevFetchedAt time.Time
+
 	// Token 加密密钥（用于再次查看功能）
 	tokenEncryptionKey []byte
 
@@ -591,6 +596,8 @@ func (s *Server) SetupRoutes(r *gin.Engine) {
 		admin.PUT("/pricing/:id", s.HandleUpdateModelPricing)
 		admin.DELETE("/pricing/:id", s.HandleDeleteModelPricing)
 		admin.POST("/pricing/defaults", s.HandleImportDefaultPricing)
+		admin.GET("/pricing/models-dev", s.HandleListModelsDevPricing)
+		admin.POST("/pricing/models-dev/import", s.HandleImportModelsDevPricing)
 
 		// 两步验证(TOTP)管理
 		admin.GET("/2fa/status", s.HandleGet2FAStatus)

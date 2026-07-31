@@ -21,15 +21,15 @@ import (
 type FetchModelsRequest struct {
 	ChannelType string `json:"channel_type" binding:"required"`
 	URL         string `json:"url" binding:"required"`
-	APIKey      string `json:"api_key"`                       // 普通渠道使用
-	AccessToken string `json:"access_token,omitempty"`        // Codex OAuth 官方预设使用
+	APIKey      string `json:"api_key"`                // 普通渠道使用
+	AccessToken string `json:"access_token,omitempty"` // Codex OAuth 官方预设使用
 }
 
 // FetchModelsResponse 获取模型列表响应
 type FetchModelsResponse struct {
 	Models      []string          `json:"models"`          // 模型列表
 	ChannelType string            `json:"channel_type"`    // 渠道类型
-	Source      string            `json:"source"`          // 数据来源: "api"(从API获取) 或 "predefined"(预定义)
+	Source      string            `json:"source"`          // 数据来源: "api"、"default" 或 "default_fallback"
 	Debug       *FetchModelsDebug `json:"debug,omitempty"` // 调试信息（仅开发环境）
 }
 
@@ -44,7 +44,7 @@ type FetchModelsDebug struct {
 // 路由: GET /admin/channels/:id/models/fetch
 // 功能:
 //   - 根据渠道类型调用对应的Models API
-//   - Anthropic/Codex: 返回预定义列表(官方无API)
+//   - Anthropic/Codex: 返回用户在模型计费中维护的默认列表
 //   - OpenAI/Gemini: 调用官方/v1/models接口
 //
 // 设计模式: 适配器模式(Adapter Pattern) + 策略模式(Strategy Pattern)
@@ -77,8 +77,8 @@ func (s *Server) HandleFetchModels(c *gin.Context) {
 	if channelType == "" {
 		channelType = channel.ChannelType
 	}
-	forcePredefined := c.Query("force_predefined") == "true"
-	response, err := fetchModelsForConfig(c.Request.Context(), channelType, channel.URL, apiKey, forcePredefined)
+	forceDefault := c.Query("force_default") == "true" || c.Query("force_predefined") == "true"
+	response, err := fetchModelsForConfig(c.Request.Context(), channelType, channel.URL, apiKey, forceDefault)
 	if err != nil {
 		// [INFO] 修复：统一返回200（与HandleFetchModelsPreview保持一致）
 		RespondErrorWithData[any](c, http.StatusOK, err.Error(), nil)
@@ -114,15 +114,15 @@ func (s *Server) HandleFetchModelsPreview(c *gin.Context) {
 		authKey = req.AccessToken
 	}
 
-	// 检查是否需要认证凭据（预定义列表类型不需要）
-	forcePredefined := c.Query("force_predefined") == "true"
+	// 检查是否需要认证凭据（默认列表类型不需要）
+	forceDefault := c.Query("force_default") == "true" || c.Query("force_predefined") == "true"
 	source := determineSource(req.ChannelType, req.URL)
-	if !forcePredefined && source == "api" && authKey == "" {
+	if !forceDefault && source == "api" && authKey == "" {
 		RespondErrorMsg(c, http.StatusBadRequest, "该渠道类型需要提供api_key或access_token")
 		return
 	}
 
-	response, err := fetchModelsForConfig(c.Request.Context(), req.ChannelType, req.URL, authKey, forcePredefined)
+	response, err := fetchModelsForConfig(c.Request.Context(), req.ChannelType, req.URL, authKey, forceDefault)
 	if err != nil {
 		// [INFO] 修复：统一返回200，通过success字段区分成功/失败（上游错误是预期内的）
 		RespondErrorWithData[any](c, http.StatusOK, err.Error(), nil)
@@ -131,12 +131,12 @@ func (s *Server) HandleFetchModelsPreview(c *gin.Context) {
 	RespondJSON(c, http.StatusOK, response)
 }
 
-func fetchModelsForConfig(ctx context.Context, channelType, channelURL, apiKey string, forcePredefined bool) (*FetchModelsResponse, error) {
+func fetchModelsForConfig(ctx context.Context, channelType, channelURL, apiKey string, forceDefault bool) (*FetchModelsResponse, error) {
 	normalizedType := util.NormalizeChannelType(channelType)
 
-	// 强制使用预定义列表（用于"重置为默认"场景）
-	source := "predefined"
-	if !forcePredefined {
+	// 强制使用默认列表（用于“导入默认”场景）
+	source := "default"
+	if !forceDefault {
 		source = determineSource(channelType, channelURL)
 	}
 
@@ -146,13 +146,13 @@ func fetchModelsForConfig(ctx context.Context, channelType, channelURL, apiKey s
 		err        error
 	)
 
-	// Anthropic/Codex等官方无开放接口的渠道，直接返回预设模型列表
-	if source == "predefined" {
-		models = util.PredefinedModels(normalizedType)
+	// Anthropic/Codex 等渠道直接返回模型计费中维护的默认列表。
+	if source == "default" {
+		models = util.DefaultModels(normalizedType)
 		if len(models) == 0 {
-			return nil, fmt.Errorf("渠道类型:%s 暂无预设模型列表", normalizedType)
+			return nil, fmt.Errorf("渠道类型:%s 暂无默认模型列表", normalizedType)
 		}
-		fetcherStr = "predefined"
+		fetcherStr = "default"
 	} else {
 		ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		defer cancel()
@@ -162,12 +162,12 @@ func fetchModelsForConfig(ctx context.Context, channelType, channelURL, apiKey s
 
 		models, err = fetcher.FetchModels(ctx, channelURL, apiKey)
 		if err != nil {
-			// API 获取失败时降级到预定义列表
-			fallbackModels := util.PredefinedModels(normalizedType)
+			// API 获取失败时降级到同一份默认列表
+			fallbackModels := util.DefaultModels(normalizedType)
 			if len(fallbackModels) > 0 {
 				models = fallbackModels
-				source = "predefined_fallback"
-				fetcherStr = "predefined(fallback)"
+				source = "default_fallback"
+				fetcherStr = "default(fallback)"
 				err = nil
 			} else {
 				return nil, fmt.Errorf(
@@ -195,13 +195,13 @@ func fetchModelsForConfig(ctx context.Context, channelType, channelURL, apiKey s
 func determineSource(channelType, channelURL string) string {
 	switch util.NormalizeChannelType(channelType) {
 	case util.ChannelTypeGemini:
-		// Gemini CLI 官方端点没有 models API，使用预定义列表
+		// Gemini CLI 官方端点没有 models API，使用默认列表
 		if strings.Contains(channelURL, "cloudcode-pa.googleapis.com") {
-			return "predefined"
+			return "default"
 		}
 		return "api" // 标准 Gemini API 从接口获取
 	default:
-		return "predefined" // 预定义列表（Anthropic/Codex等官方无开放接口）
+		return "default" // 默认列表（Anthropic/Codex 等官方无开放接口）
 	}
 }
 

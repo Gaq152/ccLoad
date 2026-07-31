@@ -242,78 +242,71 @@ func (f *CodexModelsFetcher) FetchModels(ctx context.Context, baseURL string, ap
 }
 
 // ============================================================
-// 预设模型列表（用于官方无Models API的渠道）
+// 内置默认模型列表（用于数据库尚未初始化或官方无 Models API 的渠道）
 // ============================================================
 
-var predefinedModelSets = map[string][]string{
+var defaultModelSets = map[string][]string{
 	ChannelTypeAnthropic: {
-		// Claude 4.8 系列（最新）
+		// Claude 5 系列
+		"claude-opus-5",
+		"claude-sonnet-5",
+		"claude-fable-5",
+		// Claude 4.x 系列
 		"claude-opus-4-8",
-		// Claude 4.6 系列
+		"claude-opus-4-7",
 		"claude-opus-4-6",
 		"claude-sonnet-4-6",
-		// Claude 4.5 系列
-		"claude-opus-4-5-20251101",
-		"claude-sonnet-4-5-20250929",
-		"claude-haiku-4-5-20251001",
-		// Claude 4.1 系列
-		"claude-opus-4-1-20250805",
-		// Claude 4.0 系列
-		"claude-sonnet-4-20250514",
-		"claude-opus-4-20250514",
+		"claude-opus-4-5",
+		"claude-sonnet-4-5",
+		"claude-haiku-4-5",
 	},
 	ChannelTypeCodex: {
-		// GPT-5.5 系列（2026年4月最新）
+		// GPT-5.6 系列
+		"gpt-5.6",
+		"gpt-5.6-sol",
+		"gpt-5.6-terra",
+		"gpt-5.6-luna",
+		// GPT-5.5 / 5.4 / Codex 系列
 		"gpt-5.5",
-		// GPT-5.4 系列
+		"gpt-5.5-pro",
 		"gpt-5.4",
+		"gpt-5.4-pro",
 		"gpt-5.4-mini",
-		// GPT-5.3 系列
+		"gpt-5.4-nano",
 		"gpt-5.3-codex",
 		"gpt-5.3-codex-spark",
-		// GPT-5.2 系列
-		"gpt-5.2-codex",
 		"gpt-5.2",
-		// GPT-5.1 系列
-		"gpt-5.1-codex",
-		"gpt-5.1-codex-max",
-		"gpt-5.1-codex-mini",
-		// GPT-5 系列
-		"gpt-5",
-		"gpt-5.1",
 	},
 	ChannelTypeGemini: {
-		// Gemini 3 系列（2025年11月最新）
-		"gemini-3-pro",
-		"gemini-3-deep-think",
-		// Gemini 2.5 系列
+		"gemini-3.6-flash",
+		"gemini-3.5-flash",
+		"gemini-3.5-flash-lite",
+		"gemini-3.1-pro",
+		"gemini-3.1-flash-lite",
+		"gemini-3-flash",
 		"gemini-2.5-pro",
 		"gemini-2.5-flash",
 	},
 }
 
-// GetPredefinedModelSets 返回所有预定义模型集合（用于迁移填充）
-func GetPredefinedModelSets() map[string][]string {
-	return predefinedModelSets
+// GetDefaultModelSets 返回所有内置默认模型集合（用于初始化与迁移）。
+func GetDefaultModelSets() map[string][]string {
+	return defaultModelSets
 }
 
-// PredefinedModels 返回给定渠道类型的预设模型列表
-// 优先从 DB 缓存读取（用户可管理），DB 无数据时降级到硬编码
-func PredefinedModels(channelType string) []string {
+// DefaultModels 返回给定渠道类型的默认模型列表。
+// 一旦数据库定价已初始化，数据库列表（包括空列表）就是唯一来源；否则回退到内置列表。
+func DefaultModels(channelType string) []string {
 	ct := NormalizeChannelType(channelType)
 
 	// 优先从 DB 缓存读取
-	if models, ok := dbPredefinedModels.Load(ct); ok {
+	if models, ok := dbDefaultModels.Load(ct); ok {
 		result := models.([]string)
-		if len(result) > 0 {
-			out := make([]string, len(result))
-			copy(out, result)
-			return out
-		}
+		return append([]string(nil), result...)
 	}
 
 	// 降级到硬编码
-	models, ok := predefinedModelSets[ct]
+	models, ok := defaultModelSets[ct]
 	if !ok {
 		return nil
 	}

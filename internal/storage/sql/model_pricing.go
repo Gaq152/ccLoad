@@ -12,29 +12,29 @@ import (
 
 // scanPricingColumns 定义 model_pricing 表的查询字段列表
 const pricingColumns = `id, model, display_name, channel_type,
-	input_price, output_price, input_price_high, output_price_high,
+	input_price, output_price, cache_read_price, cache_write_price,
+	input_price_high, output_price_high, cache_read_price_high, cache_write_price_high,
 	high_price_threshold,
-	cache_read_multiplier, cache_write_multiplier,
-	aliases, is_predefined,
+	aliases, is_default,
 	created_at, updated_at`
 
 // scanPricingEntry 从行扫描到 ModelPricingEntry（统一扫描逻辑）
 func scanPricingEntry(scanner interface{ Scan(dest ...any) error }) (*model.ModelPricingEntry, error) {
 	var e model.ModelPricingEntry
 	var aliasesRaw sql.NullString
-	var isPredefined int
+	var isDefault int
 	if err := scanner.Scan(
 		&e.ID, &e.Model, &e.DisplayName, &e.ChannelType,
-		&e.InputPrice, &e.OutputPrice, &e.InputPriceHigh, &e.OutputPriceHigh,
+		&e.InputPrice, &e.OutputPrice, &e.CacheReadPrice, &e.CacheWritePrice,
+		&e.InputPriceHigh, &e.OutputPriceHigh, &e.CacheReadPriceHigh, &e.CacheWritePriceHigh,
 		&e.HighPriceThreshold,
-		&e.CacheReadMultiplier, &e.CacheWriteMultiplier,
-		&aliasesRaw, &isPredefined,
+		&aliasesRaw, &isDefault,
 		&e.CreatedAt, &e.UpdatedAt,
 	); err != nil {
 		return nil, err
 	}
 	e.AliasesRaw = aliasesRaw.String
-	e.IsPredefined = isPredefined != 0
+	e.IsDefault = isDefault != 0
 	// 解析逗号分隔的别名到切片
 	if e.AliasesRaw != "" {
 		for _, a := range strings.Split(e.AliasesRaw, ",") {
@@ -95,17 +95,17 @@ func (s *SQLStore) CreateModelPricing(ctx context.Context, entry *model.ModelPri
 
 	result, err := s.db.ExecContext(ctx, `
 		INSERT INTO model_pricing (model, display_name, channel_type,
-		    input_price, output_price, input_price_high, output_price_high,
+		    input_price, output_price, cache_read_price, cache_write_price,
+		    input_price_high, output_price_high, cache_read_price_high, cache_write_price_high,
 		    high_price_threshold,
-		    cache_read_multiplier, cache_write_multiplier,
-		    aliases, is_predefined,
+		    aliases, is_default,
 		    created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, entry.Model, entry.DisplayName, entry.ChannelType,
-		entry.InputPrice, entry.OutputPrice, entry.InputPriceHigh, entry.OutputPriceHigh,
+		entry.InputPrice, entry.OutputPrice, entry.CacheReadPrice, entry.CacheWritePrice,
+		entry.InputPriceHigh, entry.OutputPriceHigh, entry.CacheReadPriceHigh, entry.CacheWritePriceHigh,
 		entry.HighPriceThreshold,
-		entry.CacheReadMultiplier, entry.CacheWriteMultiplier,
-		preparePricingAliases(entry), boolToInt(entry.IsPredefined),
+		preparePricingAliases(entry), boolToInt(entry.IsDefault),
 		entry.CreatedAt, entry.UpdatedAt,
 	)
 	if err != nil {
@@ -127,17 +127,17 @@ func (s *SQLStore) UpdateModelPricing(ctx context.Context, entry *model.ModelPri
 	result, err := s.db.ExecContext(ctx, `
 		UPDATE model_pricing
 		SET model = ?, display_name = ?, channel_type = ?,
-		    input_price = ?, output_price = ?, input_price_high = ?, output_price_high = ?,
+		    input_price = ?, output_price = ?, cache_read_price = ?, cache_write_price = ?,
+		    input_price_high = ?, output_price_high = ?, cache_read_price_high = ?, cache_write_price_high = ?,
 		    high_price_threshold = ?,
-		    cache_read_multiplier = ?, cache_write_multiplier = ?,
-		    aliases = ?, is_predefined = ?,
+		    aliases = ?, is_default = ?,
 		    updated_at = ?
 		WHERE id = ?
 	`, entry.Model, entry.DisplayName, entry.ChannelType,
-		entry.InputPrice, entry.OutputPrice, entry.InputPriceHigh, entry.OutputPriceHigh,
+		entry.InputPrice, entry.OutputPrice, entry.CacheReadPrice, entry.CacheWritePrice,
+		entry.InputPriceHigh, entry.OutputPriceHigh, entry.CacheReadPriceHigh, entry.CacheWritePriceHigh,
 		entry.HighPriceThreshold,
-		entry.CacheReadMultiplier, entry.CacheWriteMultiplier,
-		preparePricingAliases(entry), boolToInt(entry.IsPredefined),
+		preparePricingAliases(entry), boolToInt(entry.IsDefault),
 		entry.UpdatedAt, entry.ID,
 	)
 	if err != nil {
@@ -187,35 +187,37 @@ func (s *SQLStore) BatchCreateModelPricing(ctx context.Context, entries []*model
 		if s.driverName == "mysql" {
 			query = `
 				INSERT INTO model_pricing (model, display_name, channel_type,
-				    input_price, output_price, input_price_high, output_price_high,
+				    input_price, output_price, cache_read_price, cache_write_price,
+				    input_price_high, output_price_high, cache_read_price_high, cache_write_price_high,
 				    high_price_threshold,
-				    cache_read_multiplier, cache_write_multiplier,
-				    aliases, is_predefined,
+				    aliases, is_default,
 				    created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 				ON DUPLICATE KEY UPDATE
 				    display_name = VALUES(display_name),
 				    channel_type = VALUES(channel_type),
 				    input_price = VALUES(input_price),
 				    output_price = VALUES(output_price),
+				    cache_read_price = VALUES(cache_read_price),
+				    cache_write_price = VALUES(cache_write_price),
 				    input_price_high = VALUES(input_price_high),
 				    output_price_high = VALUES(output_price_high),
+				    cache_read_price_high = VALUES(cache_read_price_high),
+				    cache_write_price_high = VALUES(cache_write_price_high),
 				    high_price_threshold = VALUES(high_price_threshold),
-				    cache_read_multiplier = VALUES(cache_read_multiplier),
-				    cache_write_multiplier = VALUES(cache_write_multiplier),
 				    aliases = VALUES(aliases),
-				    is_predefined = VALUES(is_predefined),
+				    is_default = VALUES(is_default),
 				    updated_at = VALUES(updated_at)
 			`
 		} else {
 			query = `
 				INSERT OR REPLACE INTO model_pricing (model, display_name, channel_type,
-				    input_price, output_price, input_price_high, output_price_high,
+				    input_price, output_price, cache_read_price, cache_write_price,
+				    input_price_high, output_price_high, cache_read_price_high, cache_write_price_high,
 				    high_price_threshold,
-				    cache_read_multiplier, cache_write_multiplier,
-				    aliases, is_predefined,
+				    aliases, is_default,
 				    created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			`
 		}
 
@@ -230,10 +232,10 @@ func (s *SQLStore) BatchCreateModelPricing(ctx context.Context, entries []*model
 			e.UpdatedAt = now
 			_, err := stmt.ExecContext(ctx,
 				e.Model, e.DisplayName, e.ChannelType,
-				e.InputPrice, e.OutputPrice, e.InputPriceHigh, e.OutputPriceHigh,
+				e.InputPrice, e.OutputPrice, e.CacheReadPrice, e.CacheWritePrice,
+				e.InputPriceHigh, e.OutputPriceHigh, e.CacheReadPriceHigh, e.CacheWritePriceHigh,
 				e.HighPriceThreshold,
-				e.CacheReadMultiplier, e.CacheWriteMultiplier,
-				preparePricingAliases(e), boolToInt(e.IsPredefined),
+				preparePricingAliases(e), boolToInt(e.IsDefault),
 				e.CreatedAt, e.UpdatedAt,
 			)
 			if err != nil {

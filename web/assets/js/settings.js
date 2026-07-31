@@ -308,7 +308,7 @@ let pricingData = []; // 完整数据（用于前端筛选）
 
 const channelTypeLabels = {
   'anthropic': 'Claude',
-  'openai': 'OpenAI',
+  'codex': 'Codex / OpenAI',
   'gemini': 'Gemini'
 };
 
@@ -363,8 +363,8 @@ function renderPricing() {
       ? aliasesList.slice(0, 3).join(', ') + (aliasesList.length > 3 ? ` +${aliasesList.length - 3}` : '')
       : '<span style="color:var(--neutral-400);">-</span>';
 
-    const predefinedBadge = e.is_predefined
-      ? '<span style="font-size:10px;padding:1px 5px;border-radius:3px;background:var(--success-100,#dcfce7);color:var(--success-700,#15803d);font-weight:normal;">预定义</span>'
+    const defaultBadge = e.is_default
+      ? '<span style="font-size:10px;padding:1px 5px;border-radius:3px;background:var(--success-100,#dcfce7);color:var(--success-700,#15803d);font-weight:normal;">默认</span>'
       : '';
 
     const row = TemplateEngine.render('tpl-pricing-row', {
@@ -380,7 +380,7 @@ function renderPricing() {
       high_price_threshold_display: formatTokenThreshold(e.high_price_threshold),
       aliases_display: aliasesDisplay,
       aliases_full: aliasesFull,
-      predefined_badge: predefinedBadge
+      default_badge: defaultBadge
     });
     if (row) tbody.appendChild(row);
   });
@@ -394,7 +394,8 @@ function formatPrice(val) {
 }
 
 function formatTokenThreshold(val) {
-  const threshold = Number(val) || 272000;
+  const threshold = Number(val) || 0;
+  if (threshold <= 0) return '—';
   return threshold % 1000 === 0 ? `${threshold / 1000}K` : threshold.toLocaleString();
 }
 
@@ -442,18 +443,20 @@ function openPricingDrawer(entry) {
   document.getElementById('pricingChannelType').value = isEdit ? entry.channel_type : 'anthropic';
   document.getElementById('pricingInputPrice').value = isEdit ? entry.input_price : '';
   document.getElementById('pricingOutputPrice').value = isEdit ? entry.output_price : '';
+  document.getElementById('pricingCacheReadPrice').value = isEdit ? entry.cache_read_price : 0;
+  document.getElementById('pricingCacheWritePrice').value = isEdit ? entry.cache_write_price : 0;
   document.getElementById('pricingInputPriceHigh').value = isEdit ? entry.input_price_high : 0;
   document.getElementById('pricingOutputPriceHigh').value = isEdit ? entry.output_price_high : 0;
+  document.getElementById('pricingCacheReadPriceHigh').value = isEdit ? entry.cache_read_price_high : 0;
+  document.getElementById('pricingCacheWritePriceHigh').value = isEdit ? entry.cache_write_price_high : 0;
   document.getElementById('pricingHighPriceThreshold').value = isEdit ? (entry.high_price_threshold || 272000) : 272000;
-  document.getElementById('pricingCacheReadMul').value = isEdit ? entry.cache_read_multiplier : 0;
-  document.getElementById('pricingCacheWriteMul').value = isEdit ? entry.cache_write_multiplier : 0;
 
   // 别名（数组 → 换行分隔文本）
   const aliases = isEdit ? (entry.aliases || []) : [];
   document.getElementById('pricingAliases').value = aliases.join('\n');
 
-  // 预定义列表开关
-  document.getElementById('pricingIsPredefined').checked = isEdit ? !!entry.is_predefined : false;
+  // 渠道默认列表开关
+  document.getElementById('pricingIsDefault').checked = isEdit ? !!entry.is_default : false;
 
   document.getElementById('pricingDrawerOverlay').classList.add('show');
   document.getElementById('pricingDrawer').classList.add('open');
@@ -474,13 +477,15 @@ async function savePricingEntry() {
     channel_type: document.getElementById('pricingChannelType').value,
     input_price: parseFloat(document.getElementById('pricingInputPrice').value) || 0,
     output_price: parseFloat(document.getElementById('pricingOutputPrice').value) || 0,
+    cache_read_price: parseFloat(document.getElementById('pricingCacheReadPrice').value) || 0,
+    cache_write_price: parseFloat(document.getElementById('pricingCacheWritePrice').value) || 0,
     input_price_high: parseFloat(document.getElementById('pricingInputPriceHigh').value) || 0,
     output_price_high: parseFloat(document.getElementById('pricingOutputPriceHigh').value) || 0,
+    cache_read_price_high: parseFloat(document.getElementById('pricingCacheReadPriceHigh').value) || 0,
+    cache_write_price_high: parseFloat(document.getElementById('pricingCacheWritePriceHigh').value) || 0,
     high_price_threshold: parseInt(document.getElementById('pricingHighPriceThreshold').value, 10) || 272000,
-    cache_read_multiplier: parseFloat(document.getElementById('pricingCacheReadMul').value) || 0,
-    cache_write_multiplier: parseFloat(document.getElementById('pricingCacheWriteMul').value) || 0,
     aliases: document.getElementById('pricingAliases').value.split('\n').map(s => s.trim()).filter(Boolean),
-    is_predefined: document.getElementById('pricingIsPredefined').checked,
+    is_default: document.getElementById('pricingIsDefault').checked,
   };
 
   if (!payload.model) {
@@ -537,6 +542,340 @@ async function importDefaultPricing() {
     console.error('导入默认定价异常:', err);
     showError('导入失败: ' + err.message);
   }
+}
+
+// ============================================================================
+// models.dev 定价选择器
+// ============================================================================
+const MODELS_DEV_MAX_SELECTION = 500;
+const MODELS_DEV_MAX_VISIBLE_ROWS = 300;
+let modelsDevPricingData = [];
+let modelsDevFilteredEntries = [];
+let modelsDevSelectedKeys = new Set();
+let modelsDevChannelAssignments = new Map();
+let modelsDevFetchedAt = 0;
+let modelsDevPricingLoading = false;
+
+function initModelsDevPricingEvents() {
+  const modal = document.getElementById('modelsDevPricingModal');
+  if (!modal || modal.dataset.bound) return;
+  modal.dataset.bound = 'true';
+
+  document.getElementById('modelsDevSearch')?.addEventListener('input', renderModelsDevPricingCatalog);
+  document.getElementById('modelsDevProviderFilter')?.addEventListener('change', renderModelsDevPricingCatalog);
+  document.getElementById('modelsDevPricingRows')?.addEventListener('change', (event) => {
+    const channelSelect = event.target.closest('.models-dev-channel-select');
+    if (channelSelect) {
+      const assignmentKey = decodeURIComponent(channelSelect.dataset.assignmentKey || '');
+      if (!assignmentKey) return;
+      if (channelSelect.value) {
+        modelsDevChannelAssignments.set(assignmentKey, channelSelect.value);
+      } else {
+        modelsDevChannelAssignments.delete(assignmentKey);
+      }
+      renderModelsDevPricingCatalog();
+      return;
+    }
+    const checkbox = event.target.closest('.models-dev-checkbox');
+    if (!checkbox) return;
+    const key = decodeURIComponent(checkbox.dataset.key || '');
+    if (!key) return;
+    if (checkbox.checked) {
+      if (modelsDevSelectedKeys.size >= MODELS_DEV_MAX_SELECTION) {
+        checkbox.checked = false;
+        showError(`单次最多选择 ${MODELS_DEV_MAX_SELECTION} 个模型`);
+        return;
+      }
+      modelsDevSelectedKeys.add(key);
+    } else {
+      modelsDevSelectedKeys.delete(key);
+    }
+    renderModelsDevPricingCatalog();
+  });
+  modal.addEventListener('click', (event) => {
+    if (event.target === modal && !modelsDevPricingLoading) closeModelsDevPricingModal();
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && modal.classList.contains('show') && !modelsDevPricingLoading) {
+      closeModelsDevPricingModal();
+    }
+  });
+}
+
+async function openModelsDevPricingModal() {
+  const modal = document.getElementById('modelsDevPricingModal');
+  if (!modal) return;
+  initModelsDevPricingEvents();
+  modelsDevSelectedKeys = new Set();
+  modelsDevChannelAssignments = new Map();
+  document.getElementById('modelsDevSearch').value = '';
+  document.getElementById('modelsDevProviderFilter').value = '';
+  modal.classList.add('show');
+  await loadModelsDevPricingCatalog(false);
+}
+
+function closeModelsDevPricingModal() {
+  if (modelsDevPricingLoading) return;
+  document.getElementById('modelsDevPricingModal')?.classList.remove('show');
+}
+
+async function refreshModelsDevPricing() {
+  await loadModelsDevPricingCatalog(true);
+}
+
+async function loadModelsDevPricingCatalog(forceRefresh) {
+  if (modelsDevPricingLoading) return;
+  const rows = document.getElementById('modelsDevPricingRows');
+  const refreshBtn = document.getElementById('modelsDevRefreshBtn');
+  modelsDevPricingLoading = true;
+  if (refreshBtn) {
+    refreshBtn.disabled = true;
+    refreshBtn.textContent = '加载中…';
+  }
+  if (rows) rows.innerHTML = '<div class="models-dev-state">正在加载 models.dev 定价目录…</div>';
+
+  try {
+    const suffix = forceRefresh ? '?refresh=1' : '';
+    const resp = await fetchDataWithAuth(`/admin/pricing/models-dev${suffix}`);
+    modelsDevPricingData = Array.isArray(resp.entries) ? resp.entries : [];
+    const availableKeys = new Set(modelsDevPricingData.map(entry => entry.key));
+    const availableAssignments = new Set(modelsDevPricingData.map(entry => entry.assignment_key));
+    modelsDevSelectedKeys = new Set(Array.from(modelsDevSelectedKeys).filter(key => availableKeys.has(key)));
+    modelsDevChannelAssignments = new Map(Array.from(modelsDevChannelAssignments).filter(([key]) => availableAssignments.has(key)));
+    modelsDevFetchedAt = Number(resp.fetched_at) || Date.now();
+    populateModelsDevProviders();
+    renderModelsDevPricingCatalog();
+  } catch (err) {
+    console.error('加载 models.dev 定价异常:', err);
+    if (rows) {
+      rows.innerHTML = `
+        <div class="models-dev-state">
+          <div>
+            <div style="color:var(--danger-500);margin-bottom:10px;">加载失败：${escapeHtml(err.message || String(err))}</div>
+            <button class="btn btn-secondary" onclick="refreshModelsDevPricing()">重试</button>
+          </div>
+        </div>`;
+    }
+    updateModelsDevSelectionSummary();
+  } finally {
+    modelsDevPricingLoading = false;
+    if (refreshBtn) {
+      refreshBtn.disabled = false;
+      refreshBtn.textContent = '刷新目录';
+    }
+    updateModelsDevSelectionSummary();
+  }
+}
+
+function populateModelsDevProviders() {
+  const select = document.getElementById('modelsDevProviderFilter');
+  if (!select) return;
+  const selected = select.value;
+  const providers = new Map();
+  modelsDevPricingData.forEach(entry => {
+    if (!providers.has(entry.provider_id)) providers.set(entry.provider_id, entry.provider_name || entry.provider_id);
+  });
+  const options = Array.from(providers.entries()).sort((a, b) => a[1].localeCompare(b[1]));
+  select.innerHTML = '<option value="">全部供应商</option>' + options.map(([id, name]) =>
+    `<option value="${escapeHtml(id)}">${escapeHtml(name)} (${escapeHtml(id)})</option>`
+  ).join('');
+  if (providers.has(selected)) select.value = selected;
+}
+
+function renderModelsDevPricingCatalog() {
+  const rows = document.getElementById('modelsDevPricingRows');
+  if (!rows) return;
+  const query = (document.getElementById('modelsDevSearch')?.value || '').trim().toLowerCase();
+  const provider = document.getElementById('modelsDevProviderFilter')?.value || '';
+
+  modelsDevFilteredEntries = modelsDevPricingData.filter(entry => {
+    if (provider && entry.provider_id !== provider) return false;
+    if (!query) return true;
+    return [entry.model_id, entry.normalized_model_id, entry.display_name, entry.provider_name, entry.provider_id, entry.lab_id, entry.lab_name]
+      .some(value => String(value || '').toLowerCase().includes(query));
+  });
+
+  if (modelsDevFilteredEntries.length === 0) {
+    rows.innerHTML = '<div class="models-dev-state">没有匹配的可导入文本模型</div>';
+    updateModelsDevSelectionSummary();
+    return;
+  }
+
+  const visible = modelsDevFilteredEntries.slice(0, MODELS_DEV_MAX_VISIBLE_ROWS);
+  rows.innerHTML = visible.map(entry => {
+    const selected = modelsDevSelectedKeys.has(entry.key);
+    const encodedKey = encodeURIComponent(entry.key);
+    const existsBadge = entry.exists ? '<span class="models-dev-badge exists">已有</span>' : '';
+    const tierBadge = entry.high_price_threshold > 0
+      ? `<span class="models-dev-badge tier" title="${escapeHtml(formatModelsDevTierTitle(entry))}">分段价</span>`
+      : '';
+    const release = entry.release_date ? ` · ${escapeHtml(entry.release_date)}` : '';
+    const labName = entry.lab_name || entry.lab_id || '未识别 Lab';
+    const providerName = entry.provider_name || entry.provider_id;
+    const assignedChannelType = getModelsDevEntryChannelType(entry);
+    let channelControl;
+    if (entry.exists && entry.needs_channel_type) {
+      channelControl = '<span class="models-dev-provider-type">已有模型 · 保留原归类</span>';
+    } else if (!entry.needs_channel_type) {
+      channelControl = `<span class="models-dev-provider-type models-dev-auto-type">自动：${escapeHtml(channelTypeLabels[assignedChannelType] || assignedChannelType)}</span>`;
+    } else {
+      const encodedAssignmentKey = encodeURIComponent(entry.assignment_key || '');
+      channelControl = `
+        <select class="models-dev-channel-select" data-assignment-key="${encodedAssignmentKey}" aria-label="为 ${escapeHtml(labName)} 选择渠道类型">
+          <option value="" ${assignedChannelType ? '' : 'selected'}>请选择归类</option>
+          <option value="anthropic" ${assignedChannelType === 'anthropic' ? 'selected' : ''}>Claude</option>
+          <option value="codex" ${assignedChannelType === 'codex' ? 'selected' : ''}>Codex / OpenAI</option>
+          <option value="gemini" ${assignedChannelType === 'gemini' ? 'selected' : ''}>Gemini</option>
+        </select>`;
+    }
+    return `
+      <div class="models-dev-grid models-dev-row${selected ? ' is-selected' : ''}">
+        <div class="models-dev-model-cell">
+          <input type="checkbox" class="models-dev-checkbox" data-key="${encodedKey}" ${selected ? 'checked' : ''}>
+          <div style="min-width:0;">
+            <div class="models-dev-model-name" title="${escapeHtml(entry.display_name || entry.model_id)}">
+              ${escapeHtml(entry.display_name || entry.model_id)}${existsBadge}${tierBadge}
+            </div>
+            <div class="models-dev-model-id" title="${escapeHtml(entry.model_id)}">${escapeHtml(entry.model_id)}</div>
+          </div>
+        </div>
+        <div class="models-dev-provider">
+          <div class="models-dev-lab-name" title="${escapeHtml(labName)}">${escapeHtml(labName)}</div>
+          <div class="models-dev-provider-name" title="${escapeHtml(providerName)}">${escapeHtml(providerName)}${release}</div>
+          ${channelControl}
+        </div>
+        <div class="models-dev-price">$${formatModelsDevPrice(entry.input_price)}</div>
+        <div class="models-dev-price">$${formatModelsDevPrice(entry.output_price)}</div>
+        <div class="models-dev-price">${formatModelsDevOptionalPrice(entry.cache_read_price)}</div>
+        <div class="models-dev-price">${formatModelsDevOptionalPrice(entry.cache_write_price)}</div>
+      </div>`;
+  }).join('') + (modelsDevFilteredEntries.length > visible.length
+    ? `<div class="models-dev-state" style="min-height:auto;padding:12px;">已显示前 ${visible.length} 条，请继续缩小搜索或供应商范围（共 ${modelsDevFilteredEntries.length} 条）</div>`
+    : '');
+  updateModelsDevSelectionSummary();
+}
+
+function updateModelsDevSelectionSummary() {
+  const selected = modelsDevSelectedKeys.size;
+  const unresolved = getUnresolvedModelsDevEntries();
+  const summary = document.getElementById('modelsDevSelectionSummary');
+  const fetched = document.getElementById('modelsDevFetchSummary');
+  const importBtn = document.getElementById('modelsDevImportBtn');
+  const selectVisibleBtn = document.getElementById('modelsDevSelectVisibleBtn');
+  if (summary) {
+    summary.textContent = `已选择 ${selected} 个模型 · 当前筛选 ${modelsDevFilteredEntries.length} 条${unresolved.length ? ` · ${unresolved.length} 个待归类` : ''}`;
+  }
+  if (fetched) {
+    fetched.textContent = modelsDevFetchedAt
+      ? `目录更新：${new Date(modelsDevFetchedAt).toLocaleString()}`
+      : '';
+  }
+  if (importBtn) importBtn.disabled = selected === 0 || unresolved.length > 0 || modelsDevPricingLoading;
+  if (selectVisibleBtn) {
+    selectVisibleBtn.disabled = modelsDevFilteredEntries.length === 0;
+    selectVisibleBtn.textContent = `选择筛选结果 (${Math.min(modelsDevFilteredEntries.length, MODELS_DEV_MAX_SELECTION)})`;
+  }
+}
+
+function selectVisibleModelsDevPricing() {
+  for (const entry of modelsDevFilteredEntries) {
+    if (modelsDevSelectedKeys.size >= MODELS_DEV_MAX_SELECTION) break;
+    modelsDevSelectedKeys.add(entry.key);
+  }
+  if (modelsDevFilteredEntries.length > MODELS_DEV_MAX_SELECTION) {
+    showInfo(`单次最多选择 ${MODELS_DEV_MAX_SELECTION} 个模型，已选取当前结果的前 ${MODELS_DEV_MAX_SELECTION} 个`);
+  }
+  renderModelsDevPricingCatalog();
+}
+
+function clearModelsDevPricingSelection() {
+  modelsDevSelectedKeys.clear();
+  modelsDevChannelAssignments.clear();
+  renderModelsDevPricingCatalog();
+}
+
+async function importSelectedModelsDevPricing() {
+  if (modelsDevSelectedKeys.size === 0 || modelsDevPricingLoading) return;
+  const unresolved = getUnresolvedModelsDevEntries();
+  if (unresolved.length > 0) {
+    showError(`还有 ${unresolved.length} 个所选模型未归类，请先选择 Claude、Codex 或 Gemini`);
+    return;
+  }
+  const overwrite = !!document.getElementById('modelsDevOverwrite')?.checked;
+  const selectedEntries = modelsDevPricingData.filter(entry => modelsDevSelectedKeys.has(entry.key));
+  const existingCount = selectedEntries.filter(entry => entry.exists).length;
+  const message = overwrite && existingCount > 0
+    ? `将同步 ${modelsDevSelectedKeys.size} 个模型，其中 ${existingCount} 个已有模型的价格会被更新。人工设置的渠道类型、别名和默认列表状态会保留。`
+    : `将同步 ${modelsDevSelectedKeys.size} 个模型。${overwrite ? '' : '已有模型会被跳过。'}`;
+  if (!await showConfirm({
+    title: '同步 models.dev 定价',
+    message,
+    type: overwrite && existingCount > 0 ? 'warning' : 'info'
+  })) return;
+
+  const importBtn = document.getElementById('modelsDevImportBtn');
+  modelsDevPricingLoading = true;
+  if (importBtn) {
+    importBtn.disabled = true;
+    importBtn.textContent = '同步中…';
+  }
+  try {
+    const resp = await fetchDataWithAuth('/admin/pricing/models-dev/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        keys: Array.from(modelsDevSelectedKeys),
+        overwrite,
+        channel_types: Object.fromEntries(modelsDevChannelAssignments)
+      })
+    });
+    showSuccess(resp.message || 'models.dev 定价同步完成');
+    modelsDevPricingLoading = false;
+    closeModelsDevPricingModal();
+    await loadPricing();
+  } catch (err) {
+    console.error('同步 models.dev 定价异常:', err);
+    showError('同步失败: ' + err.message);
+  } finally {
+    modelsDevPricingLoading = false;
+    if (importBtn) {
+      importBtn.textContent = '同步所选模型';
+    }
+    updateModelsDevSelectionSummary();
+  }
+}
+
+function getModelsDevEntryChannelType(entry) {
+  return entry.channel_type || modelsDevChannelAssignments.get(entry.assignment_key) || '';
+}
+
+function getUnresolvedModelsDevEntries() {
+  return modelsDevPricingData.filter(entry =>
+    modelsDevSelectedKeys.has(entry.key) &&
+    entry.needs_channel_type &&
+    !entry.exists &&
+    !getModelsDevEntryChannelType(entry)
+  );
+}
+
+function formatModelsDevPrice(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number < 0) return '0';
+  if (number === 0) return '0';
+  return number.toFixed(6).replace(/0+$/, '').replace(/\.$/, '');
+}
+
+function formatModelsDevOptionalPrice(value) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0
+    ? `$${formatModelsDevPrice(number)}`
+    : '<span style="color:var(--neutral-400);">—</span>';
+}
+
+function formatModelsDevTierTitle(entry) {
+  const cacheRead = Number(entry.cache_read_price_high) > 0 ? `，缓存读 $${formatModelsDevPrice(entry.cache_read_price_high)}` : '';
+  const cacheWrite = Number(entry.cache_write_price_high) > 0 ? `，缓存写 $${formatModelsDevPrice(entry.cache_write_price_high)}` : '';
+  return `输入超过 ${Number(entry.high_price_threshold).toLocaleString()} tokens 后：输入 $${formatModelsDevPrice(entry.input_price_high)}，输出 $${formatModelsDevPrice(entry.output_price_high)}${cacheRead}${cacheWrite}`;
 }
 
 // ============================================================================

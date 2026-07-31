@@ -12,28 +12,34 @@ import (
 
 // ModelPricing AI模型定价（单位：美元/百万tokens）
 type ModelPricing struct {
-	InputPrice  float64 // 基础输入token价格（$/1M tokens）
-	OutputPrice float64 // 输出token价格（$/1M tokens）
+	InputPrice      float64 // 基础输入token价格（$/1M tokens）
+	OutputPrice     float64 // 输出token价格（$/1M tokens）
+	CacheReadPrice  float64 // 基础缓存读取价格（$/1M tokens）
+	CacheWritePrice float64 // 基础缓存写入价格（$/1M tokens）
 
 	// 长上下文分段定价
 	// 如果为0，表示无分段定价，使用InputPrice/OutputPrice
-	InputPriceHigh     float64 // 高上下文输入价格（$/1M tokens）
-	OutputPriceHigh    float64 // 高上下文输出价格（$/1M tokens）
-	HighPriceThreshold int64   // 切换到高价档的输入token阈值
+	InputPriceHigh      float64 // 高上下文输入价格（$/1M tokens）
+	OutputPriceHigh     float64 // 高上下文输出价格（$/1M tokens）
+	CacheReadPriceHigh  float64 // 高上下文缓存读取价格（$/1M tokens）
+	CacheWritePriceHigh float64 // 高上下文缓存写入价格（$/1M tokens）
+	HighPriceThreshold  int64   // 切换到高价档的输入token阈值
 }
 
 // DBPricingEntry DB 定价缓存条目（轻量结构，不依赖 model 包）
 type DBPricingEntry struct {
-	Model                string  // 基础模型名
-	DisplayName          string  // 前端显示名
-	ChannelType          string  // anthropic/openai/gemini
-	InputPrice           float64 // $/1M tokens
-	OutputPrice          float64 // $/1M tokens
-	InputPriceHigh       float64 // 长上下文输入价
-	OutputPriceHigh      float64 // 长上下文输出价
-	HighPriceThreshold   int64   // 高价档输入Token阈值
-	CacheReadMultiplier  float64 // 0=使用系统默认
-	CacheWriteMultiplier float64 // 0=使用系统默认
+	Model               string  // 基础模型名
+	DisplayName         string  // 前端显示名
+	ChannelType         string  // anthropic/codex/gemini
+	InputPrice          float64 // $/1M tokens
+	OutputPrice         float64 // $/1M tokens
+	CacheReadPrice      float64 // 缓存读取 $/1M tokens
+	CacheWritePrice     float64 // 缓存写入 $/1M tokens
+	InputPriceHigh      float64 // 长上下文输入价
+	OutputPriceHigh     float64 // 长上下文输出价
+	CacheReadPriceHigh  float64 // 长上下文缓存读取价
+	CacheWritePriceHigh float64 // 长上下文缓存写入价
+	HighPriceThreshold  int64   // 高价档输入Token阈值
 }
 
 // dbPricingCache DB 定价内存缓存（sync.Map，并发安全，O(1) 查询）
@@ -61,16 +67,25 @@ func ClearDBPricing() {
 	})
 }
 
-// dbPredefinedModels DB 预定义模型列表缓存
+// dbDefaultModels DB 默认模型列表缓存
 // key: channelType (string), value: []string
-var dbPredefinedModels sync.Map
+var dbDefaultModels sync.Map
 
 // dbAliasesCache DB 别名缓存（alias → base model）
 var dbAliasesCache sync.Map
 
-// SetDBPredefinedModels 设置某渠道类型的预定义模型列表
-func SetDBPredefinedModels(channelType string, models []string) {
-	dbPredefinedModels.Store(channelType, models)
+// SetDBDefaultModels 设置某渠道类型的默认模型列表。
+func SetDBDefaultModels(channelType string, models []string) {
+	copyOfModels := append([]string(nil), models...)
+	dbDefaultModels.Store(NormalizeChannelType(channelType), copyOfModels)
+}
+
+// ClearDBDefaultModels 清除数据库默认列表缓存。
+func ClearDBDefaultModels() {
+	dbDefaultModels.Range(func(key, value any) bool {
+		dbDefaultModels.Delete(key)
+		return true
+	})
 }
 
 // SetDBAliases 批量加载 DB 别名到内存缓存
@@ -90,17 +105,23 @@ func GetDefaultPricing() []DBPricingEntry {
 	for model, p := range basePricing {
 		channelType := classifyModelChannelType(model)
 		threshold := p.HighPriceThreshold
-		if threshold <= 0 {
+		if p.InputPriceHigh > 0 && threshold <= 0 {
 			threshold = DefaultHighPriceThresholdForChannel(channelType)
+		} else if p.InputPriceHigh <= 0 {
+			threshold = 0
 		}
 		entries = append(entries, DBPricingEntry{
-			Model:              model,
-			ChannelType:        channelType,
-			InputPrice:         p.InputPrice,
-			OutputPrice:        p.OutputPrice,
-			InputPriceHigh:     p.InputPriceHigh,
-			OutputPriceHigh:    p.OutputPriceHigh,
-			HighPriceThreshold: threshold,
+			Model:               model,
+			ChannelType:         channelType,
+			InputPrice:          p.InputPrice,
+			OutputPrice:         p.OutputPrice,
+			CacheReadPrice:      p.CacheReadPrice,
+			CacheWritePrice:     p.CacheWritePrice,
+			InputPriceHigh:      p.InputPriceHigh,
+			OutputPriceHigh:     p.OutputPriceHigh,
+			CacheReadPriceHigh:  p.CacheReadPriceHigh,
+			CacheWritePriceHigh: p.CacheWritePriceHigh,
+			HighPriceThreshold:  threshold,
 		})
 	}
 	return entries
@@ -130,7 +151,7 @@ func classifyModelChannelType(model string) string {
 	if strings.HasPrefix(lower, "gemini-") {
 		return "gemini"
 	}
-	return "openai"
+	return ChannelTypeCodex
 }
 
 // GetModelAliasesReverse 反向别名映射（base model → alias 列表）
@@ -144,93 +165,124 @@ func GetModelAliasesReverse() map[string][]string {
 
 // basePricing 基础定价表（无重复，每个模型只定义一次）
 // 数据来源：
-// - Claude: https://docs.claude.com/en/docs/about-claude/pricing
-// - OpenAI: https://openai.com/api/pricing/
-// - Gemini: https://ai.google.dev/gemini-api/docs/pricing
+// - models.dev: https://models.dev/api.json
+// 价格单位统一为美元/百万 tokens；缓存价格也是绝对价格，不再使用倍率。
+// 最近同步：2026-07-31（仅保留 Anthropic、OpenAI、Google 的常用文本模型）。
+func modelPricing(input, output, cacheRead, cacheWrite float64) ModelPricing {
+	return ModelPricing{
+		InputPrice: input, OutputPrice: output,
+		CacheReadPrice: cacheRead, CacheWritePrice: cacheWrite,
+	}
+}
+
+func tieredModelPricing(input, output, cacheRead, cacheWrite, highInput, highOutput, highCacheRead, highCacheWrite float64, threshold int64) ModelPricing {
+	return ModelPricing{
+		InputPrice: input, OutputPrice: output,
+		CacheReadPrice: cacheRead, CacheWritePrice: cacheWrite,
+		InputPriceHigh: highInput, OutputPriceHigh: highOutput,
+		CacheReadPriceHigh: highCacheRead, CacheWritePriceHigh: highCacheWrite,
+		HighPriceThreshold: threshold,
+	}
+}
+
 var basePricing = map[string]ModelPricing{
 	// ========== Claude 模型 ==========
-	"claude-opus-4-8":   {InputPrice: 5.00, OutputPrice: 25.00},
-	"claude-opus-4-6":   {InputPrice: 5.00, OutputPrice: 25.00},
-	"claude-sonnet-4-6": {InputPrice: 3.00, OutputPrice: 15.00},
-	"claude-sonnet-4-5": {InputPrice: 3.00, OutputPrice: 15.00},
-	"claude-haiku-4-5":  {InputPrice: 1.00, OutputPrice: 5.00},
-	"claude-opus-4-1":   {InputPrice: 15.00, OutputPrice: 75.00},
-	"claude-sonnet-4-0": {InputPrice: 3.00, OutputPrice: 15.00},
-	"claude-opus-4-0":   {InputPrice: 15.00, OutputPrice: 75.00},
-	"claude-opus-4-5":   {InputPrice: 5.00, OutputPrice: 25.00},
-	"claude-3-7-sonnet": {InputPrice: 3.00, OutputPrice: 15.00},
-	"claude-3-5-sonnet": {InputPrice: 3.00, OutputPrice: 15.00},
-	"claude-3-5-haiku":  {InputPrice: 0.80, OutputPrice: 4.00},
-	"claude-3-opus":     {InputPrice: 15.00, OutputPrice: 75.00},
-	"claude-3-sonnet":   {InputPrice: 3.00, OutputPrice: 15.00},
-	"claude-3-haiku":    {InputPrice: 0.25, OutputPrice: 1.25},
+	"claude-opus-5":     modelPricing(5.00, 25.00, 0.50, 6.25),
+	"claude-sonnet-5":   modelPricing(2.00, 10.00, 0.20, 2.50),
+	"claude-fable-5":    modelPricing(10.00, 50.00, 1.00, 12.50),
+	"claude-opus-4-8":   modelPricing(5.00, 25.00, 0.50, 6.25),
+	"claude-opus-4-7":   modelPricing(5.00, 25.00, 0.50, 6.25),
+	"claude-opus-4-6":   modelPricing(5.00, 25.00, 0.50, 6.25),
+	"claude-sonnet-4-6": modelPricing(3.00, 15.00, 0.30, 3.75),
+	"claude-opus-4-5":   modelPricing(5.00, 25.00, 0.50, 6.25),
+	"claude-sonnet-4-5": modelPricing(3.00, 15.00, 0.30, 3.75),
+	"claude-haiku-4-5":  modelPricing(1.00, 5.00, 0.10, 1.25),
+	"claude-opus-4-1":   modelPricing(15.00, 75.00, 1.50, 18.75),
+	"claude-sonnet-4-0": modelPricing(3.00, 15.00, 0.30, 3.75),
+	"claude-opus-4-0":   modelPricing(15.00, 75.00, 1.50, 18.75),
+	"claude-3-7-sonnet": modelPricing(3.00, 15.00, 0.30, 3.75),
+	"claude-3-5-sonnet": modelPricing(3.00, 15.00, 0.30, 3.75),
+	"claude-3-5-haiku":  modelPricing(0.80, 4.00, 0.08, 1.00),
+	"claude-3-opus":     modelPricing(15.00, 75.00, 1.50, 18.75),
+	"claude-3-sonnet":   modelPricing(3.00, 15.00, 0.30, 3.75),
+	"claude-3-haiku":    modelPricing(0.25, 1.25, 0.025, 0.3125),
 	// 通用兜底（未来新版本）
-	"claude-opus":   {InputPrice: 5.00, OutputPrice: 25.00},
-	"claude-sonnet": {InputPrice: 3.00, OutputPrice: 15.00},
-	"claude-haiku":  {InputPrice: 1.00, OutputPrice: 5.00},
+	"claude-opus":   modelPricing(5.00, 25.00, 0.50, 6.25),
+	"claude-sonnet": modelPricing(3.00, 15.00, 0.30, 3.75),
+	"claude-haiku":  modelPricing(1.00, 5.00, 0.10, 1.25),
 
 	// ========== OpenAI GPT系列 ==========
-	"gpt-5.2":            {InputPrice: 1.75, OutputPrice: 14.00},
-	"gpt-5.3-codex":      {InputPrice: 1.75, OutputPrice: 14.00},
-	"gpt-5.2-pro":        {InputPrice: 21.00, OutputPrice: 168.00},
-	"gpt-5":              {InputPrice: 1.25, OutputPrice: 10.00},
-	"gpt-5-mini":         {InputPrice: 0.25, OutputPrice: 2.00},
-	"gpt-5-nano":         {InputPrice: 0.05, OutputPrice: 0.40},
-	"gpt-5-pro":          {InputPrice: 15.00, OutputPrice: 120.00},
-	"gpt-5.1-codex-mini": {InputPrice: 0.25, OutputPrice: 2.00},
-	"gpt-4.1":            {InputPrice: 2.00, OutputPrice: 8.00},
-	"gpt-4.1-mini":       {InputPrice: 0.40, OutputPrice: 1.60},
-	"gpt-4.1-nano":       {InputPrice: 0.10, OutputPrice: 0.40},
-	"gpt-4o":             {InputPrice: 2.50, OutputPrice: 10.00},
-	"gpt-4o-legacy":      {InputPrice: 5.00, OutputPrice: 15.00}, // 2024-05-13等旧版
-	"gpt-4o-mini":        {InputPrice: 0.15, OutputPrice: 0.60},
-	"gpt-4-turbo":        {InputPrice: 10.00, OutputPrice: 30.00},
-	"gpt-4":              {InputPrice: 30.00, OutputPrice: 60.00},
-	"gpt-4-32k":          {InputPrice: 60.00, OutputPrice: 120.00},
-	"gpt-3.5-turbo":      {InputPrice: 0.50, OutputPrice: 1.50},
-	"gpt-3.5-legacy":     {InputPrice: 1.50, OutputPrice: 2.00}, // 旧版本
-	"gpt-3.5-16k":        {InputPrice: 3.00, OutputPrice: 4.00},
+	"gpt-5.6":             tieredModelPricing(5.00, 30.00, 0.50, 6.25, 10.00, 45.00, 1.00, 12.50, DefaultHighPriceThreshold),
+	"gpt-5.6-sol":         tieredModelPricing(5.00, 30.00, 0.50, 6.25, 10.00, 45.00, 1.00, 12.50, DefaultHighPriceThreshold),
+	"gpt-5.6-terra":       tieredModelPricing(2.00, 12.00, 0.20, 2.50, 4.00, 18.00, 0.40, 5.00, DefaultHighPriceThreshold),
+	"gpt-5.6-luna":        tieredModelPricing(0.20, 1.20, 0.02, 0.25, 0.40, 1.80, 0.04, 0.50, DefaultHighPriceThreshold),
+	"gpt-5.5":             tieredModelPricing(5.00, 30.00, 0.50, 0, 10.00, 45.00, 1.00, 0, DefaultHighPriceThreshold),
+	"gpt-5.5-pro":         tieredModelPricing(30.00, 180.00, 0, 0, 60.00, 270.00, 0, 0, DefaultHighPriceThreshold),
+	"gpt-5.4":             tieredModelPricing(2.50, 15.00, 0.25, 0, 5.00, 22.50, 0.50, 0, DefaultHighPriceThreshold),
+	"gpt-5.4-pro":         tieredModelPricing(30.00, 180.00, 0, 0, 60.00, 270.00, 0, 0, DefaultHighPriceThreshold),
+	"gpt-5.4-mini":        modelPricing(0.75, 4.50, 0.075, 0),
+	"gpt-5.4-nano":        modelPricing(0.20, 1.25, 0.02, 0),
+	"gpt-5.3-codex":       modelPricing(1.75, 14.00, 0.175, 0),
+	"gpt-5.3-codex-spark": modelPricing(1.75, 14.00, 0.175, 0),
+	"gpt-5.2":             modelPricing(1.75, 14.00, 0.175, 0),
+	"gpt-5.2-pro":         modelPricing(21.00, 168.00, 0, 0),
+	"gpt-5":               modelPricing(1.25, 10.00, 0.125, 0),
+	"gpt-5-mini":          modelPricing(0.25, 2.00, 0.025, 0),
+	"gpt-5-nano":          modelPricing(0.05, 0.40, 0.005, 0),
+	"gpt-5-pro":           modelPricing(15.00, 120.00, 0, 0),
+	"gpt-5.1-codex-mini":  modelPricing(0.25, 2.00, 0.025, 0),
+	"gpt-4.1":             modelPricing(2.00, 8.00, 0.50, 0),
+	"gpt-4.1-mini":        modelPricing(0.40, 1.60, 0.10, 0),
+	"gpt-4.1-nano":        modelPricing(0.10, 0.40, 0.025, 0),
+	"gpt-4o":              modelPricing(2.50, 10.00, 1.25, 0),
+	"gpt-4o-legacy":       modelPricing(5.00, 15.00, 2.50, 0), // 2024-05-13等旧版
+	"gpt-4o-mini":         modelPricing(0.15, 0.60, 0.075, 0),
+	"gpt-4-turbo":         modelPricing(10.00, 30.00, 0, 0),
+	"gpt-4":               modelPricing(30.00, 60.00, 0, 0),
+	"gpt-4-32k":           modelPricing(60.00, 120.00, 0, 0),
+	"gpt-3.5-turbo":       modelPricing(0.50, 1.50, 0, 0),
+	"gpt-3.5-legacy":      modelPricing(1.50, 2.00, 0, 0), // 旧版本
+	"gpt-3.5-16k":         modelPricing(3.00, 4.00, 0, 0),
 
 	// ========== OpenAI o系列 ==========
-	"o1":               {InputPrice: 15.00, OutputPrice: 60.00},
-	"o1-pro":           {InputPrice: 150.00, OutputPrice: 600.00},
-	"o1-mini":          {InputPrice: 1.10, OutputPrice: 4.40},
-	"o3":               {InputPrice: 2.00, OutputPrice: 8.00},
-	"o3-pro":           {InputPrice: 20.00, OutputPrice: 80.00},
-	"o3-mini":          {InputPrice: 1.10, OutputPrice: 4.40},
-	"o3-deep-research": {InputPrice: 10.00, OutputPrice: 40.00},
-	"o4-mini":          {InputPrice: 1.10, OutputPrice: 4.40},
+	"o1":               modelPricing(15.00, 60.00, 7.50, 0),
+	"o1-pro":           modelPricing(150.00, 600.00, 0, 0),
+	"o1-mini":          modelPricing(1.10, 4.40, 0.55, 0),
+	"o3":               modelPricing(2.00, 8.00, 0.50, 0),
+	"o3-pro":           modelPricing(20.00, 80.00, 0, 0),
+	"o3-mini":          modelPricing(1.10, 4.40, 0.55, 0),
+	"o3-deep-research": modelPricing(10.00, 40.00, 2.50, 0),
+	"o4-mini":          modelPricing(1.10, 4.40, 0.275, 0),
 
 	// ========== OpenAI 其他 ==========
-	"computer-use-preview": {InputPrice: 3.00, OutputPrice: 12.00},
-	"codex-mini-latest":    {InputPrice: 1.50, OutputPrice: 6.00},
-	"davinci-002":          {InputPrice: 2.00, OutputPrice: 2.00},
-	"babbage-002":          {InputPrice: 0.40, OutputPrice: 0.40},
+	"computer-use-preview": modelPricing(3.00, 12.00, 0, 0),
+	"codex-mini-latest":    modelPricing(1.50, 6.00, 0.375, 0),
+	"davinci-002":          modelPricing(2.00, 2.00, 0, 0),
+	"babbage-002":          modelPricing(0.40, 0.40, 0, 0),
 
 	// ========== Gemini 模型 ==========
-	"gemini-3-pro": {
-		InputPrice: 2.00, OutputPrice: 12.00,
-		InputPriceHigh: 4.00, OutputPriceHigh: 18.00,
-		HighPriceThreshold: GeminiHighPriceThreshold,
-	},
-	"gemini-3-flash": {InputPrice: 0.40, OutputPrice: 3.00}, // Gemini 3 Flash 系列
-	"gemini-2.5-pro": {
-		InputPrice: 1.25, OutputPrice: 10.00,
-		InputPriceHigh: 2.50, OutputPriceHigh: 15.00,
-		HighPriceThreshold: GeminiHighPriceThreshold,
-	},
-	"gemini-2.5-flash":      {InputPrice: 0.30, OutputPrice: 2.50},
-	"gemini-2.5-flash-lite": {InputPrice: 0.10, OutputPrice: 0.40},
-	"gemini-2.0-flash":      {InputPrice: 0.10, OutputPrice: 0.40},
-	"gemini-2.0-flash-lite": {InputPrice: 0.075, OutputPrice: 0.30},
-	"gemini-1.5-pro":        {InputPrice: 1.25, OutputPrice: 5.00},
-	"gemini-1.5-flash":      {InputPrice: 0.20, OutputPrice: 0.60},
+	"gemini-3.6-flash":      modelPricing(1.50, 7.50, 0.15, 0),
+	"gemini-3.5-flash":      modelPricing(1.50, 9.00, 0.15, 0),
+	"gemini-3.5-flash-lite": modelPricing(0.30, 2.50, 0.03, 0),
+	"gemini-3.1-pro":        tieredModelPricing(2.00, 12.00, 0.20, 0, 4.00, 18.00, 0.40, 0, GeminiHighPriceThreshold),
+	"gemini-3.1-flash-lite": modelPricing(0.25, 1.50, 0.025, 0),
+	"gemini-3-pro":          tieredModelPricing(2.00, 12.00, 0.20, 0, 4.00, 18.00, 0.40, 0, GeminiHighPriceThreshold),
+	"gemini-3-flash":        modelPricing(0.50, 3.00, 0.05, 0),
+	"gemini-2.5-pro":        tieredModelPricing(1.25, 10.00, 0.125, 0, 2.50, 15.00, 0.25, 0, GeminiHighPriceThreshold),
+	"gemini-2.5-flash":      modelPricing(0.30, 2.50, 0.03, 0),
+	"gemini-2.5-flash-lite": modelPricing(0.10, 0.40, 0.01, 0),
+	"gemini-2.0-flash":      modelPricing(0.10, 0.40, 0.01, 0),
+	"gemini-2.0-flash-lite": modelPricing(0.075, 0.30, 0.0075, 0),
+	"gemini-1.5-pro":        modelPricing(1.25, 5.00, 0.125, 0),
+	"gemini-1.5-flash":      modelPricing(0.20, 0.60, 0.02, 0),
 }
 
 // modelAliases 模型别名映射（多对一）
 // key: 别名, value: basePricing中的基础模型名
 var modelAliases = map[string]string{
 	// Claude别名
+	"claude-opus-5-latest":       "claude-opus-5",
+	"claude-sonnet-5-latest":     "claude-sonnet-5",
 	"claude-sonnet-4-5-20250929": "claude-sonnet-4-5",
 	"claude-haiku-4-5-20251001":  "claude-haiku-4-5",
 	"claude-opus-4-1-20250805":   "claude-opus-4-1",
@@ -284,8 +336,10 @@ var modelAliases = map[string]string{
 	"o4-mini-deep-research": "o3-deep-research", // 相同定价
 
 	// Gemini别名
-	"gemini-3-flash-preview": "gemini-3-flash",
-	"gemini-3-pro-preview":   "gemini-3-pro",
+	"gemini-3.1-pro-preview":        "gemini-3.1-pro",
+	"gemini-3.1-flash-lite-preview": "gemini-3.1-flash-lite",
+	"gemini-3-flash-preview":        "gemini-3-flash",
+	"gemini-3-pro-preview":          "gemini-3-pro",
 }
 
 // getPricing 获取模型定价
@@ -325,33 +379,17 @@ func getDBPricing(model string) (ModelPricing, bool) {
 	}
 	e := v.(DBPricingEntry)
 	return ModelPricing{
-		InputPrice:         e.InputPrice,
-		OutputPrice:        e.OutputPrice,
-		InputPriceHigh:     e.InputPriceHigh,
-		OutputPriceHigh:    e.OutputPriceHigh,
-		HighPriceThreshold: e.HighPriceThreshold,
+		InputPrice:          e.InputPrice,
+		OutputPrice:         e.OutputPrice,
+		CacheReadPrice:      e.CacheReadPrice,
+		CacheWritePrice:     e.CacheWritePrice,
+		InputPriceHigh:      e.InputPriceHigh,
+		OutputPriceHigh:     e.OutputPriceHigh,
+		CacheReadPriceHigh:  e.CacheReadPriceHigh,
+		CacheWritePriceHigh: e.CacheWritePriceHigh,
+		HighPriceThreshold:  e.HighPriceThreshold,
 	}, true
 }
-
-const (
-	// cacheReadMultiplierClaude Claude Sonnet/Haiku 缓存读取价格倍数
-	// Cache Read = Input Price × 0.1 (90%节省)
-	// 适用于Claude Sonnet/Haiku和Gemini模型
-	// 例如：Claude Sonnet input=$3.00/1M → cached=$0.30/1M
-	cacheReadMultiplierClaude = 0.1
-
-	// cacheReadMultiplierOpus Claude Opus 缓存读取价格倍数
-	// Cache Read = Input Price × 0.1 (90%折扣)
-	// 适用于Claude Opus系列模型（Opus 4.5, 4.1, 4.0, 3）
-	// 例如：Claude Opus 4.5 input=$5.00/1M → cached=$0.50/1M
-	// 参考：https://docs.claude.com/en/docs/about-claude/pricing
-	cacheReadMultiplierOpus = 0.1
-
-	// cacheWriteMultiplier 缓存写入价格倍数（相对于基础input价格）
-	// Cache Write = Input Price × 1.25 (25%溢价)
-	// 仅适用于Claude模型（OpenAI不支持cache_creation）
-	cacheWriteMultiplier = 1.25
-)
 
 // CalculateCost 计算单次请求的成本（美元）
 // 参数：
@@ -389,16 +427,21 @@ func CalculateCost(model string, inputTokens, outputTokens, cacheReadTokens, cac
 	// 注意:价格是per 1M tokens,需要除以1,000,000
 	cost := 0.0
 
-	// 长上下文分段定价逻辑。阈值按模型配置，OpenAI默认272K、Gemini默认200K。
-	// 阈值判断:仅针对输入侧非缓存token(不包括输出,不包括缓存)
-	useHighPricing := pricing.InputPriceHigh > 0 && pricing.HighPriceThreshold > 0 && int64(inputTokens) > pricing.HighPriceThreshold
+	// 长上下文分段定价按完整输入上下文判断：普通输入 + 缓存读取 + 缓存写入。
+	// 输出 token 不参与是否跨档的判断；跨档后整套输入、输出和缓存绝对价格同时生效。
+	inputContextTokens := int64(inputTokens) + int64(cacheReadTokens) + int64(cacheCreationTokens)
+	useHighPricing := pricing.InputPriceHigh > 0 && pricing.HighPriceThreshold > 0 && inputContextTokens > pricing.HighPriceThreshold
 
 	// 选择适用的价格
 	inputPricePerM := pricing.InputPrice
 	outputPricePerM := pricing.OutputPrice
+	cacheReadPricePerM := pricing.CacheReadPrice
+	cacheWritePricePerM := pricing.CacheWritePrice
 	if useHighPricing {
 		inputPricePerM = pricing.InputPriceHigh
 		outputPricePerM = pricing.OutputPriceHigh // Gemini长上下文定价同时影响输入和输出
+		cacheReadPricePerM = pricing.CacheReadPriceHigh
+		cacheWritePricePerM = pricing.CacheWritePriceHigh
 	}
 
 	// 1. 基础输入token成本（inputTokens已由解析层归一化，无需再处理平台差异）
@@ -411,31 +454,14 @@ func CalculateCost(model string, inputTokens, outputTokens, cacheReadTokens, cac
 		cost += float64(outputTokens) * outputPricePerM / 1_000_000
 	}
 
-	// 3. 缓存读取成本（OpenAI按模型系列有不同折扣率）
+	// 3. 缓存读取成本
 	if cacheReadTokens > 0 {
-		cacheMultiplier := cacheReadMultiplierClaude // Claude全系/Gemini: 10%折扣
-		// DB 缓存中的自定义倍率优先
-		if dbMul := getDBCacheReadMultiplier(model); dbMul > 0 {
-			cacheMultiplier = dbMul
-		} else if isOpenAIModel(model) {
-			// OpenAI缓存折扣率按模型系列区分（2025-12官方定价）
-			cacheMultiplier = getOpenAICacheMultiplier(model)
-		} else if isOpusModel(model) {
-			cacheMultiplier = cacheReadMultiplierOpus // Opus: 10%折扣
-		}
-		cacheReadPrice := inputPricePerM * cacheMultiplier
-		cost += float64(cacheReadTokens) * cacheReadPrice / 1_000_000
+		cost += float64(cacheReadTokens) * cacheReadPricePerM / 1_000_000
 	}
 
-	// 4. 缓存创建成本(125%基础价格,仅Claude支持)
+	// 4. 缓存创建成本
 	if cacheCreationTokens > 0 {
-		writeMul := cacheWriteMultiplier
-		// DB 缓存中的自定义倍率优先
-		if dbMul := getDBCacheWriteMultiplier(model); dbMul > 0 {
-			writeMul = dbMul
-		}
-		cacheWritePrice := inputPricePerM * writeMul
-		cost += float64(cacheCreationTokens) * cacheWritePrice / 1_000_000
+		cost += float64(cacheCreationTokens) * cacheWritePricePerM / 1_000_000
 	}
 
 	return cost
@@ -456,22 +482,13 @@ func isOpenAIModel(model string) bool {
 		lowerModel == "computer-use-preview"
 }
 
-// isOpusModel 判断是否为Claude Opus系列模型
-// Opus模型缓存定价与Sonnet/Haiku不同：无折扣(100%基础输入价格)
-// 参考：https://docs.claude.com/en/docs/about-claude/pricing
-func isOpusModel(model string) bool {
+// LegacyCacheReadMultiplier 仅用于把旧数据库中的倍率配置迁移为绝对价格。
+// 新计费逻辑不再使用倍率。
+func LegacyCacheReadMultiplier(model string) float64 {
 	lowerModel := strings.ToLower(model)
-	return strings.Contains(lowerModel, "opus")
-}
-
-// getOpenAICacheMultiplier 获取OpenAI模型的缓存价格倍数
-// OpenAI缓存定价策略（2025-12官方）：
-//   - GPT-5系列: 90%折扣（缓存=$0.125/1M, input=$1.25/1M → 0.1倍）
-//   - GPT-4.1/o3/o4系列: 75%折扣（缓存=$0.50/1M, input=$2.00/1M → 0.25倍）
-//   - GPT-4o/o1系列: 50%折扣（缓存=$1.25/1M, input=$2.50/1M → 0.5倍）
-// 参考: https://openai.com/api/pricing/
-func getOpenAICacheMultiplier(model string) float64 {
-	lowerModel := strings.ToLower(model)
+	if !isOpenAIModel(lowerModel) {
+		return 0.1
+	}
 
 	// GPT-5系列: 90%折扣 (0.1倍)
 	if strings.HasPrefix(lowerModel, "gpt-5") {
@@ -553,32 +570,6 @@ func SelectCheapestModel(models []string) (string, bool) {
 	return cheapestModel, true
 }
 
-// getDBCacheReadMultiplier 获取 DB 中模型的缓存读取倍率（0=未设置/使用默认）
-func getDBCacheReadMultiplier(model string) float64 {
-	// 先用别名解析
-	if base, ok := modelAliases[model]; ok {
-		model = base
-	}
-	v, ok := dbPricingCache.Load(model)
-	if !ok {
-		return 0
-	}
-	return v.(DBPricingEntry).CacheReadMultiplier
-}
-
-// getDBCacheWriteMultiplier 获取 DB 中模型的缓存写入倍率（0=未设置/使用默认）
-func getDBCacheWriteMultiplier(model string) float64 {
-	// 先用别名解析
-	if base, ok := modelAliases[model]; ok {
-		model = base
-	}
-	v, ok := dbPricingCache.Load(model)
-	if !ok {
-		return 0
-	}
-	return v.(DBPricingEntry).CacheWriteMultiplier
-}
-
 // fuzzyMatchModel 模糊匹配模型名称
 // 例如：claude-3-opus-20240229-extended → claude-3-opus
 //
@@ -590,7 +581,8 @@ func fuzzyMatchModel(model string) (ModelPricing, bool) {
 	// 优点：比动态排序快，可预测，并发安全
 	prefixes := []string{
 		// Claude模型（按版本降序，具体版本优先，通用兜底在最后）
-		"claude-opus-4-8", "claude-opus-4-6", "claude-sonnet-4-6",
+		"claude-sonnet-5", "claude-fable-5", "claude-opus-5",
+		"claude-opus-4-8", "claude-opus-4-7", "claude-opus-4-6", "claude-sonnet-4-6",
 		"claude-sonnet-4-5", "claude-haiku-4-5", "claude-opus-4-5", "claude-opus-4-1",
 		"claude-sonnet-4-0", "claude-opus-4-0", "claude-3-7-sonnet",
 		"claude-3-5-sonnet", "claude-3-5-haiku",
@@ -598,13 +590,17 @@ func fuzzyMatchModel(model string) (ModelPricing, bool) {
 		"claude-opus", "claude-sonnet", "claude-haiku", // 通用兜底
 
 		// Gemini模型（按版本降序，更长的前缀优先）
+		"gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-3.5-flash",
+		"gemini-3.1-flash-lite", "gemini-3.1-pro",
 		"gemini-3-flash", "gemini-3-pro", // Gemini 3 系列
 		"gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-2.5-pro",
 		"gemini-2.0-flash-lite", "gemini-2.0-flash",
 		"gemini-1.5-pro", "gemini-1.5-flash",
 
 		// OpenAI GPT系列（更长的前缀优先，避免gpt-4o-legacy被gpt-4o截断）
-		"gpt-5.2-pro", "gpt-5.2", // 5.2系列必须在5.x之前
+		"gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6",
+		"gpt-5.5-pro", "gpt-5.5", "gpt-5.4-mini", "gpt-5.4-nano", "gpt-5.4-pro", "gpt-5.4",
+		"gpt-5.3-codex-spark", "gpt-5.3-codex", "gpt-5.2-pro", "gpt-5.2",
 		"gpt-5-pro", "gpt-5-nano", "gpt-5-mini", "gpt-5",
 		"gpt-4.1-nano", "gpt-4.1-mini", "gpt-4.1",
 		"gpt-4o-legacy", "gpt-4o-mini", "gpt-4o", // legacy必须在gpt-4o之前
@@ -646,11 +642,15 @@ func fuzzyMatchModel(model string) (ModelPricing, bool) {
 	})
 	if bestLen > 0 {
 		return ModelPricing{
-			InputPrice:         bestMatch.InputPrice,
-			OutputPrice:        bestMatch.OutputPrice,
-			InputPriceHigh:     bestMatch.InputPriceHigh,
-			OutputPriceHigh:    bestMatch.OutputPriceHigh,
-			HighPriceThreshold: bestMatch.HighPriceThreshold,
+			InputPrice:          bestMatch.InputPrice,
+			OutputPrice:         bestMatch.OutputPrice,
+			CacheReadPrice:      bestMatch.CacheReadPrice,
+			CacheWritePrice:     bestMatch.CacheWritePrice,
+			InputPriceHigh:      bestMatch.InputPriceHigh,
+			OutputPriceHigh:     bestMatch.OutputPriceHigh,
+			CacheReadPriceHigh:  bestMatch.CacheReadPriceHigh,
+			CacheWritePriceHigh: bestMatch.CacheWritePriceHigh,
+			HighPriceThreshold:  bestMatch.HighPriceThreshold,
 		}, true
 	}
 

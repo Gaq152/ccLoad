@@ -1335,7 +1335,7 @@ async function fetchModelsFromAPI() {
       return;
     }
   } else if (channelType === 'anthropic' && preset === 'kiro') {
-    // Kiro 预设：从后端获取预定义模型列表
+    // Kiro 预设：从后端获取默认模型列表
     return resetModelsToDefault();
   } else {
     // 其他渠道或自定义预设：使用 API Key
@@ -1388,7 +1388,12 @@ async function fetchModelsFromAPI() {
     const allModels = [...new Set([...existingModels, ...data.models])];
     modelsTextarea.value = allModels.join(',');
 
-    const source = data.source === 'api' ? '从API获取' : '预定义列表';
+    const sourceLabels = {
+      api: '从API获取',
+      default: '默认列表',
+      default_fallback: '接口失败，已回退默认列表'
+    };
+    const source = sourceLabels[data.source] || '默认列表';
     if (window.showSuccess) {
       showSuccess(`成功获取 ${data.models.length} 个模型 (${source})`);
     } else {
@@ -1411,7 +1416,7 @@ async function fetchModelsFromAPI() {
   }
 }
 
-// 重置模型列表为预定义默认值
+// 从模型计费中维护的默认列表导入
 async function resetModelsToDefault() {
   const channelType = document.querySelector('input[name="channelType"]:checked')?.value || 'anthropic';
   const channelUrl = document.getElementById('channelUrl').value.trim() || 'https://api.anthropic.com';
@@ -1424,14 +1429,14 @@ async function resetModelsToDefault() {
   modelsTextarea.placeholder = '正在获取默认模型列表...';
 
   try {
-    const endpoint = '/admin/channels/models/fetch?force_predefined=true';
+    const endpoint = '/admin/channels/models/fetch?force_default=true';
     const response = await fetchAPIWithAuth(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         channel_type: channelType,
         url: channelUrl,
-        api_key: 'predefined'
+        api_key: 'default-list'
       })
     });
 
@@ -1441,7 +1446,7 @@ async function resetModelsToDefault() {
 
     const data = response.data || {};
     if (!data.models || data.models.length === 0) {
-      throw new Error('该渠道类型暂无预定义模型列表');
+      throw new Error('该渠道类型暂无默认模型列表');
     }
 
     modelsTextarea.value = data.models.join(',');

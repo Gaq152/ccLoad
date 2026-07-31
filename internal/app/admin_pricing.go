@@ -138,13 +138,13 @@ func (s *Server) HandleImportDefaultPricing(c *gin.Context) {
 		return
 	}
 
-	// 构建反向别名映射和预定义集合
+	// 构建反向别名映射和渠道默认模型集合
 	reverseAliases := util.GetModelAliasesReverse()
-	predefinedSets := util.GetPredefinedModelSets()
-	predefinedSet := make(map[string]bool)
-	for _, models := range predefinedSets {
+	defaultSets := util.GetDefaultModelSets()
+	defaultSet := make(map[string]bool)
+	for _, models := range defaultSets {
 		for _, m := range models {
-			predefinedSet[m] = true
+			defaultSet[m] = true
 		}
 	}
 
@@ -155,17 +155,25 @@ func (s *Server) HandleImportDefaultPricing(c *gin.Context) {
 		if aliasList, ok := reverseAliases[d.Model]; ok {
 			aliases = aliasList
 		}
+		isDefault := defaultSet[d.Model]
+		for _, alias := range aliases {
+			isDefault = isDefault || defaultSet[alias]
+		}
 		entries = append(entries, &model.ModelPricingEntry{
-			Model:              d.Model,
-			DisplayName:        d.Model,
-			ChannelType:        d.ChannelType,
-			InputPrice:         d.InputPrice,
-			OutputPrice:        d.OutputPrice,
-			InputPriceHigh:     d.InputPriceHigh,
-			OutputPriceHigh:    d.OutputPriceHigh,
-			HighPriceThreshold: d.HighPriceThreshold,
-			Aliases:            aliases,
-			IsPredefined:       predefinedSet[d.Model],
+			Model:               d.Model,
+			DisplayName:         d.Model,
+			ChannelType:         d.ChannelType,
+			InputPrice:          d.InputPrice,
+			OutputPrice:         d.OutputPrice,
+			CacheReadPrice:      d.CacheReadPrice,
+			CacheWritePrice:     d.CacheWritePrice,
+			InputPriceHigh:      d.InputPriceHigh,
+			OutputPriceHigh:     d.OutputPriceHigh,
+			CacheReadPriceHigh:  d.CacheReadPriceHigh,
+			CacheWritePriceHigh: d.CacheWritePriceHigh,
+			HighPriceThreshold:  d.HighPriceThreshold,
+			Aliases:             aliases,
+			IsDefault:           isDefault,
 		})
 	}
 
@@ -185,7 +193,7 @@ func (s *Server) HandleImportDefaultPricing(c *gin.Context) {
 	})
 }
 
-// refreshPricingCache 从数据库重新加载定价到内存缓存（含预定义列表和别名）
+// refreshPricingCache 从数据库重新加载定价到内存缓存（含默认列表和别名）
 func (s *Server) refreshPricingCache() {
 	ctx := context.Background()
 	entries, err := s.store.ListModelPricing(ctx)
@@ -195,26 +203,28 @@ func (s *Server) refreshPricingCache() {
 	}
 
 	dbEntries := make([]util.DBPricingEntry, 0, len(entries))
-	predefinedByType := make(map[string][]string) // channelType → models
-	aliasMap := make(map[string]string)           // alias → base model
+	defaultByType := make(map[string][]string) // channelType → models
+	aliasMap := make(map[string]string)        // alias → base model
 
 	for _, e := range entries {
 		dbEntries = append(dbEntries, util.DBPricingEntry{
-			Model:                e.Model,
-			DisplayName:          e.DisplayName,
-			ChannelType:          e.ChannelType,
-			InputPrice:           e.InputPrice,
-			OutputPrice:          e.OutputPrice,
-			InputPriceHigh:       e.InputPriceHigh,
-			OutputPriceHigh:      e.OutputPriceHigh,
-			HighPriceThreshold:   e.HighPriceThreshold,
-			CacheReadMultiplier:  e.CacheReadMultiplier,
-			CacheWriteMultiplier: e.CacheWriteMultiplier,
+			Model:               e.Model,
+			DisplayName:         e.DisplayName,
+			ChannelType:         e.ChannelType,
+			InputPrice:          e.InputPrice,
+			OutputPrice:         e.OutputPrice,
+			CacheReadPrice:      e.CacheReadPrice,
+			CacheWritePrice:     e.CacheWritePrice,
+			InputPriceHigh:      e.InputPriceHigh,
+			OutputPriceHigh:     e.OutputPriceHigh,
+			CacheReadPriceHigh:  e.CacheReadPriceHigh,
+			CacheWritePriceHigh: e.CacheWritePriceHigh,
+			HighPriceThreshold:  e.HighPriceThreshold,
 		})
 
-		// 构建预定义模型列表
-		if e.IsPredefined {
-			predefinedByType[e.ChannelType] = append(predefinedByType[e.ChannelType], e.Model)
+		// 构建渠道默认模型列表
+		if e.IsDefault {
+			defaultByType[e.ChannelType] = append(defaultByType[e.ChannelType], e.Model)
 		}
 
 		// 构建别名映射
@@ -225,21 +235,22 @@ func (s *Server) refreshPricingCache() {
 
 	util.SetDBPricing(dbEntries)
 
-	// 更新预定义模型缓存
-	for ct, models := range predefinedByType {
-		util.SetDBPredefinedModels(ct, models)
+	// 数据库存在定价记录后，用户维护的默认列表（包括空列表）成为唯一来源。
+	util.ClearDBDefaultModels()
+	if len(entries) > 0 {
+		for _, ct := range []string{util.ChannelTypeAnthropic, util.ChannelTypeCodex, util.ChannelTypeGemini} {
+			util.SetDBDefaultModels(ct, defaultByType[ct])
+		}
 	}
 
 	// 更新别名缓存
-	if len(aliasMap) > 0 {
-		util.SetDBAliases(aliasMap)
-	}
+	util.SetDBAliases(aliasMap)
 
-	log.Printf("[INFO] Pricing cache refreshed: %d entries, %d predefined, %d aliases",
-		len(dbEntries), countPredefined(predefinedByType), len(aliasMap))
+	log.Printf("[INFO] Pricing cache refreshed: %d entries, %d default models, %d aliases",
+		len(dbEntries), countModels(defaultByType), len(aliasMap))
 }
 
-func countPredefined(m map[string][]string) int {
+func countModels(m map[string][]string) int {
 	n := 0
 	for _, v := range m {
 		n += len(v)
@@ -263,8 +274,8 @@ func validatePricingEntry(e *model.ModelPricingEntry) error {
 	if e.ChannelType == "" {
 		return fmt.Errorf("channel_type is required")
 	}
-	if e.ChannelType != "anthropic" && e.ChannelType != "openai" && e.ChannelType != "gemini" {
-		return fmt.Errorf("invalid channel_type: %s (allowed: anthropic, openai, gemini)", e.ChannelType)
+	if e.ChannelType != util.ChannelTypeAnthropic && e.ChannelType != util.ChannelTypeCodex && e.ChannelType != util.ChannelTypeGemini {
+		return fmt.Errorf("invalid channel_type: %s (allowed: anthropic, codex, gemini)", e.ChannelType)
 	}
 
 	if e.InputPrice < 0 {
@@ -279,18 +290,26 @@ func validatePricingEntry(e *model.ModelPricingEntry) error {
 	if e.OutputPriceHigh < 0 {
 		return fmt.Errorf("output_price_high must be >= 0")
 	}
-	// 兼容旧版客户端未传该字段的请求，并按渠道写入明确的默认值。
-	if e.HighPriceThreshold == 0 {
+	// 只有启用高档输入价时才保存阈值；无分档模型明确存 0。
+	if e.InputPriceHigh > 0 && e.HighPriceThreshold == 0 {
 		e.HighPriceThreshold = util.DefaultHighPriceThresholdForChannel(e.ChannelType)
+	} else if e.InputPriceHigh <= 0 {
+		e.HighPriceThreshold = 0
 	}
 	if e.HighPriceThreshold < 0 {
 		return fmt.Errorf("high_price_threshold must be >= 0")
 	}
-	if e.CacheReadMultiplier < 0 {
-		return fmt.Errorf("cache_read_multiplier must be >= 0")
+	if e.CacheReadPrice < 0 {
+		return fmt.Errorf("cache_read_price must be >= 0")
 	}
-	if e.CacheWriteMultiplier < 0 {
-		return fmt.Errorf("cache_write_multiplier must be >= 0")
+	if e.CacheWritePrice < 0 {
+		return fmt.Errorf("cache_write_price must be >= 0")
+	}
+	if e.CacheReadPriceHigh < 0 {
+		return fmt.Errorf("cache_read_price_high must be >= 0")
+	}
+	if e.CacheWritePriceHigh < 0 {
+		return fmt.Errorf("cache_write_price_high must be >= 0")
 	}
 
 	return nil

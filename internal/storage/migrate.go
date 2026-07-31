@@ -200,8 +200,8 @@ func migrate(ctx context.Context, db *sql.DB, dialect Dialect) error {
 				if err := ensurePricingAliases(ctx, db); err != nil {
 					return fmt.Errorf("migrate model_pricing.aliases: %w", err)
 				}
-				if err := ensurePricingIsPredefined(ctx, db); err != nil {
-					return fmt.Errorf("migrate model_pricing.is_predefined: %w", err)
+				if err := ensurePricingDefault(ctx, db, dialect); err != nil {
+					return fmt.Errorf("migrate model_pricing.is_default: %w", err)
 				}
 				if err := ensurePricingHighPriceThreshold(ctx, db); err != nil {
 					return fmt.Errorf("migrate model_pricing.high_price_threshold: %w", err)
@@ -210,12 +210,21 @@ func migrate(ctx context.Context, db *sql.DB, dialect Dialect) error {
 				if err := ensurePricingAliasesSQLite(ctx, db); err != nil {
 					return fmt.Errorf("migrate model_pricing.aliases: %w", err)
 				}
-				if err := ensurePricingIsPredefinedSQLite(ctx, db); err != nil {
-					return fmt.Errorf("migrate model_pricing.is_predefined: %w", err)
+				if err := ensurePricingDefault(ctx, db, dialect); err != nil {
+					return fmt.Errorf("migrate model_pricing.is_default: %w", err)
 				}
 				if err := ensurePricingHighPriceThresholdSQLite(ctx, db); err != nil {
 					return fmt.Errorf("migrate model_pricing.high_price_threshold: %w", err)
 				}
+			}
+			if err := normalizePricingHighPriceThreshold(ctx, db); err != nil {
+				return fmt.Errorf("normalize model_pricing.high_price_threshold: %w", err)
+			}
+			if err := ensurePricingAbsoluteCachePrices(ctx, db, dialect); err != nil {
+				return fmt.Errorf("migrate model_pricing cache prices: %w", err)
+			}
+			if _, err := db.ExecContext(ctx, "UPDATE model_pricing SET channel_type = 'codex' WHERE channel_type = 'openai'"); err != nil {
+				return fmt.Errorf("migrate model_pricing channel type: %w", err)
 			}
 		}
 
@@ -283,9 +292,9 @@ func migrate(ctx context.Context, db *sql.DB, dialect Dialect) error {
 		return fmt.Errorf("migrate kiro endpoints: %w", err)
 	}
 
-	// 迁移：为已有定价条目填充别名和预定义标记（2026-04新增）
-	if err := migratePricingAliasesAndPredefined(ctx, db); err != nil {
-		return fmt.Errorf("migrate pricing aliases/predefined: %w", err)
+	// 迁移：为已有定价条目填充内置别名（默认列表标记由 is_default 专项迁移处理）
+	if err := migratePricingAliases(ctx, db); err != nil {
+		return fmt.Errorf("migrate pricing aliases: %w", err)
 	}
 
 	return nil
@@ -1703,7 +1712,7 @@ func migrateCodexPresetData(ctx context.Context, db *sql.DB, dialect Dialect) er
 	}
 
 	// 获取最新的预设模型列表
-	latestModels := util.PredefinedModels(util.ChannelTypeCodex)
+	latestModels := util.DefaultModels(util.ChannelTypeCodex)
 	if len(latestModels) == 0 {
 		return nil
 	}
@@ -1896,7 +1905,7 @@ func migrateKiroEndpoints(ctx context.Context, db *sql.DB, dialect Dialect) erro
 }
 
 // ============================================================
-// model_pricing 表迁移：aliases + is_predefined（2026-04新增）
+// model_pricing 表迁移：aliases、默认列表与绝对缓存价格
 // ============================================================
 
 func ensurePricingAliases(ctx context.Context, db *sql.DB) error {
@@ -1922,31 +1931,148 @@ func ensurePricingAliasesSQLite(ctx context.Context, db *sql.DB) error {
 	return err
 }
 
-func ensurePricingIsPredefined(ctx context.Context, db *sql.DB) error {
-	var count int
-	err := db.QueryRowContext(ctx,
-		"SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='model_pricing' AND COLUMN_NAME='is_predefined'",
-	).Scan(&count)
+func pricingHasColumn(ctx context.Context, db *sql.DB, dialect Dialect, column string) (bool, error) {
+	if dialect == DialectMySQL {
+		return hasColumnMySQL(ctx, db, "model_pricing", column)
+	}
+	return hasColumnSQLite(ctx, db, "model_pricing", column), nil
+}
+
+// ensurePricingDefault 把旧 is_predefined 标记迁移为与渠道页共用的默认列表标记。
+func ensurePricingDefault(ctx context.Context, db *sql.DB, dialect Dialect) error {
+	exists, err := pricingHasColumn(ctx, db, dialect, "is_default")
 	if err != nil {
-		return fmt.Errorf("check is_predefined existence: %w", err)
+		return err
 	}
-	if count > 0 {
-		return nil
+	if !exists {
+		columnType := "TINYINT"
+		if dialect == DialectSQLite {
+			columnType = "INTEGER"
+		}
+		if _, err := db.ExecContext(ctx, fmt.Sprintf("ALTER TABLE model_pricing ADD COLUMN is_default %s NOT NULL DEFAULT -1", columnType)); err != nil {
+			return err
+		}
 	}
-	_, err = db.ExecContext(ctx, "ALTER TABLE model_pricing ADD COLUMN is_predefined TINYINT NOT NULL DEFAULT 0")
+
+	hasLegacy, err := pricingHasColumn(ctx, db, dialect, "is_predefined")
+	if err != nil {
+		return err
+	}
+	if hasLegacy {
+		_, err = db.ExecContext(ctx, "UPDATE model_pricing SET is_default = is_predefined WHERE is_default < 0")
+		return err
+	}
+
+	// 极旧数据库没有 is_predefined 时，先完成安全初始化；内置默认定价重新导入后会写入准确标记。
+	_, err = db.ExecContext(ctx, "UPDATE model_pricing SET is_default = 0 WHERE is_default < 0")
 	return err
 }
 
-func ensurePricingIsPredefinedSQLite(ctx context.Context, db *sql.DB) error {
-	if hasColumnSQLite(ctx, db, "model_pricing", "is_predefined") {
-		return nil
+// ensurePricingAbsoluteCachePrices 将旧缓存倍率一次性换算为基础/高位绝对价格。
+func ensurePricingAbsoluteCachePrices(ctx context.Context, db *sql.DB, dialect Dialect) error {
+	columns := []string{"cache_read_price", "cache_write_price", "cache_read_price_high", "cache_write_price_high"}
+	for _, column := range columns {
+		exists, err := pricingHasColumn(ctx, db, dialect, column)
+		if err != nil {
+			return err
+		}
+		if exists {
+			continue
+		}
+		if _, err := db.ExecContext(ctx, fmt.Sprintf("ALTER TABLE model_pricing ADD COLUMN %s DOUBLE NOT NULL DEFAULT -1", column)); err != nil {
+			return fmt.Errorf("add %s: %w", column, err)
+		}
 	}
-	_, err := db.ExecContext(ctx, "ALTER TABLE model_pricing ADD COLUMN is_predefined TINYINT NOT NULL DEFAULT 0")
-	return err
+
+	hasReadMultiplier, err := pricingHasColumn(ctx, db, dialect, "cache_read_multiplier")
+	if err != nil {
+		return err
+	}
+	hasWriteMultiplier, err := pricingHasColumn(ctx, db, dialect, "cache_write_multiplier")
+	if err != nil {
+		return err
+	}
+	readMultiplierExpr := "0"
+	writeMultiplierExpr := "0"
+	if hasReadMultiplier {
+		readMultiplierExpr = "cache_read_multiplier"
+	}
+	if hasWriteMultiplier {
+		writeMultiplierExpr = "cache_write_multiplier"
+	}
+
+	query := fmt.Sprintf(`SELECT id, model, input_price, input_price_high,
+		cache_read_price, cache_write_price, cache_read_price_high, cache_write_price_high,
+		%s, %s
+		FROM model_pricing
+		WHERE cache_read_price < 0 OR cache_write_price < 0
+		   OR cache_read_price_high < 0 OR cache_write_price_high < 0`, readMultiplierExpr, writeMultiplierExpr)
+	rows, err := db.QueryContext(ctx, query)
+	if err != nil {
+		return err
+	}
+	type legacyPricingRow struct {
+		id                                                   int64
+		model                                                string
+		input, inputHigh                                     float64
+		cacheRead, cacheWrite, cacheReadHigh, cacheWriteHigh float64
+		readMultiplier, writeMultiplier                      float64
+	}
+	var pending []legacyPricingRow
+	for rows.Next() {
+		var row legacyPricingRow
+		if err := rows.Scan(&row.id, &row.model, &row.input, &row.inputHigh,
+			&row.cacheRead, &row.cacheWrite, &row.cacheReadHigh, &row.cacheWriteHigh,
+			&row.readMultiplier, &row.writeMultiplier); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		pending = append(pending, row)
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+
+	for _, row := range pending {
+		readMultiplier := row.readMultiplier
+		if readMultiplier <= 0 {
+			readMultiplier = util.LegacyCacheReadMultiplier(row.model)
+		}
+		writeMultiplier := row.writeMultiplier
+		if writeMultiplier <= 0 {
+			writeMultiplier = 1.25
+		}
+		if row.cacheRead < 0 {
+			row.cacheRead = row.input * readMultiplier
+		}
+		if row.cacheWrite < 0 {
+			row.cacheWrite = row.input * writeMultiplier
+		}
+		if row.cacheReadHigh < 0 {
+			row.cacheReadHigh = 0
+			if row.inputHigh > 0 {
+				row.cacheReadHigh = row.inputHigh * readMultiplier
+			}
+		}
+		if row.cacheWriteHigh < 0 {
+			row.cacheWriteHigh = 0
+			if row.inputHigh > 0 {
+				row.cacheWriteHigh = row.inputHigh * writeMultiplier
+			}
+		}
+		if _, err := db.ExecContext(ctx, `UPDATE model_pricing
+			SET cache_read_price = ?, cache_write_price = ?, cache_read_price_high = ?, cache_write_price_high = ?
+			WHERE id = ?`, row.cacheRead, row.cacheWrite, row.cacheReadHigh, row.cacheWriteHigh, row.id); err != nil {
+			return err
+		}
+	}
+	if len(pending) > 0 {
+		log.Printf("[INFO] [Migrate] 缓存倍率已迁移为绝对价格: %d 条", len(pending))
+	}
+	return nil
 }
 
 // ensurePricingHighPriceThreshold 为旧库增加每模型高价档阈值。
-// OpenAI/GPT 默认 272K；已有 Gemini 行继续保留原来的 200K 行为。
 func ensurePricingHighPriceThreshold(ctx context.Context, db *sql.DB) error {
 	exists, err := hasColumnMySQL(ctx, db, "model_pricing", "high_price_threshold")
 	if err != nil {
@@ -1955,10 +2081,7 @@ func ensurePricingHighPriceThreshold(ctx context.Context, db *sql.DB) error {
 	if exists {
 		return nil
 	}
-	if _, err := db.ExecContext(ctx, "ALTER TABLE model_pricing ADD COLUMN high_price_threshold BIGINT NOT NULL DEFAULT 272000"); err != nil {
-		return err
-	}
-	_, err = db.ExecContext(ctx, "UPDATE model_pricing SET high_price_threshold = 200000 WHERE channel_type = 'gemini'")
+	_, err = db.ExecContext(ctx, "ALTER TABLE model_pricing ADD COLUMN high_price_threshold BIGINT NOT NULL DEFAULT 0")
 	return err
 }
 
@@ -1966,10 +2089,19 @@ func ensurePricingHighPriceThresholdSQLite(ctx context.Context, db *sql.DB) erro
 	if hasColumnSQLite(ctx, db, "model_pricing", "high_price_threshold") {
 		return nil
 	}
-	if _, err := db.ExecContext(ctx, "ALTER TABLE model_pricing ADD COLUMN high_price_threshold BIGINT NOT NULL DEFAULT 272000"); err != nil {
-		return err
-	}
-	_, err := db.ExecContext(ctx, "UPDATE model_pricing SET high_price_threshold = 200000 WHERE channel_type = 'gemini'")
+	_, err := db.ExecContext(ctx, "ALTER TABLE model_pricing ADD COLUMN high_price_threshold BIGINT NOT NULL DEFAULT 0")
+	return err
+}
+
+// normalizePricingHighPriceThreshold 只让真正存在高档输入价的模型保留阈值。
+func normalizePricingHighPriceThreshold(ctx context.Context, db *sql.DB) error {
+	_, err := db.ExecContext(ctx, `UPDATE model_pricing
+		SET high_price_threshold = CASE
+			WHEN input_price_high <= 0 THEN 0
+			WHEN high_price_threshold > 0 THEN high_price_threshold
+			WHEN channel_type = 'gemini' THEN 200000
+			ELSE 272000
+		END`)
 	return err
 }
 
@@ -2008,9 +2140,9 @@ func hasColumnSQLite(ctx context.Context, db *sql.DB, table, column string) bool
 	return false
 }
 
-// migratePricingAliasesAndPredefined 为已有定价条目填充别名和预定义标记
-// 仅对 aliases 为空的行执行（幂等）
-func migratePricingAliasesAndPredefined(ctx context.Context, db *sql.DB) error {
+// migratePricingAliases 为已有定价条目填充内置别名。
+// 仅对 aliases 为空的行执行（幂等），不会覆盖用户维护的默认列表标记。
+func migratePricingAliases(ctx context.Context, db *sql.DB) error {
 	// 检查是否有需要迁移的行（aliases 为空且有数据的行）
 	var total int
 	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM model_pricing WHERE aliases = '' OR aliases IS NULL").Scan(&total); err != nil {
@@ -2022,15 +2154,6 @@ func migratePricingAliasesAndPredefined(ctx context.Context, db *sql.DB) error {
 
 	// 构建反向别名映射：base model → 逗号分隔的别名
 	reverseAliases := util.GetModelAliasesReverse()
-
-	// 构建预定义模型集合
-	predefinedSet := make(map[string]bool)
-	for channelType, models := range util.GetPredefinedModelSets() {
-		_ = channelType
-		for _, m := range models {
-			predefinedSet[m] = true
-		}
-	}
 
 	// 查询所有需要迁移的行
 	rows, err := db.QueryContext(ctx, "SELECT id, model FROM model_pricing WHERE aliases = '' OR aliases IS NULL")
@@ -2061,16 +2184,12 @@ func migratePricingAliasesAndPredefined(ctx context.Context, db *sql.DB) error {
 		if aliasList, ok := reverseAliases[r.model]; ok {
 			aliases = strings.Join(aliasList, ",")
 		}
-		isPredefined := 0
-		if predefinedSet[r.model] {
-			isPredefined = 1
-		}
-		if aliases == "" && isPredefined == 0 {
+		if aliases == "" {
 			continue
 		}
 		if _, err := db.ExecContext(ctx,
-			"UPDATE model_pricing SET aliases = ?, is_predefined = ? WHERE id = ?",
-			aliases, isPredefined, r.id,
+			"UPDATE model_pricing SET aliases = ? WHERE id = ?",
+			aliases, r.id,
 		); err != nil {
 			log.Printf("[WARN] [Migrate] 定价别名迁移失败 model=%s: %v", r.model, err)
 			continue
@@ -2079,7 +2198,7 @@ func migratePricingAliasesAndPredefined(ctx context.Context, db *sql.DB) error {
 	}
 
 	if migrated > 0 {
-		log.Printf("[INFO] [Migrate] 定价别名/预定义迁移完成: %d 条", migrated)
+		log.Printf("[INFO] [Migrate] 定价别名迁移完成: %d 条", migrated)
 	}
 	return nil
 }
