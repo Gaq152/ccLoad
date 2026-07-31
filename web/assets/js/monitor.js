@@ -640,7 +640,6 @@ function getRequestTypeMeta(requestType, requestPath = '') {
   }
 
   const meta = {
-    responses: { label: '普通', title: '普通 Responses 请求' },
     compact_v1: { label: '压缩 V1', title: '独立 /responses/compact 压缩请求' },
     compact_v2: { label: '压缩 V2', title: '携带 compaction_trigger 的 Responses 请求' },
     search: { label: '搜索', title: 'Codex Search 请求' }
