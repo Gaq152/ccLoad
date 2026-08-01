@@ -349,7 +349,7 @@
 
       // 3. 模型显示
       const modelValue = entry.model ?
-        `<span class="model-with-badges"><span class="model-tag">${escapeHtml(entry.model)}</span>${renderFastBadge(entry)}</span>` :
+        `<span class="model-with-badges"><span class="model-tag">${escapeHtml(entry.model)}</span>${renderReasoningEffortBadge(entry)}${renderFastBadge(entry)}</span>` :
         '<span style="color: var(--neutral-500);">-</span>';
       const modelDisplay = `<div class="model-request-cell">${modelValue}${renderRequestTypeBadge(entry.request_type)}</div>`;
 
@@ -497,6 +497,15 @@
       const title = `Fast 请求${tier}${multiplierText ? ` · ${multiplierText}` : ''}`;
 
       return `<span class="fast-badge" title="${escapeHtml(title).replace(/"/g, '&quot;')}">FAST</span>`;
+    }
+
+    function renderReasoningEffortBadge(entry) {
+      if (!entry || entry.channel_type !== 'codex' || !entry.reasoning_effort) return '';
+
+      const effort = String(entry.reasoning_effort).trim();
+      if (!effort) return '';
+      const title = `思考强度：${effort}`;
+      return `<span class="effort-badge" title="${escapeHtml(title).replace(/"/g, '&quot;')}">${escapeHtml(effort.toUpperCase())}</span>`;
     }
 
     function renderRequestTypeBadge(requestType) {

@@ -511,7 +511,7 @@ function renderTraces() {
     // 模型/端点 合并显示
     const modelEndpointDisplay = `
       <div class="model-endpoint-cell">
-        <span class="model-line"><span class="model-tag">${escapeHtml(trace.model || '-')}</span>${renderFastBadge(trace)}</span>
+        <span class="model-line"><span class="model-tag">${escapeHtml(trace.model || '-')}</span>${renderReasoningEffortBadge(trace)}${renderFastBadge(trace)}</span>
         <span class="endpoint-line">${requestTypeBadge}<span class="endpoint-text">${escapeHtml(endpoint)}</span></span>
       </div>
     `;
@@ -547,7 +547,7 @@ async function viewDetail(id) {
     document.getElementById('detailChannelID').textContent = trace.channel_id || '-';
     const detailModelEl = document.getElementById('detailModel');
     if (detailModelEl) {
-      detailModelEl.innerHTML = `<span class="detail-model-inline"><span class="model-tag">${escapeHtml(trace.model || '-')}</span>${renderFastBadge(trace, true)}</span>`;
+      detailModelEl.innerHTML = `<span class="detail-model-inline"><span class="model-tag">${escapeHtml(trace.model || '-')}</span>${renderReasoningEffortBadge(trace)}${renderFastBadge(trace, true)}</span>`;
     }
     const detailFastBillingEl = document.getElementById('detailFastBilling');
     if (detailFastBillingEl) {
@@ -629,6 +629,15 @@ function renderFastBadge(trace, showMultiplier = false) {
   const text = showMultiplier && multiplierText ? `FAST ${multiplierText}` : 'FAST';
 
   return `<span class="fast-badge" title="${escapeHtml(title).replace(/"/g, '&quot;')}">${text}</span>`;
+}
+
+function renderReasoningEffortBadge(trace) {
+  if (!trace || trace.channel_type !== 'codex' || !trace.reasoning_effort) return '';
+
+  const effort = String(trace.reasoning_effort).trim();
+  if (!effort) return '';
+  const title = `思考强度：${effort}`;
+  return `<span class="effort-badge" title="${escapeHtml(title).replace(/"/g, '&quot;')}">${escapeHtml(effort.toUpperCase())}</span>`;
 }
 
 function getRequestTypeMeta(requestType, requestPath = '') {

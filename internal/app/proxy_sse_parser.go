@@ -42,24 +42,27 @@ type sseUsageParser struct {
 	// Anthropic: event: message_stop
 	streamComplete bool
 
-	serviceTier string
+	serviceTier     string
+	reasoningEffort string
 }
 
 type jsonUsageParser struct {
 	usageAccumulator
-	buffer      bytes.Buffer
-	truncated   bool
-	channelType string // 渠道类型(anthropic/codex/gemini),用于精确平台判断
-	requestURL  string // 请求URL，用于调试日志
-	serviceTier string
+	buffer          bytes.Buffer
+	truncated       bool
+	channelType     string // 渠道类型(anthropic/codex/gemini),用于精确平台判断
+	requestURL      string // 请求URL，用于调试日志
+	serviceTier     string
+	reasoningEffort string
 }
 
 type usageParser interface {
 	Feed([]byte) error
 	GetUsage() (inputTokens, outputTokens, cacheRead, cacheCreation int)
-	GetLastError() []byte   // [INFO] 返回SSE流中检测到的最后一个error事件（用于1308等错误的延迟处理）
-	IsStreamComplete() bool // [INFO] 返回是否检测到流结束标志（[DONE]/message_stop）
-	GetServiceTier() string // 返回上游实际使用的 service_tier（如果响应提供）
+	GetLastError() []byte       // [INFO] 返回SSE流中检测到的最后一个error事件（用于1308等错误的延迟处理）
+	IsStreamComplete() bool     // [INFO] 返回是否检测到流结束标志（[DONE]/message_stop）
+	GetServiceTier() string     // 返回上游实际使用的 service_tier（如果响应提供）
+	GetReasoningEffort() string // 返回上游实际使用的 reasoning.effort（如果响应提供）
 }
 
 const (
@@ -201,6 +204,9 @@ func (p *sseUsageParser) parseEvent(eventType, data string) error {
 	if tier := extractServiceTier(event); tier != "" {
 		p.serviceTier = tier
 	}
+	if effort := extractReasoningEffort(event); effort != "" {
+		p.reasoningEffort = effort
+	}
 
 	usage := extractUsage(event)
 
@@ -248,6 +254,10 @@ func (p *sseUsageParser) GetServiceTier() string {
 	return p.serviceTier
 }
 
+func (p *sseUsageParser) GetReasoningEffort() string {
+	return p.reasoningEffort
+}
+
 func (p *jsonUsageParser) Feed(data []byte) error {
 	if p.truncated {
 		return nil
@@ -275,6 +285,7 @@ func (p *jsonUsageParser) GetUsage() (inputTokens, outputTokens, cacheRead, cach
 			log.Printf("WARN: usage sse-like parse failed: %v", err)
 		} else {
 			p.serviceTier = sseParser.GetServiceTier()
+			p.reasoningEffort = sseParser.GetReasoningEffort()
 			return sseParser.GetUsage()
 		}
 	}
@@ -300,6 +311,9 @@ func (p *jsonUsageParser) GetUsage() (inputTokens, outputTokens, cacheRead, cach
 
 	if tier := extractServiceTier(payload); tier != "" {
 		p.serviceTier = tier
+	}
+	if effort := extractReasoningEffort(payload); effort != "" {
+		p.reasoningEffort = effort
 	}
 	p.applyUsage(extractUsage(payload), p.channelType)
 
@@ -329,6 +343,10 @@ func (p *jsonUsageParser) IsStreamComplete() bool {
 
 func (p *jsonUsageParser) GetServiceTier() string {
 	return p.serviceTier
+}
+
+func (p *jsonUsageParser) GetReasoningEffort() string {
+	return p.reasoningEffort
 }
 
 // ============================================================================
@@ -365,6 +383,10 @@ func (a *codexUsageAdapter) IsStreamComplete() bool {
 }
 
 func (a *codexUsageAdapter) GetServiceTier() string {
+	return ""
+}
+
+func (a *codexUsageAdapter) GetReasoningEffort() string {
 	return ""
 }
 
@@ -570,6 +592,22 @@ func extractServiceTier(payload map[string]any) string {
 	if resp, ok := payload["response"].(map[string]any); ok {
 		if tier, ok := resp["service_tier"].(string); ok {
 			return strings.TrimSpace(tier)
+		}
+	}
+	return ""
+}
+
+func extractReasoningEffort(payload map[string]any) string {
+	if reasoning, ok := payload["reasoning"].(map[string]any); ok {
+		if effort, ok := reasoning["effort"].(string); ok {
+			return effort
+		}
+	}
+	if resp, ok := payload["response"].(map[string]any); ok {
+		if reasoning, ok := resp["reasoning"].(map[string]any); ok {
+			if effort, ok := reasoning["effort"].(string); ok {
+				return effort
+			}
 		}
 	}
 	return ""

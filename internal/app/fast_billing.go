@@ -67,6 +67,7 @@ func applyFastBillingToResult(cfg *model.Config, actualModel string, requestBody
 	if res == nil {
 		return
 	}
+	applyReasoningEffortToResult(cfg, requestBody, res)
 
 	info := resolveFastBilling(cfg, actualModel, requestBody, res)
 	res.ServiceTier = info.ServiceTier
@@ -92,6 +93,30 @@ func applyFastBillingToResult(cfg *model.Config, actualModel string, requestBody
 	res.CostCalculated = true
 }
 
+func applyReasoningEffortToResult(cfg *model.Config, requestBody []byte, res *fwResult) {
+	if res == nil {
+		return
+	}
+	if cfg == nil || cfg.GetChannelType() != util.ChannelTypeCodex {
+		res.ReasoningEffort = ""
+		return
+	}
+
+	if effort := normalizeReasoningEffort(res.ReasoningEffort); effort != "" {
+		res.ReasoningEffort = effort
+		return
+	}
+	res.ReasoningEffort = normalizeReasoningEffort(extractRequestReasoningEffort(requestBody))
+}
+
+func normalizeReasoningEffort(effort string) string {
+	effort = strings.ToLower(strings.TrimSpace(effort))
+	if len(effort) > 32 {
+		return ""
+	}
+	return effort
+}
+
 func extractRequestServiceTier(body []byte) string {
 	if len(body) == 0 {
 		return ""
@@ -103,4 +128,23 @@ func extractRequestServiceTier(body []byte) string {
 		return ""
 	}
 	return req.ServiceTier
+}
+
+func extractRequestReasoningEffort(body []byte) string {
+	if len(body) == 0 {
+		return ""
+	}
+	var req struct {
+		Reasoning struct {
+			Effort string `json:"effort"`
+		} `json:"reasoning"`
+		ReasoningEffort string `json:"reasoning_effort"`
+	}
+	if err := sonic.Unmarshal(body, &req); err != nil {
+		return ""
+	}
+	if req.Reasoning.Effort != "" {
+		return req.Reasoning.Effort
+	}
+	return req.ReasoningEffort
 }

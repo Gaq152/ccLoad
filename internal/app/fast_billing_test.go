@@ -80,3 +80,31 @@ func TestApplyFastBillingCostMultipliesOnlyFastRequests(t *testing.T) {
 		t.Fatalf("standard cost = %v, want 0.01", got)
 	}
 }
+
+func TestApplyReasoningEffortUsesResponseThenRequestFallback(t *testing.T) {
+	cfg := &model.Config{ChannelType: "codex"}
+
+	responseValue := &fwResult{ReasoningEffort: " XHIGH "}
+	applyReasoningEffortToResult(cfg, []byte(`{"reasoning":{"effort":"low"}}`), responseValue)
+	if responseValue.ReasoningEffort != "xhigh" {
+		t.Fatalf("response effort = %q, want xhigh", responseValue.ReasoningEffort)
+	}
+
+	requestValue := &fwResult{}
+	applyReasoningEffortToResult(cfg, []byte(`{"reasoning":{"effort":"high"}}`), requestValue)
+	if requestValue.ReasoningEffort != "high" {
+		t.Fatalf("request effort = %q, want high", requestValue.ReasoningEffort)
+	}
+
+	legacyRequestValue := &fwResult{}
+	applyReasoningEffortToResult(cfg, []byte(`{"reasoning_effort":"medium"}`), legacyRequestValue)
+	if legacyRequestValue.ReasoningEffort != "medium" {
+		t.Fatalf("legacy request effort = %q, want medium", legacyRequestValue.ReasoningEffort)
+	}
+
+	nonCodex := &fwResult{ReasoningEffort: "high"}
+	applyReasoningEffortToResult(&model.Config{ChannelType: "anthropic"}, nil, nonCodex)
+	if nonCodex.ReasoningEffort != "" {
+		t.Fatalf("non-Codex effort = %q, want empty", nonCodex.ReasoningEffort)
+	}
+}

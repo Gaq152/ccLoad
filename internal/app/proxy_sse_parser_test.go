@@ -330,6 +330,33 @@ func TestJSONUsageParserCapturesServiceTierFromResponse(t *testing.T) {
 	}
 }
 
+func TestSSEUsageParserCapturesReasoningEffortFromInProgress(t *testing.T) {
+	parser := newSSEUsageParser("codex")
+	sseData := `event: response.in_progress
+data: {"type":"response.in_progress","response":{"reasoning":{"effort":"xhigh"}}}
+
+`
+
+	if err := parser.Feed([]byte(sseData)); err != nil {
+		t.Fatalf("Feed失败: %v", err)
+	}
+	if got := parser.GetReasoningEffort(); got != "xhigh" {
+		t.Fatalf("reasoning effort = %q, want xhigh", got)
+	}
+}
+
+func TestJSONUsageParserCapturesReasoningEffortFromResponse(t *testing.T) {
+	parser := newJSONUsageParser("codex", "https://example.com/v1/responses")
+	if err := parser.Feed([]byte(`{"response":{"reasoning":{"effort":"high"}},"usage":{"input_tokens":10,"output_tokens":2}}`)); err != nil {
+		t.Fatalf("Feed失败: %v", err)
+	}
+
+	_, _, _, _ = parser.GetUsage()
+	if got := parser.GetReasoningEffort(); got != "high" {
+		t.Fatalf("reasoning effort = %q, want high", got)
+	}
+}
+
 func TestSSEUsageParser_OpenAIChatCompletionsSSE(t *testing.T) {
 	// 测试OpenAI Chat Completions API的SSE流式响应
 	// OpenAI Chat使用prompt_tokens + completion_tokens格式

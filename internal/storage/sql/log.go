@@ -52,12 +52,12 @@ func (s *SQLStore) AddLog(ctx context.Context, e *model.LogEntry) error {
 	// 直接写入日志数据库（简化预编译语句缓存）
 	query := `
 		INSERT INTO logs(time, model, request_type, channel_id, status_code, message, duration, is_streaming, first_byte_time, api_key_used, api_key_hash, api_base_url, auth_token_id, client_ip,
-			input_tokens, output_tokens, cache_read_input_tokens, cache_creation_input_tokens, cost, is_fast, service_tier, fast_multiplier)
-		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			input_tokens, output_tokens, cache_read_input_tokens, cache_creation_input_tokens, cost, is_fast, service_tier, reasoning_effort, fast_multiplier)
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	_, err := s.db.ExecContext(ctx, query, timeMs, e.Model, e.RequestType, e.ChannelID, e.StatusCode, e.Message, e.Duration, e.IsStreaming, e.FirstByteTime, maskedKey, apiKeyHash, e.APIBaseURL, e.AuthTokenID, e.ClientIP,
-		e.InputTokens, e.OutputTokens, e.CacheReadInputTokens, e.CacheCreationInputTokens, e.Cost, boolToInt(e.IsFast), e.ServiceTier, fastMultiplier)
+		e.InputTokens, e.OutputTokens, e.CacheReadInputTokens, e.CacheCreationInputTokens, e.Cost, boolToInt(e.IsFast), e.ServiceTier, e.ReasoningEffort, fastMultiplier)
 	return err
 }
 
@@ -76,8 +76,8 @@ func (s *SQLStore) BatchAddLogs(ctx context.Context, logs []*model.LogEntry) err
 
 	stmt, err := tx.PrepareContext(ctx, `
 		INSERT INTO logs(time, model, request_type, channel_id, status_code, message, duration, is_streaming, first_byte_time, api_key_used, api_key_hash, api_base_url, auth_token_id, client_ip,
-			input_tokens, output_tokens, cache_read_input_tokens, cache_creation_input_tokens, cost, is_fast, service_tier, fast_multiplier)
-		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			input_tokens, output_tokens, cache_read_input_tokens, cache_creation_input_tokens, cost, is_fast, service_tier, reasoning_effort, fast_multiplier)
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
 	if err != nil {
 		return err
@@ -120,6 +120,7 @@ func (s *SQLStore) BatchAddLogs(ctx context.Context, logs []*model.LogEntry) err
 			e.Cost,
 			boolToInt(e.IsFast),
 			e.ServiceTier,
+			e.ReasoningEffort,
 			fastMultiplier,
 		); err != nil {
 			return err
@@ -134,7 +135,7 @@ func (s *SQLStore) ListLogs(ctx context.Context, since time.Time, limit, offset 
 	// 性能优化：批量查询渠道名称消除N+1问题（100渠道场景提升50-100倍）
 	baseQuery := `
 		SELECT id, time, model, request_type, channel_id, status_code, message, duration, is_streaming, first_byte_time, api_key_used, api_key_hash, api_base_url, auth_token_id, client_ip,
-			input_tokens, output_tokens, cache_read_input_tokens, cache_creation_input_tokens, cost, is_fast, service_tier, fast_multiplier
+			input_tokens, output_tokens, cache_read_input_tokens, cache_creation_input_tokens, cost, is_fast, service_tier, reasoning_effort, fast_multiplier
 		FROM logs`
 
 	// time字段现在是BIGINT毫秒时间戳，需要转换为Unix毫秒进行比较
@@ -190,11 +191,12 @@ func (s *SQLStore) ListLogs(ctx context.Context, since time.Time, limit, offset 
 		var cost sql.NullFloat64
 		var isFastInt int
 		var serviceTier sql.NullString
+		var reasoningEffort sql.NullString
 		var fastMultiplier sql.NullFloat64
 
 		if err := rows.Scan(&e.ID, &timeMs, &e.Model, &e.RequestType, &e.ChannelID,
 			&e.StatusCode, &e.Message, &duration, &isStreamingInt, &firstByteTime, &apiKeyUsed, &apiKeyHash, &apiBaseURL, &e.AuthTokenID, &clientIP,
-			&inputTokens, &outputTokens, &cacheReadTokens, &cacheCreationTokens, &cost, &isFastInt, &serviceTier, &fastMultiplier); err != nil {
+			&inputTokens, &outputTokens, &cacheReadTokens, &cacheCreationTokens, &cost, &isFastInt, &serviceTier, &reasoningEffort, &fastMultiplier); err != nil {
 			return nil, err
 		}
 
@@ -250,6 +252,9 @@ func (s *SQLStore) ListLogs(ctx context.Context, since time.Time, limit, offset 
 		e.IsFast = isFastInt != 0
 		if serviceTier.Valid {
 			e.ServiceTier = serviceTier.String
+		}
+		if reasoningEffort.Valid {
+			e.ReasoningEffort = reasoningEffort.String
 		}
 		if fastMultiplier.Valid {
 			e.FastMultiplier = fastMultiplier.Float64
@@ -339,7 +344,7 @@ func (s *SQLStore) CountLogs(ctx context.Context, since time.Time, filter *model
 func (s *SQLStore) ListLogsRange(ctx context.Context, since, until time.Time, limit, offset int, filter *model.LogFilter) ([]*model.LogEntry, error) {
 	baseQuery := `
 		SELECT id, time, model, request_type, channel_id, status_code, message, duration, is_streaming, first_byte_time, api_key_used, api_key_hash, api_base_url, auth_token_id, client_ip,
-			input_tokens, output_tokens, cache_read_input_tokens, cache_creation_input_tokens, cost, is_fast, service_tier, fast_multiplier
+			input_tokens, output_tokens, cache_read_input_tokens, cache_creation_input_tokens, cost, is_fast, service_tier, reasoning_effort, fast_multiplier
 		FROM logs`
 
 	sinceMs := since.UnixMilli()
@@ -385,11 +390,12 @@ func (s *SQLStore) ListLogsRange(ctx context.Context, since, until time.Time, li
 		var cost sql.NullFloat64
 		var isFastInt int
 		var serviceTier sql.NullString
+		var reasoningEffort sql.NullString
 		var fastMultiplier sql.NullFloat64
 
 		if err := rows.Scan(&e.ID, &timeMs, &e.Model, &e.RequestType, &e.ChannelID,
 			&e.StatusCode, &e.Message, &duration, &isStreamingInt, &firstByteTime, &apiKeyUsed, &apiKeyHash, &apiBaseURL, &e.AuthTokenID, &clientIP,
-			&inputTokens, &outputTokens, &cacheReadTokens, &cacheCreationTokens, &cost, &isFastInt, &serviceTier, &fastMultiplier); err != nil {
+			&inputTokens, &outputTokens, &cacheReadTokens, &cacheCreationTokens, &cost, &isFastInt, &serviceTier, &reasoningEffort, &fastMultiplier); err != nil {
 			return nil, err
 		}
 
@@ -440,6 +446,9 @@ func (s *SQLStore) ListLogsRange(ctx context.Context, since, until time.Time, li
 		e.IsFast = isFastInt != 0
 		if serviceTier.Valid {
 			e.ServiceTier = serviceTier.String
+		}
+		if reasoningEffort.Valid {
+			e.ReasoningEffort = reasoningEffort.String
 		}
 		if fastMultiplier.Valid {
 			e.FastMultiplier = fastMultiplier.Float64

@@ -384,6 +384,7 @@ func (s *Server) handleSuccessResponse(
 			result.SSEErrorEvent = errorEvent
 		}
 		result.ServiceTier = usageParser.GetServiceTier()
+		result.ReasoningEffort = usageParser.GetReasoningEffort()
 		streamComplete = usageParser.IsStreamComplete()
 	}
 
@@ -1369,6 +1370,7 @@ func (s *Server) captureForMonitorWithCapture(
 		trace.UpstreamResponseHeaders = headersForMonitor(res.Header, "")
 		trace.IsFast = res.IsFast
 		trace.ServiceTier = res.ServiceTier
+		trace.ReasoningEffort = res.ReasoningEffort
 		trace.FastMultiplier = res.FastMultiplier
 	}
 	trace.ClientRequestHeaders = headersForMonitor(reqCtx.header, "")

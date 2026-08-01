@@ -192,6 +192,7 @@ func DefineLogsTable() *TableBuilder {
 		Column("cost DOUBLE NOT NULL DEFAULT 0.0").
 		Column("is_fast TINYINT NOT NULL DEFAULT 0").
 		Column("service_tier VARCHAR(32) NOT NULL DEFAULT ''").
+		Column("reasoning_effort VARCHAR(32) NOT NULL DEFAULT ''").
 		Column("fast_multiplier DOUBLE NOT NULL DEFAULT 1.0").
 		Index("idx_logs_time_model", "time, model").
 		Index("idx_logs_time_channel", "time, channel_id").

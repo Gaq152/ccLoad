@@ -49,6 +49,7 @@ type fwResult struct {
 	CacheReadInputTokens     int
 	CacheCreationInputTokens int
 	ServiceTier              string // 上游实际使用的 service_tier（fast/priority/default）
+	ReasoningEffort          string // Codex 上游实际使用的 reasoning.effort
 	IsFast                   bool   // 是否按 Fast 模式计费
 	FastMultiplier           float64
 	BaseCostUSD              float64 // 未应用 Fast 倍率前的基础成本
@@ -585,6 +586,7 @@ func buildLogEntry(originalModel string, requestType string, channelID int64, ch
 		entry.CacheCreationInputTokens = res.CacheCreationInputTokens
 		entry.IsFast = res.IsFast
 		entry.ServiceTier = res.ServiceTier
+		entry.ReasoningEffort = res.ReasoningEffort
 		entry.FastMultiplier = res.FastMultiplier
 		if entry.FastMultiplier == 0 {
 			entry.FastMultiplier = 1
@@ -611,6 +613,7 @@ func buildLogEntry(originalModel string, requestType string, channelID int64, ch
 	if res != nil {
 		entry.IsFast = res.IsFast
 		entry.ServiceTier = res.ServiceTier
+		entry.ReasoningEffort = res.ReasoningEffort
 		entry.FastMultiplier = res.FastMultiplier
 		if entry.FastMultiplier == 0 {
 			entry.FastMultiplier = 1

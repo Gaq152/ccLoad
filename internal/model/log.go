@@ -60,6 +60,7 @@ type LogEntry struct {
 	Cost                     float64 `json:"cost"`
 	IsFast                   bool    `json:"is_fast"`
 	ServiceTier              string  `json:"service_tier,omitempty"`
+	ReasoningEffort          string  `json:"reasoning_effort,omitempty"`
 	FastMultiplier           float64 `json:"fast_multiplier"`
 }
 

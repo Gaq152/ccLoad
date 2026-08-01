@@ -207,14 +207,15 @@ func TestBuildLogEntry_UsesGenericOAuthLabel(t *testing.T) {
 
 func TestBuildLogEntry_PreservesFastBillingMetadataAndCost(t *testing.T) {
 	res := &fwResult{
-		Status:         200,
-		InputTokens:    1000,
-		OutputTokens:   500,
-		ServiceTier:    "priority",
-		IsFast:         true,
-		FastMultiplier: 2.5,
-		CostUSD:        0.025,
-		CostCalculated: true,
+		Status:          200,
+		InputTokens:     1000,
+		OutputTokens:    500,
+		ServiceTier:     "priority",
+		ReasoningEffort: "xhigh",
+		IsFast:          true,
+		FastMultiplier:  2.5,
+		CostUSD:         0.025,
+		CostCalculated:  true,
 	}
 
 	entry := buildLogEntry(
@@ -244,6 +245,9 @@ func TestBuildLogEntry_PreservesFastBillingMetadataAndCost(t *testing.T) {
 	}
 	if entry.ServiceTier != "priority" {
 		t.Fatalf("ServiceTier = %q, want priority", entry.ServiceTier)
+	}
+	if entry.ReasoningEffort != "xhigh" {
+		t.Fatalf("ReasoningEffort = %q, want xhigh", entry.ReasoningEffort)
 	}
 	if entry.FastMultiplier != 2.5 {
 		t.Fatalf("FastMultiplier = %v, want 2.5", entry.FastMultiplier)

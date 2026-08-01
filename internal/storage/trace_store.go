@@ -36,11 +36,12 @@ type Trace struct {
 	UpstreamResponseHeaders string  `json:"upstream_response_headers,omitempty"`
 	ClientIP                string  `json:"client_ip"`
 	APIKeyUsed              string  `json:"api_key_used"`
-	TokenID                 int64   `json:"token_id"`        // API 令牌 ID（用于关联查询名称）
-	AuthTokenName           string  `json:"auth_token_name"` // API 令牌名称（查询时填充）
-	IsFast                  bool    `json:"is_fast"`         // 是否按 Fast 模式计费
-	ServiceTier             string  `json:"service_tier"`    // 上游 service_tier
-	FastMultiplier          float64 `json:"fast_multiplier"` // Fast 计费倍率
+	TokenID                 int64   `json:"token_id"`         // API 令牌 ID（用于关联查询名称）
+	AuthTokenName           string  `json:"auth_token_name"`  // API 令牌名称（查询时填充）
+	IsFast                  bool    `json:"is_fast"`          // 是否按 Fast 模式计费
+	ServiceTier             string  `json:"service_tier"`     // 上游 service_tier
+	ReasoningEffort         string  `json:"reasoning_effort"` // Codex 思考强度
+	FastMultiplier          float64 `json:"fast_multiplier"`  // Fast 计费倍率
 }
 
 // TraceListItem 追踪记录列表项（不含请求体/响应体，减少传输量）
@@ -67,6 +68,7 @@ type TraceListItem struct {
 	AuthTokenName       string  `json:"auth_token_name"` // API 令牌名称（查询时填充）
 	IsFast              bool    `json:"is_fast"`
 	ServiceTier         string  `json:"service_tier"`
+	ReasoningEffort     string  `json:"reasoning_effort"`
 	FastMultiplier      float64 `json:"fast_multiplier"`
 }
 
@@ -148,6 +150,7 @@ CREATE TABLE IF NOT EXISTS traces (
     token_id BIGINT NOT NULL DEFAULT 0,
     is_fast TINYINT NOT NULL DEFAULT 0,
     service_tier VARCHAR(32) NOT NULL DEFAULT '',
+	reasoning_effort VARCHAR(32) NOT NULL DEFAULT '',
     fast_multiplier DOUBLE NOT NULL DEFAULT 1.0
 );
 
@@ -171,6 +174,7 @@ CREATE INDEX IF NOT EXISTS idx_traces_time ON traces(time DESC);
 	_, _ = db.ExecContext(ctx, "ALTER TABLE traces ADD COLUMN token_id BIGINT NOT NULL DEFAULT 0")
 	_, _ = db.ExecContext(ctx, "ALTER TABLE traces ADD COLUMN is_fast TINYINT NOT NULL DEFAULT 0")
 	_, _ = db.ExecContext(ctx, "ALTER TABLE traces ADD COLUMN service_tier VARCHAR(32) NOT NULL DEFAULT ''")
+	_, _ = db.ExecContext(ctx, "ALTER TABLE traces ADD COLUMN reasoning_effort VARCHAR(32) NOT NULL DEFAULT ''")
 	_, _ = db.ExecContext(ctx, "ALTER TABLE traces ADD COLUMN fast_multiplier DOUBLE NOT NULL DEFAULT 1.0")
 
 	return nil
@@ -183,14 +187,14 @@ func (s *TraceStore) Save(ctx context.Context, t *Trace) (int64, error) {
 		fastMultiplier = 1
 	}
 	query := `
-INSERT INTO traces (time, channel_id, channel_name, channel_type, model, request_path, request_type, status_code, duration, is_streaming, is_test, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, request_body, response_body, client_request_headers, upstream_request_headers, upstream_response_headers, client_ip, api_key_used, token_id, is_fast, service_tier, fast_multiplier)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO traces (time, channel_id, channel_name, channel_type, model, request_path, request_type, status_code, duration, is_streaming, is_test, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, request_body, response_body, client_request_headers, upstream_request_headers, upstream_response_headers, client_ip, api_key_used, token_id, is_fast, service_tier, reasoning_effort, fast_multiplier)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 	result, err := s.db.ExecContext(ctx, query,
 		t.Time, t.ChannelID, t.ChannelName, t.ChannelType, t.Model, t.RequestPath, t.RequestType,
 		t.StatusCode, t.Duration, t.IsStreaming, t.IsTest, t.InputTokens, t.OutputTokens, t.CacheReadTokens, t.CacheCreationTokens,
 		t.RequestBody, t.ResponseBody, t.ClientRequestHeaders, t.UpstreamRequestHeaders, t.UpstreamResponseHeaders, t.ClientIP, t.APIKeyUsed, t.TokenID,
-		traceBoolToInt(t.IsFast), t.ServiceTier, fastMultiplier,
+		traceBoolToInt(t.IsFast), t.ServiceTier, t.ReasoningEffort, fastMultiplier,
 	)
 	if err != nil {
 		return 0, err
@@ -220,7 +224,7 @@ func (s *TraceStore) List(ctx context.Context, limit, offset int, statusFilter s
 	}
 
 	query := fmt.Sprintf(`
-SELECT id, time, channel_id, channel_name, channel_type, model, request_path, request_type, status_code, duration, is_streaming, is_test, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, client_ip, api_key_used, token_id, is_fast, service_tier, fast_multiplier
+SELECT id, time, channel_id, channel_name, channel_type, model, request_path, request_type, status_code, duration, is_streaming, is_test, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, client_ip, api_key_used, token_id, is_fast, service_tier, reasoning_effort, fast_multiplier
 FROM traces
 %s
 ORDER BY time DESC
@@ -242,7 +246,7 @@ LIMIT ? OFFSET ?
 			&item.ID, &item.Time, &item.ChannelID, &item.ChannelName, &item.ChannelType,
 			&item.Model, &item.RequestPath, &item.RequestType, &item.StatusCode, &item.Duration, &isStreaming, &isTest,
 			&item.InputTokens, &item.OutputTokens, &item.CacheReadTokens, &item.CacheCreationTokens, &item.ClientIP, &item.APIKeyUsed, &item.TokenID,
-			&isFast, &item.ServiceTier, &item.FastMultiplier,
+			&isFast, &item.ServiceTier, &item.ReasoningEffort, &item.FastMultiplier,
 		); err != nil {
 			return nil, err
 		}
@@ -258,7 +262,7 @@ LIMIT ? OFFSET ?
 // Get 获取单条追踪记录详情（含请求体/响应体）
 func (s *TraceStore) Get(ctx context.Context, id int64) (*Trace, error) {
 	query := `
-SELECT id, time, channel_id, channel_name, channel_type, model, request_path, request_type, status_code, duration, is_streaming, is_test, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, request_body, response_body, client_request_headers, upstream_request_headers, upstream_response_headers, client_ip, api_key_used, token_id, is_fast, service_tier, fast_multiplier
+SELECT id, time, channel_id, channel_name, channel_type, model, request_path, request_type, status_code, duration, is_streaming, is_test, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, request_body, response_body, client_request_headers, upstream_request_headers, upstream_response_headers, client_ip, api_key_used, token_id, is_fast, service_tier, reasoning_effort, fast_multiplier
 FROM traces
 WHERE id = ?
 `
@@ -271,7 +275,7 @@ WHERE id = ?
 		&trace.Model, &trace.RequestPath, &trace.RequestType, &trace.StatusCode, &trace.Duration, &isStreaming, &isTest,
 		&trace.InputTokens, &trace.OutputTokens, &trace.CacheReadTokens, &trace.CacheCreationTokens, &requestBody, &responseBody,
 		&clientRequestHeaders, &upstreamRequestHeaders, &upstreamResponseHeaders, &trace.ClientIP, &trace.APIKeyUsed, &trace.TokenID,
-		&isFast, &trace.ServiceTier, &trace.FastMultiplier,
+		&isFast, &trace.ServiceTier, &trace.ReasoningEffort, &trace.FastMultiplier,
 	)
 	if err != nil {
 		return nil, err

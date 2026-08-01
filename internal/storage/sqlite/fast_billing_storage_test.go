@@ -79,15 +79,16 @@ func TestFastBillingLogRoundTrip(t *testing.T) {
 
 	ctx := context.Background()
 	err := store.AddLog(ctx, &model.LogEntry{
-		Time:           model.JSONTime{Time: time.Now()},
-		Model:          "gpt-5.5",
-		RequestType:    "compact_v2",
-		StatusCode:     200,
-		Message:        "ok",
-		IsFast:         true,
-		ServiceTier:    "priority",
-		FastMultiplier: 2.5,
-		Cost:           0.025,
+		Time:            model.JSONTime{Time: time.Now()},
+		Model:           "gpt-5.5",
+		RequestType:     "compact_v2",
+		StatusCode:      200,
+		Message:         "ok",
+		IsFast:          true,
+		ServiceTier:     "priority",
+		ReasoningEffort: "xhigh",
+		FastMultiplier:  2.5,
+		Cost:            0.025,
 	})
 	if err != nil {
 		t.Fatalf("AddLog failed: %v", err)
@@ -106,6 +107,9 @@ func TestFastBillingLogRoundTrip(t *testing.T) {
 	if logs[0].ServiceTier != "priority" {
 		t.Fatalf("ServiceTier = %q, want priority", logs[0].ServiceTier)
 	}
+	if logs[0].ReasoningEffort != "xhigh" {
+		t.Fatalf("ReasoningEffort = %q, want xhigh", logs[0].ReasoningEffort)
+	}
 	if logs[0].FastMultiplier != 2.5 {
 		t.Fatalf("FastMultiplier = %v, want 2.5", logs[0].FastMultiplier)
 	}
@@ -117,7 +121,7 @@ func TestFastBillingLogRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListLogsRange failed: %v", err)
 	}
-	if len(rangeLogs) != 1 || !rangeLogs[0].IsFast || rangeLogs[0].FastMultiplier != 2.5 || rangeLogs[0].RequestType != "compact_v2" {
+	if len(rangeLogs) != 1 || !rangeLogs[0].IsFast || rangeLogs[0].FastMultiplier != 2.5 || rangeLogs[0].RequestType != "compact_v2" || rangeLogs[0].ReasoningEffort != "xhigh" {
 		t.Fatalf("ListLogsRange fast metadata = %+v, want one fast log with multiplier 2.5", rangeLogs)
 	}
 }

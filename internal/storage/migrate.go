@@ -736,6 +736,7 @@ func ensureLogsFastBillingFields(ctx context.Context, db *sql.DB) error {
 	}{
 		{"is_fast", "ALTER TABLE logs ADD COLUMN is_fast TINYINT NOT NULL DEFAULT 0 COMMENT '是否Fast计费'"},
 		{"service_tier", "ALTER TABLE logs ADD COLUMN service_tier VARCHAR(32) NOT NULL DEFAULT '' COMMENT '上游service_tier'"},
+		{"reasoning_effort", "ALTER TABLE logs ADD COLUMN reasoning_effort VARCHAR(32) NOT NULL DEFAULT '' COMMENT 'Codex思考强度'"},
 		{"fast_multiplier", "ALTER TABLE logs ADD COLUMN fast_multiplier DOUBLE NOT NULL DEFAULT 1.0 COMMENT 'Fast计费倍率'"},
 	}
 	for _, field := range fields {
@@ -760,6 +761,7 @@ func ensureLogsFastBillingFieldsSQLite(ctx context.Context, db *sql.DB) error {
 	}{
 		{"is_fast", "ALTER TABLE logs ADD COLUMN is_fast INTEGER NOT NULL DEFAULT 0"},
 		{"service_tier", "ALTER TABLE logs ADD COLUMN service_tier TEXT NOT NULL DEFAULT ''"},
+		{"reasoning_effort", "ALTER TABLE logs ADD COLUMN reasoning_effort TEXT NOT NULL DEFAULT ''"},
 		{"fast_multiplier", "ALTER TABLE logs ADD COLUMN fast_multiplier REAL NOT NULL DEFAULT 1.0"},
 	}
 	for _, field := range fields {

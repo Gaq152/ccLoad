@@ -132,6 +132,7 @@ func traceToListItem(trace *storage.Trace) *storage.TraceListItem {
 		AuthTokenName:       trace.AuthTokenName,
 		IsFast:              trace.IsFast,
 		ServiceTier:         trace.ServiceTier,
+		ReasoningEffort:     trace.ReasoningEffort,
 		FastMultiplier:      trace.FastMultiplier,
 	}
 }
