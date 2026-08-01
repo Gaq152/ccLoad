@@ -226,6 +226,9 @@ func migrate(ctx context.Context, db *sql.DB, dialect Dialect) error {
 			if _, err := db.ExecContext(ctx, "UPDATE model_pricing SET channel_type = 'codex' WHERE channel_type = 'openai'"); err != nil {
 				return fmt.Errorf("migrate model_pricing channel type: %w", err)
 			}
+			if err := normalizeModelsDevPricingPrefixes(ctx, db); err != nil {
+				return fmt.Errorf("normalize models.dev model prefixes: %w", err)
+			}
 		}
 
 		// 增量迁移：确保channel_endpoints表有status_code字段（2025-12新增）
@@ -2103,6 +2106,115 @@ func normalizePricingHighPriceThreshold(ctx context.Context, db *sql.DB) error {
 			ELSE 272000
 		END`)
 	return err
+}
+
+// normalizeModelsDevPricingPrefixes 修复早期 models.dev 导入使用的点号命名空间。
+// models.dev 目录中的 anthropic.claude-* / openai.gpt-* / google.gemini-*
+// 是目录 ID，不是调用时使用的真实模型名。旧 ID 会作为别名保留，以兼容已有日志或配置。
+func normalizeModelsDevPricingPrefixes(ctx context.Context, db *sql.DB) error {
+	type pricingRow struct {
+		id      int64
+		model   string
+		aliases string
+	}
+
+	rows, err := db.QueryContext(ctx, "SELECT id, model, COALESCE(aliases, '') FROM model_pricing")
+	if err != nil {
+		return err
+	}
+	var entries []*pricingRow
+	for rows.Next() {
+		row := &pricingRow{}
+		if err := rows.Scan(&row.id, &row.model, &row.aliases); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		entries = append(entries, row)
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+
+	byModel := make(map[string]*pricingRow, len(entries))
+	for _, row := range entries {
+		byModel[strings.ToLower(strings.TrimSpace(row.model))] = row
+	}
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	normalizedCount := 0
+	mergedCount := 0
+	for _, row := range entries {
+		normalizedModel, ok := normalizeModelsDevPricingPrefix(row.model)
+		if !ok {
+			continue
+		}
+
+		if target := byModel[strings.ToLower(normalizedModel)]; target != nil && target.id != row.id {
+			target.aliases = mergePricingAliasStrings(target.aliases, row.aliases, row.model)
+			if _, err := tx.ExecContext(ctx, "UPDATE model_pricing SET aliases = ? WHERE id = ?", target.aliases, target.id); err != nil {
+				return err
+			}
+			if _, err := tx.ExecContext(ctx, "DELETE FROM model_pricing WHERE id = ?", row.id); err != nil {
+				return err
+			}
+			delete(byModel, strings.ToLower(strings.TrimSpace(row.model)))
+			mergedCount++
+			continue
+		}
+
+		row.aliases = mergePricingAliasStrings(row.aliases, row.model)
+		if _, err := tx.ExecContext(ctx, "UPDATE model_pricing SET model = ?, aliases = ? WHERE id = ?", normalizedModel, row.aliases, row.id); err != nil {
+			return err
+		}
+		delete(byModel, strings.ToLower(strings.TrimSpace(row.model)))
+		row.model = normalizedModel
+		byModel[strings.ToLower(normalizedModel)] = row
+		normalizedCount++
+	}
+
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	if normalizedCount > 0 || mergedCount > 0 {
+		log.Printf("[INFO] [Migrate] models.dev 模型前缀已修复: 重命名 %d，合并重复 %d", normalizedCount, mergedCount)
+	}
+	return nil
+}
+
+func normalizeModelsDevPricingPrefix(modelName string) (string, bool) {
+	trimmed := strings.TrimSpace(modelName)
+	lower := strings.ToLower(trimmed)
+	for _, namespace := range []string{"anthropic.", "openai.", "google."} {
+		if strings.HasPrefix(lower, namespace) && len(trimmed) > len(namespace) {
+			return strings.ToLower(strings.TrimSpace(trimmed[len(namespace):])), true
+		}
+	}
+	return trimmed, false
+}
+
+func mergePricingAliasStrings(groups ...string) string {
+	seen := make(map[string]struct{})
+	aliases := make([]string, 0)
+	for _, group := range groups {
+		for _, alias := range strings.Split(group, ",") {
+			alias = strings.TrimSpace(alias)
+			if alias == "" {
+				continue
+			}
+			key := strings.ToLower(alias)
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			aliases = append(aliases, alias)
+		}
+	}
+	return strings.Join(aliases, ",")
 }
 
 // hasColumnMySQL 检查 MySQL 表是否有指定列

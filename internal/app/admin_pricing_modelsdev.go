@@ -265,11 +265,12 @@ func flattenModelsDevCatalog(payload modelsDevCatalogPayload) []ModelsDevCatalog
 			if !isModelsDevTextPricingModel(modelID, sourceModel) {
 				continue
 			}
-			normalizedID := normalizeModelsDevModelID(modelID)
+			preliminaryID := normalizeModelsDevModelID(modelID, providerID)
+			labID := resolver.resolve(providerID, modelID, preliminaryID, sourceModel)
+			normalizedID := normalizeModelsDevModelID(modelID, providerID, labID)
 			if normalizedID == "" {
 				continue
 			}
-			labID := resolver.resolve(providerID, modelID, normalizedID, sourceModel)
 			channelType, matched := modelsDevChannelTypeForLab(labID)
 			assignmentKey := "lab:" + labID
 			if labID == "" {
@@ -354,7 +355,7 @@ func isModelsDevTextPricingModel(modelID string, sourceModel modelsDevModel) boo
 	return true
 }
 
-func normalizeModelsDevModelID(modelID string) string {
+func normalizeModelsDevModelID(modelID string, namespaces ...string) string {
 	afterSlash := modelID
 	if i := strings.LastIndex(afterSlash, "/"); i >= 0 {
 		afterSlash = afterSlash[i+1:]
@@ -363,8 +364,25 @@ func normalizeModelsDevModelID(modelID string) string {
 		afterSlash = afterSlash[:i]
 	}
 	afterSlash = strings.ReplaceAll(afterSlash, "@", "-")
-	afterSlash = strings.TrimSpace(strings.TrimSuffix(afterSlash, "[1m]"))
-	return strings.ToLower(afterSlash)
+	afterSlash = strings.ToLower(strings.TrimSpace(strings.TrimSuffix(afterSlash, "[1m]")))
+
+	// models.dev 的部分 provider 使用 "lab.model" 作为目录 ID，例如
+	// anthropic.claude-opus-5。点号也会出现在真实模型版本号中（如 gpt-4.1），
+	// 因此只移除已确认的 Lab/provider 命名空间，不能按第一个点号盲目截断。
+	knownNamespaces := append([]string{"anthropic", "openai", "google"}, namespaces...)
+	for {
+		before := afterSlash
+		for _, namespace := range knownNamespaces {
+			namespace = strings.ToLower(strings.TrimSpace(namespace))
+			if namespace != "" {
+				afterSlash = strings.TrimPrefix(afterSlash, namespace+".")
+			}
+		}
+		if afterSlash == before {
+			break
+		}
+	}
+	return afterSlash
 }
 
 type modelsDevLabResolver struct {
@@ -398,7 +416,7 @@ func newModelsDevLabResolver(models map[string]modelsDevModel, providers map[str
 		r.knownLabs[labID] = struct{}{}
 		r.canonicalIDs[strings.ToLower(canonicalID)] = labID
 		r.canonicalIDs[strings.ToLower(modelKey)] = labID
-		addUniqueModelsDevLab(r.canonicalBases, normalizeModelsDevModelID(canonicalID), labID)
+		addUniqueModelsDevLab(r.canonicalBases, normalizeModelsDevModelID(canonicalID, labID), labID)
 		addUniqueModelsDevLab(r.canonicalNames, normalizeModelsDevLabLookup(sourceModel.Name), labID)
 	}
 	for providerKey, provider := range providers {
@@ -432,6 +450,11 @@ func (r *modelsDevLabResolver) resolve(providerID, modelID, normalizedID string,
 		}
 		if strings.Contains(candidate, "/") {
 			if labID := strings.SplitN(candidate, "/", 2)[0]; r.isKnownLab(labID) {
+				return labID
+			}
+		}
+		if strings.Contains(candidate, ".") {
+			if labID := strings.SplitN(candidate, ".", 2)[0]; r.isKnownLab(labID) {
 				return labID
 			}
 		}

@@ -638,7 +638,7 @@
 
         <div class="form-group">
           <label class="form-label">模型名称 <span style="color: var(--danger-500);">*</span>
-            <span class="field-tip"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><span class="tip-text">定价的唯一标识符，通常是不带日期后缀的基础模型名，如 claude-sonnet-4-5。创建后不可修改。</span></span>
+            <span class="field-tip"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><span class="tip-text">定价的唯一标识符，通常是不带日期后缀和供应商前缀的实际模型名，如 claude-sonnet-4-5。编辑时可以修正，不能与已有模型重名。</span></span>
           </label>
           <input type="text" id="pricingModel" class="form-input" placeholder="例如: claude-sonnet-4-5" required>
         </div>

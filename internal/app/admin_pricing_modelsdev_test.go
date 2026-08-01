@@ -19,8 +19,8 @@ func TestFetchModelsDevCatalog(t *testing.T) {
             "id": "anthropic",
             "name": "Anthropic",
             "models": {
-              "claude-test": {
-                "id": "claude-test",
+            "anthropic.claude-test": {
+                "id": "anthropic.claude-test",
                 "name": "Claude Test",
                 "release_date": "2026-07-01",
                 "modalities": {"output": ["text"]},
@@ -51,7 +51,7 @@ func TestFetchModelsDevCatalog(t *testing.T) {
 		t.Fatalf("len(entries) = %d, want 1", len(entries))
 	}
 	got := entries[0]
-	if got.Key != "anthropic/claude-test" || got.ChannelType != "anthropic" || got.LabID != "anthropic" || got.NeedsChannelType {
+	if got.Key != "anthropic/anthropic.claude-test" || got.NormalizedModelID != "claude-test" || got.ChannelType != "anthropic" || got.LabID != "anthropic" || got.NeedsChannelType {
 		t.Fatalf("identity = %#v", got)
 	}
 	if got.InputPrice != 3 || got.OutputPrice != 15 || got.CacheReadPrice != 0.3 || got.CacheWritePrice != 3.75 {
@@ -120,13 +120,23 @@ func TestFetchModelsDevCatalogResolvesLabSeparatelyFromProvider(t *testing.T) {
 func TestNormalizeModelsDevModelID(t *testing.T) {
 	tests := map[string]string{
 		"anthropic/claude-sonnet-4:beta": "claude-sonnet-4",
+		"anthropic.claude-opus-5":        "claude-opus-5",
+		"openai.gpt-5.2-codex":           "gpt-5.2-codex",
+		"google.gemini-2.5-pro":          "gemini-2.5-pro",
 		"gpt-5.2-codex@high":             "gpt-5.2-codex-high",
+		"gpt-4.1":                        "gpt-4.1",
 		"Claude-Test[1m]":                "claude-test",
 	}
 	for input, want := range tests {
 		if got := normalizeModelsDevModelID(input); got != want {
 			t.Errorf("normalizeModelsDevModelID(%q) = %q, want %q", input, got, want)
 		}
+	}
+}
+
+func TestNormalizeModelsDevModelIDUsesResolvedLabNamespace(t *testing.T) {
+	if got := normalizeModelsDevModelID("openrouter.deepseek.deepseek-r1", "openrouter", "deepseek"); got != "deepseek-r1" {
+		t.Fatalf("normalizeModelsDevModelID() = %q, want deepseek-r1", got)
 	}
 }
 

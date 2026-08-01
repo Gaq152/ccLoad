@@ -150,6 +150,72 @@ func TestMigratePricingCacheMultipliersAndDefaultFlagSQLite(t *testing.T) {
 	}
 }
 
+func TestNormalizeModelsDevPricingPrefixesSQLite(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	ctx := context.Background()
+	if _, err := db.ExecContext(ctx, `
+		CREATE TABLE model_pricing (
+			id INTEGER PRIMARY KEY,
+			model TEXT NOT NULL UNIQUE,
+			aliases TEXT
+		);
+		INSERT INTO model_pricing (id, model, aliases) VALUES
+			(1, 'anthropic.claude-opus-5', ''),
+			(2, 'gpt-5.2', 'manual-alias'),
+			(3, 'openai.gpt-5.2', 'old-openai-alias'),
+			(4, 'google.gemini-2.5-pro', NULL),
+			(5, 'gpt-4.1', '');
+	`); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := normalizeModelsDevPricingPrefixes(ctx, db); err != nil {
+		t.Fatal(err)
+	}
+	// 必须幂等，第二次执行不能重复添加别名或删除正常模型。
+	if err := normalizeModelsDevPricingPrefixes(ctx, db); err != nil {
+		t.Fatal(err)
+	}
+
+	type migratedRow struct {
+		model   string
+		aliases string
+	}
+	got := make(map[string]migratedRow)
+	rows, err := db.QueryContext(ctx, "SELECT model, COALESCE(aliases, '') FROM model_pricing ORDER BY id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var row migratedRow
+		if err := rows.Scan(&row.model, &row.aliases); err != nil {
+			t.Fatal(err)
+		}
+		got[row.model] = row
+	}
+	if len(got) != 4 {
+		t.Fatalf("迁移后模型数 = %d, want 4: %#v", len(got), got)
+	}
+	if got["claude-opus-5"].aliases != "anthropic.claude-opus-5" {
+		t.Fatalf("Claude 迁移结果 = %#v", got["claude-opus-5"])
+	}
+	if got["gpt-5.2"].aliases != "manual-alias,old-openai-alias,openai.gpt-5.2" {
+		t.Fatalf("OpenAI 重复项合并结果 = %#v", got["gpt-5.2"])
+	}
+	if got["gemini-2.5-pro"].aliases != "google.gemini-2.5-pro" {
+		t.Fatalf("Gemini 迁移结果 = %#v", got["gemini-2.5-pro"])
+	}
+	if _, ok := got["gpt-4.1"]; !ok {
+		t.Fatal("合法模型 gpt-4.1 被错误改写")
+	}
+}
+
 func near(got, want float64) bool {
 	return math.Abs(got-want) < 1e-12
 }

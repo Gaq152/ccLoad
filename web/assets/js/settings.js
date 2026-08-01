@@ -438,7 +438,7 @@ function openPricingDrawer(entry) {
   document.getElementById('pricingDrawerTitle').textContent = isEdit ? '编辑模型定价' : '新增模型定价';
   document.getElementById('pricingDrawerId').value = isEdit ? entry.id : '';
   document.getElementById('pricingModel').value = isEdit ? entry.model : '';
-  document.getElementById('pricingModel').readOnly = isEdit; // 编辑时不允许修改模型名
+  document.getElementById('pricingModel').readOnly = false;
   document.getElementById('pricingDisplayName').value = isEdit ? (entry.display_name || '') : '';
   document.getElementById('pricingChannelType').value = isEdit ? entry.channel_type : 'anthropic';
   document.getElementById('pricingInputPrice').value = isEdit ? entry.input_price : '';
@@ -710,6 +710,11 @@ function renderModelsDevPricingCatalog() {
       ? `<span class="models-dev-badge tier" title="${escapeHtml(formatModelsDevTierTitle(entry))}">分段价</span>`
       : '';
     const release = entry.release_date ? ` · ${escapeHtml(entry.release_date)}` : '';
+    const rawModelID = entry.model_id || '';
+    const normalizedModelID = entry.normalized_model_id || rawModelID;
+    const modelIDText = rawModelID !== normalizedModelID
+      ? `目录：${rawModelID} · 导入：${normalizedModelID}`
+      : rawModelID;
     const labName = entry.lab_name || entry.lab_id || '未识别 Lab';
     const providerName = entry.provider_name || entry.provider_id;
     const assignedChannelType = getModelsDevEntryChannelType(entry);
@@ -736,7 +741,7 @@ function renderModelsDevPricingCatalog() {
             <div class="models-dev-model-name" title="${escapeHtml(entry.display_name || entry.model_id)}">
               ${escapeHtml(entry.display_name || entry.model_id)}${existsBadge}${tierBadge}
             </div>
-            <div class="models-dev-model-id" title="${escapeHtml(entry.model_id)}">${escapeHtml(entry.model_id)}</div>
+            <div class="models-dev-model-id" title="${escapeHtml(modelIDText)}">${escapeHtml(modelIDText)}</div>
           </div>
         </div>
         <div class="models-dev-provider">
