@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"testing"
+	"time"
 
 	"ccLoad/internal/cooldown"
 	"ccLoad/internal/model"
@@ -92,6 +93,62 @@ func Test_HandleProxyError_Basic(t *testing.T) {
 				t.Errorf("期望 shouldRetry=%v, 实际=%v", tt.shouldRetry, shouldRetry)
 			}
 		})
+	}
+}
+
+func TestHandleProxyErrorResponseSearchUnavailableDoesNotCooldown(t *testing.T) {
+	srv, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	srv.cooldownManager = cooldown.NewManager(srv.store, nil)
+	ctx := context.Background()
+	cfg := &model.Config{
+		ID:       1,
+		Name:     "search-test",
+		URL:      "http://test.example.com",
+		Priority: 1,
+		Enabled:  true,
+	}
+	res := &fwResult{
+		Status: http.StatusInternalServerError,
+		Body:   []byte(`{"error":{"message":"search upstream unavailable","type":"internal_error"},"type":"error"}`),
+		Header: make(http.Header),
+	}
+	reqCtx := &proxyRequestContext{requestType: util.RequestTypeSearch}
+
+	result, action := srv.handleProxyErrorResponse(ctx, cfg, 0, "gpt-test", "test-key", res, 0.1, reqCtx)
+	if action != cooldown.ActionReturnClient {
+		t.Fatalf("action = %v, want ActionReturnClient", action)
+	}
+	if result == nil || result.status != http.StatusInternalServerError || string(result.body) != string(res.Body) {
+		t.Fatalf("result = %#v, want original 500 response", result)
+	}
+
+	cooldowns, err := srv.store.GetAllChannelCooldowns(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if until, exists := cooldowns[cfg.ID]; exists && until.After(time.Now()) {
+		t.Fatalf("search unavailable unexpectedly cooled channel until %v", until)
+	}
+}
+
+func TestIsTransientSearchUpstreamUnavailableIsNarrow(t *testing.T) {
+	searchCtx := &proxyRequestContext{requestType: util.RequestTypeSearch}
+	responsesCtx := &proxyRequestContext{requestType: util.RequestTypeResponses}
+	searchUnavailable := &fwResult{Status: 500, Body: []byte(`{"error":{"message":"search upstream unavailable"}}`)}
+
+	if !isTransientSearchUpstreamUnavailable(searchCtx, searchUnavailable) {
+		t.Fatal("expected exact search upstream error to bypass cooldown")
+	}
+	if isTransientSearchUpstreamUnavailable(responsesCtx, searchUnavailable) {
+		t.Fatal("ordinary responses request must not bypass cooldown")
+	}
+	if isTransientSearchUpstreamUnavailable(searchCtx, &fwResult{Status: 500, Body: []byte(`{"error":"database unavailable"}`)}) {
+		t.Fatal("unrelated search 500 must not bypass cooldown")
+	}
+	if isTransientSearchUpstreamUnavailable(searchCtx, &fwResult{Status: 400, Body: searchUnavailable.Body}) {
+		t.Fatal("search 4xx must not bypass cooldown")
 	}
 }
 

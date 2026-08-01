@@ -407,6 +407,21 @@ func (s *Server) handleProxyErrorResponse(
 		s.updateTokenStatsAsync(reqCtx.tokenHash, false, duration, reqCtx.isStreaming, res, actualModel)
 	}
 
+	// Codex Search 依赖的是上游独立的搜索子服务。该子服务短暂不可用并不代表
+	// 当前渠道或 API Key 已失效，不能沿用普通模型请求的 HTTP 500 渠道冷却策略。
+	// 保留原始错误响应，让客户端自行重试；其他 Search 5xx 与普通请求仍走通用分类。
+	if isTransientSearchUpstreamUnavailable(reqCtx, res) {
+		log.Printf("[INFO] [Codex Search] 搜索子服务暂不可用，不触发渠道冷却 (channel=%d status=%d)", cfg.ID, res.Status)
+		return &proxyResult{
+			status:    res.Status,
+			header:    res.Header,
+			body:      res.Body,
+			channelID: &cfg.ID,
+			duration:  duration,
+			succeeded: false,
+		}, cooldown.ActionReturnClient
+	}
+
 	action, _ := s.handleProxyError(ctx, cfg, keyIndex, res, nil)
 	if action == cooldown.ActionReturnClient {
 		return &proxyResult{
@@ -420,6 +435,13 @@ func (s *Server) handleProxyErrorResponse(
 	}
 
 	return nil, action
+}
+
+func isTransientSearchUpstreamUnavailable(reqCtx *proxyRequestContext, res *fwResult) bool {
+	if reqCtx == nil || res == nil || reqCtx.requestType != util.RequestTypeSearch || res.Status < 500 || res.Status >= 600 {
+		return false
+	}
+	return strings.Contains(strings.ToLower(string(res.Body)), "search upstream unavailable")
 }
 
 // isThinkingModeError 检测是否为 thinking 模式不兼容错误
