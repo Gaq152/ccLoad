@@ -226,6 +226,31 @@
       .models-dev-footer { align-items: flex-start; padding: 12px 14px; flex-direction: column; }
       .models-dev-footer > div:last-child { align-self: stretch; display: flex; justify-content: flex-end; }
     }
+    .domain-rule-list { display: grid; gap: 12px; margin: 20px 0; }
+    .domain-rule-row {
+      display: grid;
+      grid-template-columns: minmax(220px, 1fr) 180px auto;
+      gap: 12px;
+      align-items: end;
+      padding: 16px;
+      border: 1px solid var(--neutral-200);
+      border-radius: 10px;
+      background: var(--neutral-50);
+    }
+    .domain-rule-row .form-label { display: block; margin-bottom: 6px; }
+    .domain-rule-row .form-input { width: 100%; min-height: 44px; }
+    .domain-rule-actions { display: flex; gap: 8px; }
+    .domain-rule-actions .btn { min-height: 44px; }
+    .domain-rule-error { min-height: 18px; margin-top: 4px; color: var(--danger-600, #dc2626); font-size: 12px; }
+    .domain-rule-status { grid-column: 1 / -1; min-height: 18px; margin-top: -8px; color: var(--neutral-500); font-size: 12px; }
+    .domain-rule-status.success { color: var(--success-600, #16a34a); }
+    .domain-rule-status.error { color: var(--danger-600, #dc2626); }
+    .domain-empty { padding: 24px; border: 1px dashed var(--neutral-300); border-radius: 10px; color: var(--neutral-500); text-align: center; }
+    @media (max-width: 720px) {
+      .domain-rule-row { grid-template-columns: 1fr; }
+      .domain-rule-actions .btn { flex: 1; }
+      .domain-rule-status { grid-column: auto; }
+    }
   </style>
   <link rel="stylesheet" href="/web/assets/css/responsive.css">
 </head>
@@ -243,7 +268,7 @@
             </div>
             <div>
               <h1 class="hero-title">系统设置</h1>
-              <p class="hero-subtitle">配置运行时参数 · 模型计费管理</p>
+              <p class="hero-subtitle">配置运行参数 · 域名访问 · 模型计费与安全</p>
             </div>
 
             <!-- Tab 按钮组 -->
@@ -335,6 +360,23 @@
 
         <!-- Tab: 安全 -->
         <section class="tab-content" id="tab-security" style="display: none;">
+          <!-- 域名访问卡片 -->
+          <div class="glass-card mb-6 animate-slide-up">
+            <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap;">
+              <div style="max-width: 760px;">
+                <h3 style="margin: 0 0 6px; font-size: 16px;">域名与 IP 访问</h3>
+                <p style="margin: 0; color: var(--neutral-500); font-size: 13px; line-height: 1.6;">
+                  支持域名、IP 和可选端口，例如 <code>api.example.com</code>、<code>10.0.0.8:8080</code>。不填写端口时匹配该地址的所有端口；HTTP/HTTPS 由入口决定，不在此处限制。添加规则后，未列出的地址将被拒绝。
+                </p>
+              </div>
+              <button type="button" class="btn btn-secondary" onclick="addDomainRule()">添加地址</button>
+            </div>
+            <div id="domain-rule-list" class="domain-rule-list" aria-live="polite"></div>
+            <div style="display: flex; justify-content: flex-end;">
+              <button type="button" id="save-domain-rules-btn" class="btn btn-primary" onclick="saveDomainRules()" style="min-width: 120px;">保存规则</button>
+            </div>
+          </div>
+
           <!-- 管理密码卡片 -->
           <div class="glass-card mb-6 animate-slide-up">
             <div style="display: flex; align-items: flex-start; gap: 16px; flex-wrap: wrap;">

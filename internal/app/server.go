@@ -488,6 +488,9 @@ func (s *Server) releaseMemoryBudget(size int64) {
 
 // SetupRoutes - 新的路由设置函数，适配Gin
 func (s *Server) SetupRoutes(r *gin.Engine) {
+	// 域名角色在所有路由之前统一生效；空规则保持历史行为。
+	r.Use(s.domainAccessGuard())
+
 	// 公开访问的API（代理服务）- 需要 API 认证
 	// 透明代理：统一处理所有 /v1/* 端点，支持所有HTTP方法
 	apiV1 := r.Group("/v1")
@@ -614,6 +617,7 @@ func (s *Server) SetupRoutes(r *gin.Engine) {
 		admin.PUT("/settings/:key", s.AdminUpdateSetting)
 		admin.POST("/settings/:key/reset", s.AdminResetSetting)
 		admin.POST("/settings/batch", s.AdminBatchUpdateSettings)
+		admin.POST("/domain-access/test", s.HandleTestDomainAccess)
 
 		// 日志实时推送（SSE）
 		admin.GET("/logs/stream", s.HandleLogSSE)

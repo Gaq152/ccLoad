@@ -380,7 +380,7 @@ func (s *Server) HandleHealth(c *gin.Context) {
 		return
 	}
 
-	RespondJSON(c, http.StatusOK, gin.H{"status": "ok"})
+	RespondJSON(c, http.StatusOK, gin.H{"status": "ok", "service": "ccLoad"})
 }
 
 // getMergedStats 合并历史聚合数据和今天的实时数据

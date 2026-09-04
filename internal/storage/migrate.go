@@ -1229,6 +1229,7 @@ func initDefaultSettings(ctx context.Context, db *sql.DB, dialect Dialect) error
 		{"turnstile_site_key", "", "string", "Turnstile Site Key(公开密钥,用于登录页渲染验证组件,在 Cloudflare 控制台获取)", ""},
 		{"turnstile_secret_key", "", "string", "Turnstile Secret Key(私密密钥,用于服务端校验验证结果,切勿泄露)", ""},
 		{"twofa_login_required", "true", "bool", "绑定两步验证后登录是否需要验证码(关闭后登录仅需密码;修改密码始终需要验证码)", "true"},
+		{"domain_access_rules", "[]", "string", "域名/IP访问规则(web=网页,api=API,both=全部;支持可选端口)", "[]"},
 	}
 
 	var query string

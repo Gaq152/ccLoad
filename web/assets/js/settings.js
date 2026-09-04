@@ -37,6 +37,7 @@ initTopbar('settings');
 // 基础设置 Tab
 // ============================================================================
 let originalSettings = {}; // 保存原始值用于比较
+let domainRuleCounter = 0;
 
 async function loadSettings() {
   try {
@@ -58,9 +59,12 @@ function renderSettings(settings) {
   // 初始化事件委托（仅一次）
   initSettingsEventDelegation();
 
+  const domainSetting = settings.find(s => s.key === 'domain_access_rules');
+  renderDomainRules(domainSetting ? domainSetting.value : '[]');
+
   settings.forEach(s => {
     // 安全相关配置项由安全 Tab 的专属卡片管理，不在通用表格渲染
-    if (s.key.startsWith('turnstile_') || s.key === 'twofa_login_required') return;
+    if (s.key.startsWith('turnstile_') || s.key === 'twofa_login_required' || s.key === 'domain_access_rules') return;
 
     originalSettings[s.key] = s.value;
     const row = TemplateEngine.render('tpl-setting-row', {
@@ -391,6 +395,179 @@ function formatPrice(val) {
   if (val < 0.01) return val.toFixed(4);
   if (val < 1) return val.toFixed(3);
   return val.toFixed(2);
+}
+
+function renderDomainRules(raw) {
+  const list = document.getElementById('domain-rule-list');
+  if (!list) return;
+  list.innerHTML = '';
+  let rules = [];
+  try { rules = JSON.parse(raw || '[]'); } catch (_) {}
+  rules.forEach(addDomainRule);
+  updateDomainEmptyState();
+}
+
+function addDomainRule(rule = {}) {
+  const list = document.getElementById('domain-rule-list');
+  if (!list) return;
+  list.querySelector('.domain-empty')?.remove();
+  const id = ++domainRuleCounter;
+  const row = document.createElement('div');
+  row.className = 'domain-rule-row';
+  row.innerHTML = `
+    <label for="domain-host-${id}">
+      <span class="form-label">域名 / IP（可含端口）</span>
+      <input id="domain-host-${id}" class="form-input domain-rule-host" type="text" value="${escapeHtml(rule.host || '')}" placeholder="api.example.com 或 10.0.0.8:8080" autocomplete="off" spellcheck="false">
+      <div class="domain-rule-error" role="alert"></div>
+    </label>
+    <label for="domain-mode-${id}">
+      <span class="form-label">访问类型</span>
+      <select id="domain-mode-${id}" class="form-input domain-rule-mode">
+        <option value="web" ${rule.mode === 'web' ? 'selected' : ''}>仅网页</option>
+        <option value="api" ${rule.mode === 'api' ? 'selected' : ''}>仅 API</option>
+        <option value="both" ${!rule.mode || rule.mode === 'both' ? 'selected' : ''}>网页 + API</option>
+      </select>
+    </label>
+    <div class="domain-rule-actions">
+      <button type="button" class="btn btn-secondary domain-rule-test">测试</button>
+      <button type="button" class="btn btn-secondary domain-rule-remove" aria-label="删除此访问规则">删除</button>
+    </div>
+    <div class="domain-rule-status" role="status"></div>`;
+  row.querySelector('.domain-rule-remove').addEventListener('click', () => {
+    row.remove();
+    updateDomainEmptyState();
+  });
+  row.querySelector('.domain-rule-test').addEventListener('click', () => testDomainRule(row));
+  row.querySelector('.domain-rule-host').addEventListener('input', event => {
+    event.target.setAttribute('aria-invalid', 'false');
+    row.querySelector('.domain-rule-error').textContent = '';
+    setDomainTestStatus(row, '');
+  });
+  row.querySelector('.domain-rule-host').addEventListener('blur', event => validateDomainInput(event.target));
+  list.appendChild(row);
+  if (!rule.host) row.querySelector('.domain-rule-host').focus();
+}
+
+function updateDomainEmptyState() {
+  const list = document.getElementById('domain-rule-list');
+  if (list && !list.querySelector('.domain-rule-row')) {
+    list.innerHTML = '<div class="domain-empty">尚未设置访问规则，所有域名和 IP 均支持网页与 API 访问。</div>';
+  }
+}
+
+function normalizeAccessTarget(value) {
+  const raw = value.trim().toLowerCase();
+  if (!raw || raw.includes('://') || /[/?#@]/.test(raw)) return '';
+  try {
+    const bareIPv6 = !raw.startsWith('[') && (raw.match(/:/g) || []).length > 1;
+    const url = new URL(`http://${bareIPv6 ? `[${raw}]` : raw}`);
+    if (!url.hostname || url.username || url.password || url.pathname !== '/') return '';
+    const hostname = url.hostname.replace(/\.$/, '');
+    const suffix = raw.startsWith('[') ? raw.slice(raw.lastIndexOf(']') + 1) : (raw.split(':').length === 2 ? `:${raw.split(':')[1]}` : '');
+    if (suffix && !/^:\d+$/.test(suffix)) return '';
+    const port = suffix ? Number(suffix.slice(1)) : 0;
+    if (suffix && (port < 1 || port > 65535)) return '';
+    return hostname + (suffix ? `:${port}` : '');
+  } catch (_) {
+    return '';
+  }
+}
+
+function validateDomainInput(input) {
+  const host = normalizeAccessTarget(input.value);
+  input.value = host;
+  const valid = Boolean(host);
+  const error = input.parentElement.querySelector('.domain-rule-error');
+  error.textContent = valid ? '' : '请输入域名、IP 或 IP:端口，不要包含协议和路径';
+  input.setAttribute('aria-invalid', valid ? 'false' : 'true');
+  return valid;
+}
+
+function accessTargetMatches(ruleTarget, currentTarget) {
+  if (ruleTarget === currentTarget) return true;
+  try {
+    const rule = new URL(`http://${ruleTarget}`);
+    const current = new URL(`http://${currentTarget}`);
+    return !rule.port && rule.hostname === current.hostname;
+  } catch (_) {
+    return false;
+  }
+}
+
+function setDomainTestStatus(row, message, type = '') {
+  const status = row.querySelector('.domain-rule-status');
+  status.textContent = message;
+  status.className = `domain-rule-status${type ? ` ${type}` : ''}`;
+}
+
+async function testDomainRule(row) {
+  const input = row.querySelector('.domain-rule-host');
+  if (!validateDomainInput(input)) return input.focus();
+  const button = row.querySelector('.domain-rule-test');
+  button.disabled = true;
+  button.textContent = '测试中...';
+  setDomainTestStatus(row, '正在检查地址是否能到达当前 ccLoad 服务…');
+  try {
+    const result = await fetchDataWithAuth('/admin/domain-access/test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ host: input.value, scheme: location.protocol.replace(':', '') })
+    });
+    setDomainTestStatus(row, `连接成功：${result.address}`, 'success');
+  } catch (err) {
+    setDomainTestStatus(row, err.message, 'error');
+  } finally {
+    button.disabled = false;
+    button.textContent = '测试';
+  }
+}
+
+async function saveDomainRules() {
+  const rows = Array.from(document.querySelectorAll('.domain-rule-row'));
+  const rules = [];
+  const seen = new Set();
+  for (const row of rows) {
+    const input = row.querySelector('.domain-rule-host');
+    if (!validateDomainInput(input)) {
+      input.focus();
+      return;
+    }
+    if (seen.has(input.value)) {
+      row.querySelector('.domain-rule-error').textContent = '该地址已重复添加';
+      input.focus();
+      return;
+    }
+    seen.add(input.value);
+    rules.push({ host: input.value, mode: row.querySelector('.domain-rule-mode').value });
+  }
+
+  const currentTarget = normalizeAccessTarget(location.host);
+  const currentRule = rules.find(rule => accessTargetMatches(rule.host, currentTarget));
+  if (rules.length && (!currentRule || currentRule.mode === 'api')) {
+    const confirmed = await showConfirm({
+      title: '当前域名将无法打开网页',
+      message: '保存后请改用配置为“仅网页”或“网页 + API”的域名进入管理后台。仍要保存吗？',
+      type: 'warning'
+    });
+    if (!confirmed) return;
+  }
+
+  const button = document.getElementById('save-domain-rules-btn');
+  button.disabled = true;
+  button.textContent = '保存中...';
+  try {
+    await fetchDataWithAuth('/admin/settings/batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ domain_access_rules: JSON.stringify(rules) })
+    });
+    showSuccess('域名访问规则已生效');
+  } catch (err) {
+    showError('保存失败: ' + err.message);
+  } finally {
+    button.disabled = false;
+    button.textContent = '保存规则';
+  }
 }
 
 function formatTokenThreshold(val) {

@@ -225,7 +225,10 @@ func validateSettingValue(key, valueType, value string) error {
 		}
 
 	case "string":
-		// 字符串无需额外验证
+		if key == domainAccessRulesKey {
+			_, err := parseDomainAccessRules(value)
+			return err
+		}
 
 	default:
 		return fmt.Errorf("unknown value type: %s", valueType)

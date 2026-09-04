@@ -431,16 +431,27 @@ document.addEventListener('DOMContentLoaded', async function() {
 });
 
 // 初始化快速开始区域
-function initGuideSection() {
+async function initGuideSection() {
   const urlEl = document.getElementById('guide-base-url');
-  if (urlEl) {
-    urlEl.textContent = location.origin;
+  if (!urlEl) return;
+  urlEl.textContent = location.origin;
+  try {
+    const setting = await fetchDataWithAuth('/admin/settings/domain_access_rules');
+    const rules = JSON.parse(setting.value || '[]');
+    const apiRule = rules.find(rule => rule.mode === 'api') || rules.find(rule => rule.mode === 'both');
+    if (apiRule) {
+      urlEl.textContent = `${location.protocol}//${apiRule.host}`;
+      const note = document.getElementById('guide-base-url-note');
+      if (note) note.textContent = apiRule.mode === 'api' ? '推荐使用已配置的 API 专用域名' : '使用已配置的 API 访问域名';
+    }
+  } catch (_) {
+    // 旧版本或配置暂不可用时继续显示当前地址。
   }
 }
 
 // 复制接口地址
 function copyGuideUrl() {
-  const url = location.origin;
+  const url = document.getElementById('guide-base-url')?.textContent || location.origin;
   navigator.clipboard.writeText(url).then(() => {
     if (typeof showToast === 'function') showToast('已复制到剪贴板');
   }).catch(() => {
