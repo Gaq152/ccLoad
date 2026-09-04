@@ -432,7 +432,7 @@
             document.getElementById('drawerExpiryType').value = 'custom';
             document.getElementById('drawerCustomExpiryContainer').style.display = 'block';
             const date = new Date(token.expires_at);
-            document.getElementById('drawerCustomExpiry').value = date.toISOString().slice(0, 16);
+            document.getElementById('drawerCustomExpiry').value = new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
           }
         }
 
